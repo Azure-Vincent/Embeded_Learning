@@ -1,0 +1,12 @@
+{
+  "name": "bench-embedded-learning",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive embedded systems engineering and hardware security course",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "validate": "node tests/validate.mjs",
+    "test": "node tests/validate.mjs && node --test tests/"
+  }
+}

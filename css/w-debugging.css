@@ -1,1 +1,95 @@
-/* Styles for the debugging tools. */
+/* Styles for the debugging tools: debug-session, firmware-inspector, disasm-lab. */
+
+/* ---- debug-session ---- */
+.debug-session .dbg-banner { margin: 0 0 12px; }
+.debug-session .dbg-panes { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+.debug-session .dbg-pane { min-width: 0; }
+.debug-session .dbg-title { font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+.debug-session .w-term { height: 24em; max-height: none; tab-size: 8; font-size: .8rem; }
+.debug-session .dbg-ocd { height: 26.6em; }
+.debug-session .dbg-cmd { font-weight: 600; }
+.debug-session .dbg-inrow { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+.debug-session .dbg-inrow .w-term-in { margin-top: 0; flex: 1; min-width: 0; }
+.debug-session .dbg-prompt { color: var(--muted); min-width: 4.6em; }
+.debug-session.dbg-running .dbg-prompt { color: var(--warn); }
+.debug-session .dbg-quick { margin-top: 10px; }
+.debug-session .dbg-quick .btn { white-space: nowrap; }
+.debug-session .dbg-steps { margin: .4em 0 0; padding-left: 1.4em; font-size: .92rem; }
+.debug-session .dbg-steps li { color: var(--muted); }
+.debug-session .dbg-steps li.next { color: var(--ink); font-weight: 500; }
+.debug-session .dbg-steps li.done { color: var(--ok); }
+.debug-session .dbg-steps code { font-weight: 400; }
+.debug-session details { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 12px; background: var(--surface); }
+.debug-session details summary { cursor: pointer; font-weight: 500; }
+.debug-session details pre { overflow-x: auto; background: var(--sunk); padding: 8px 10px; border-radius: var(--r); font-size: .8rem; line-height: 1.45; margin: .5em 0; }
+.debug-session .dbg-code .dbg-cur { background: var(--copper-soft); display: inline-block; min-width: 100%; }
+.debug-session .dbg-q { border-top: 1px solid var(--line); padding: 8px 0; }
+.debug-session .dbg-q p { margin: 0 0 .3em; }
+.debug-session .dbg-q input[type=text] { flex: 1; min-width: 9em; max-width: 22em; }
+.debug-session .dbg-questions h4 { margin: 16px 0 4px; }
+@media (max-width: 760px) {
+  .debug-session .dbg-panes { grid-template-columns: minmax(0, 1fr); }
+  .debug-session .dbg-ocd { height: 9em; }
+  .debug-session .w-term { height: 20em; }
+}
+
+/* ---- firmware-inspector ---- */
+.firmware-inspector .fwi-blurb { margin: 0 0 .5em; font-size: .92rem; }
+.firmware-inspector .fwi-bar input { width: 9.5em; }
+.firmware-inspector .fwi-loadnote { margin: 0; flex: 1; min-width: 14em; }
+.firmware-inspector .fwi-body { min-height: 12em; }
+.firmware-inspector .fwi-hex { background: var(--sunk); padding: 10px 12px; border-radius: var(--r); overflow-x: auto; font-size: .8rem; line-height: 1.5; margin: 6px 0; white-space: pre; }
+.firmware-inspector .fwi-dim { color: var(--muted); }
+.firmware-inspector mark { background: var(--copper); color: var(--surface); border-radius: 2px; }
+.firmware-inspector .fwi-inline { margin: .4em 0; }
+.firmware-inspector .fwi-inline input[type=text] { flex: 1; min-width: 8em; max-width: 24em; }
+.firmware-inspector .fwi-scroll { overflow-x: auto; }
+.firmware-inspector .fwi-strings { max-height: 22em; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r); }
+.firmware-inspector .fwi-table { border-collapse: collapse; width: 100%; font-size: .84rem; }
+.firmware-inspector .fwi-table th, .firmware-inspector .fwi-table td { text-align: left; padding: 3px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
+.firmware-inspector .fwi-table td:last-child { white-space: normal; }
+.firmware-inspector .fwi-table th { font-weight: 500; color: var(--muted); background: var(--surface); position: sticky; top: 0; }
+.firmware-inspector .fwi-str { white-space: pre-wrap !important; word-break: break-all; }
+.firmware-inspector .fwi-nobits td { color: var(--copper); }
+.firmware-inspector .fwi-link { background: none; border: 0; padding: 0; color: var(--link); cursor: pointer; text-decoration: underline; font-size: inherit; }
+.firmware-inspector .fwi-in { color: var(--ok); }
+.firmware-inspector .fwi-out { color: var(--bad); }
+.firmware-inspector .fwi-min { max-width: 30em; }
+.firmware-inspector .fwi-entropy .fwi-bar { fill: var(--sig1); }
+.firmware-inspector .fwi-entropy .fwi-hit { fill: transparent; cursor: pointer; }
+.firmware-inspector .fwi-entropy .fwi-hit:hover, .firmware-inspector .fwi-entropy .fwi-hit:focus { fill: var(--sunk); outline: none; }
+.firmware-inspector .fwi-entropy .fwi-grid { stroke: var(--line); stroke-width: 1; }
+.firmware-inspector .fwi-entropy .fwi-cap { stroke: var(--copper); stroke-width: 1; stroke-dasharray: 4 3; }
+.firmware-inspector .fwi-entropy .fwi-captext { fill: var(--copper); }
+.firmware-inspector .fwi-einfo { margin: 4px 0; min-height: 1.4em; }
+.firmware-inspector .fwi-tasks { margin-top: 18px; }
+.firmware-inspector .fwi-tasks h4, .firmware-inspector .fwi-body h4 { margin: 14px 0 6px; }
+.firmware-inspector .fwi-cmds { margin-top: 6px; font-size: .88rem; }
+.firmware-inspector .fwi-cmds summary { cursor: pointer; color: var(--muted); }
+.firmware-inspector .fwi-cmds pre { overflow-x: auto; background: var(--surface); padding: 6px 10px; border-radius: var(--r); font-size: .8rem; margin: 4px 0 0; }
+.firmware-inspector .w-task .w-msg { margin-top: 6px; }
+
+/* ---- disasm-lab ---- */
+.disasm-lab .dis-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+.disasm-lab .dis-scroll { overflow-x: auto; background: var(--sunk); border-radius: var(--r); padding: 6px 4px; }
+.disasm-lab .dis-list { border-collapse: collapse; font-size: .82rem; width: 100%; }
+.disasm-lab .dis-list th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 10px; font-family: var(--sans); font-size: .76rem; }
+.disasm-lab .dis-list td { padding: 2px 10px; white-space: nowrap; vertical-align: top; }
+.disasm-lab .dis-list td:first-child, .disasm-lab .dis-bytes { color: var(--muted); }
+.disasm-lab .dis-mn { font-weight: 600; }
+.disasm-lab .dis-data .dis-ins { color: var(--copper); }
+.disasm-lab .dis-list .dis-note { white-space: normal; min-width: 14em; font-family: var(--sans); color: var(--ink); font-size: .82rem; }
+.disasm-lab .dis-c { background: var(--sunk); padding: 8px 12px; border-radius: var(--r); overflow-x: auto; font-size: .82rem; line-height: 1.45; }
+.disasm-lab .dis-cheat { margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 12px; }
+.disasm-lab .dis-cheat summary { cursor: pointer; font-weight: 500; }
+.disasm-lab .dis-cheat dd { font-family: var(--sans); }
+.disasm-lab .dis-cheat .w-kv { margin: 8px 0 4px; gap: 4px 14px; }
+.disasm-lab .dis-q { border-top: 1px solid var(--line); padding: 10px 0; }
+.disasm-lab .dis-q:first-child { border-top: 0; padding-top: 0; }
+.disasm-lab .dis-q p { margin: 0 0 .4em; }
+.disasm-lab .dis-q input[type=text] { width: 100%; max-width: 16em; }
+.disasm-lab .dis-choices { border: 0; padding: 0; margin: 0; display: grid; gap: 4px; }
+.disasm-lab .dis-choices label { display: block; padding: 2px 0; font-size: .92rem; cursor: pointer; }
+.disasm-lab .dis-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.disasm-lab h4 { margin: 14px 0 6px; }
+@media (max-width: 820px) { .disasm-lab .dis-grid { grid-template-columns: minmax(0, 1fr); } }

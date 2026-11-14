@@ -203,7 +203,7 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
     if (allDone) right.append(h('p', { class: 'w-msg ok' }, 'All questions for this function answered. Try the same function on the other architecture: the C is identical, the idioms are not.'));
 
     el.append(h('div', { class: 'dis-grid' }, left, right),
-      h('p', { class: 'w-note' }, `These listings are llvm-objdump output for tools/fwimages/src/disasm_funcs.c, compiled with ${TOOLCHAIN} at -Oz for ${st.arch === 'thumb' ? 'thumbv6m (Cortex-M0+)' : 'riscv32, rv32im without compressed instructions'}. Other compilers, versions and optimisation levels produce different code for the same C; real ESP32-C3 or MAX78000 RISC-V code also uses 16-bit compressed instructions. Nothing here was run on hardware. With GNU tools the same view comes from ${st.arch === 'thumb' ? 'arm-none-eabi-objdump -d file.elf' : 'riscv32-unknown-elf-objdump -d file.elf (or riscv64-unknown-elf-objdump)'}, and Ghidra shows it next to a decompilation.`));
+      h('p', { class: 'w-note' }, `These listings are llvm-objdump output for tools/fwimages/src/disasm_funcs.c, compiled with ${TOOLCHAIN} at -Oz for ${st.arch === 'thumb' ? 'thumbv6m (Cortex-M0+)' : 'riscv32, rv32im without compressed instructions'}. Other compilers, versions and optimisation levels produce different code for the same C; production RISC-V firmware (for example for an ESP32-C3) normally also uses 16-bit compressed instructions. Nothing here was run on hardware. With GNU tools the same view comes from ${st.arch === 'thumb' ? 'arm-none-eabi-objdump -d file.elf' : 'riscv32-unknown-elf-objdump -d file.elf (or riscv64-unknown-elf-objdump)'}, and Ghidra shows it next to a decompilation.`));
   }
   render();
 }

@@ -162,9 +162,9 @@ Widening the type moves the problem; it does not remove it. A check done in 32 b
 
 **Rule 3: check multiplication by dividing the limit**, or use the compiler's checked-arithmetic builtins.`,
     code(RANGE_OK, 'host-tested', { caption: 'Overflow-safe range and size checks. Tested with offsets and lengths at 0, the boundary, and SIZE_MAX.', explain: [
-      { lines: '10-12', md: 'First establish that `offset` itself is inside (or exactly at the end of) the buffer. Without this the subtraction on line 13 could wrap.' },
-      { lines: '13', md: 'The subtraction is done on trusted values and yields the space remaining. The untrusted `len` is only compared, never added.' },
-      { lines: '19-21', md: 'If `count` exceeds the largest value whose product with `size` still fits, the multiplication would wrap. The division uses only the constant limit and one operand, so it cannot overflow.' },
+      { lines: '9-11', md: 'First establish that `offset` itself is inside (or exactly at the end of) the buffer. Without this the subtraction on the next line could wrap.' },
+      { lines: '12', md: 'The subtraction is done on trusted values and yields the space remaining. The untrusted `len` is only compared, never added.' },
+      { lines: '18-20', md: 'If `count` exceeds the largest value whose product with `size` still fits, the multiplication would wrap. The division uses only the constant limit and one operand, so it cannot overflow.' },
     ] }),
     code(BUILTINS, 'host-tested', { caption: 'The same intent with GCC/Clang checked-arithmetic builtins. C23 standardises equivalents in <stdckdint.h> (ckd_add, ckd_mul); check that your toolchain provides the header before relying on it.', explain: [
       { lines: '8', md: 'The addition is performed as if with unlimited precision, the low 16 bits are stored in `*out`, and the return value says whether information was lost. On Arm this compiles to an add followed by a test of the carry, with no branches in your source.' },

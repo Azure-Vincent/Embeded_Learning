@@ -3,10 +3,11 @@
 import { skills, glossary, troubleshooting, refs } from './a/meta.js';
 import lessons1 from './a/lessons-1.js';
 import lessons2 from './a/lessons-2.js';
+import labs from './a/lab.js';
 
 export default {
   skills,
   lessons: [...lessons1, ...lessons2],
-  labs: [],
+  labs,
   glossary, troubleshooting, refs,
 };

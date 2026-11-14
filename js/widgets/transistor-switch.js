@@ -101,7 +101,7 @@ export default function mount(el, props = {}, ctx = {}) {
       txt(X + 24, 178, isNaN(e.p) ? '' : fmtSI(e.p, 'W'), { cls: hot ? 'hot' : 'sub' })];
     if (st.flyback) kids.push(wire([X, 44], [X + 84, 44], [X + 84, 52]), diode(X + 84, 92, 'u'), wire([X + 84, 92], [X + 84, 102], [X, 102]), dot(X, 44), txt(X + 84, 116, 'flyback', { anchor: 'middle', cls: 'sub' }));
     else if (ind && !c) kids.push(txt(X + 14, 112, 'no flyback path!', { cls: 'hot' }));
-    if (mos && st.pulldown) kids.push(dot(160, 154), resistor(160, 154, 'v', '100 kΩ'), wire([160, 214], [160, 218]), gnd(160, 218));
+    if (mos && st.pulldown) kids.push(dot(160, 154), resistor(160, 154, 'v'), txt(148, 190, '100 kΩ', { anchor: 'end' }), wire([160, 214], [160, 218]), gnd(160, 218));
     if (mos && !st.pulldown && st.state === 'reset') kids.push(txt(166, 174, 'gate floating', { anchor: 'middle', cls: 'hot' }));
     clear(fig).append(svg(340, 240, `Low-side ${mos ? 'MOSFET' : 'NPN'} switch: ${LOADS[st.load].title} on ${st.vsupply} volts, transistor ${e.region}.`, ...kids));
     const vLoad = isNaN(e.vsw) ? NaN : st.vsupply - e.vsw;

@@ -202,7 +202,7 @@ export default function mount(el, props = {}, ctx = {}) {
   }
   function finish(r, okText, isProbe) {
     st.last = r;
-    if (!st.pullups) { st.kind = 'bad'; st.text = 'With no pull-ups nothing ever pulls the lines high. I2C outputs are open-drain: a device can only pull a line low or let go. Both lines sit low (or float), the controller never sees an idle bus and reports a timeout or "bus busy". The trace below is what a logic analyser would show.'; }
+    if (!st.pullups) { st.kind = 'bad'; st.text = 'With no pull-ups nothing ever pulls the lines high. I2C outputs are open-drain: a device can only pull a line low or let go. Both lines sit low (or float), the controller never sees an idle bus and reports a timeout or "bus busy". The flat trace is what a logic analyser would show.'; }
     else if (r.nack) {
       st.kind = isProbe ? '' : 'bad';
       st.text = r.nack.present

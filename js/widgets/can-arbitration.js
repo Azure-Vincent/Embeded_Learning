@@ -73,7 +73,7 @@ export default function mount(el, props = {}, ctx = {}) {
     const r = result(), c = st.chIds, w = r.winners[0];
     st.answered = true; st.step = total;
     if (i === w) {
-      st.fb = { ok: true, pick: i, msg: `Correct. ${NAMES[w]} has the numerically lowest identifier, so at the first bit where the IDs differ it is the one sending dominant. Step through the table to check each bit.` };
+      st.fb = { ok: true, pick: i, msg: `Correct. ${NAMES[w]} has the numerically lowest identifier, so at the first bit where the IDs differ it is the one sending dominant. Check each bit in the table below.` };
       if (ctx.complete) ctx.complete();
     } else {
       const at = r.steps.find((s) => s.lost.includes(i));
@@ -111,7 +111,7 @@ export default function mount(el, props = {}, ctx = {}) {
     msg.hidden = false;
     if (st.tab === 'challenge' && st.fb) { msg.className = 'w-msg ' + (st.fb.ok ? 'ok' : 'bad'); msg.textContent = st.fb.msg; }
     else if (hidden) msg.hidden = true;
-    else if (st.step === 0) { msg.className = 'w-msg'; msg.textContent = 'The bus is idle (recessive). Each transceiver can only pull the bus dominant or leave it alone, so the bus level is the AND of what everyone sends: any 0 wins. Column headers are SOF, identifier bits 10 down to 0, then RTR.'; }
+    else if (st.step === 0) { msg.className = 'w-msg'; msg.textContent = 'The bus is idle (recessive). Each transceiver can only pull the bus dominant or leave it alone, so the bus level is the AND of what everyone sends: any 0 wins. Column headers are SOF, identifier bits 10 down to 0, then RTR. Solid cells are dominant.'; }
     else if (st.step < total) { msg.className = 'w-msg' + (r.steps[st.step - 1].lost.length ? ' warn' : ''); msg.textContent = explainStep(r.steps[st.step - 1]); }
     else if (r.winners.length > 1) { msg.className = 'w-msg bad'; msg.textContent = `Nodes ${r.winners.map((i) => NAMES[i]).join(' and ')} sent identical bits all the way through, so arbitration did not pick one. Both keep transmitting and will collide as soon as their frames differ, producing bit errors. This is why every identifier on a CAN bus may be sent by only one node.`; }
     else {

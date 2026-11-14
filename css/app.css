@@ -153,3 +153,5 @@ a.gloss { color: inherit; text-decoration: underline dotted var(--mask); }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 @media print { .top, #nav, .toolbar, .pager, .copy { display: none !important; } .shell { display: block; } }
+
+[hidden] { display: none !important; }

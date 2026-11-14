@@ -37,4 +37,4 @@ done
 $ARM -Oz src/disasm_funcs.c src/disasm_stubs.c -Wl,-Ttext=0x08000100,-Tdata=0x20000000,-e,_start -o "$OUT/dis_thumb.elf"
 $RV -Oz src/disasm_funcs.c src/disasm_stubs.c -Wl,-Ttext=0x80000100,-Tdata=0x80100000,-e,_start -o "$OUT/dis_riscv.elf"
 
-#node gen.mjs "$OUT"
+node gen.mjs "$OUT"

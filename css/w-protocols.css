@@ -35,3 +35,34 @@
 .uart-terminal-info { margin: 4px 0; overflow-wrap: anywhere; }
 .uart-terminal-led { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--muted); margin-left: 4px; vertical-align: baseline; }
 .uart-terminal-led.on { background: var(--warn); border-color: var(--warn); box-shadow: 0 0 6px var(--warn); }
+
+/* i2c-visualizer */
+.i2c-visualizer-faults { margin: 10px 0; gap: 2px; } .i2c-visualizer-faults .row { margin: 0; }
+.i2c-visualizer-hex { width: 4.2em; } .i2c-visualizer-h { margin: 18px 0 8px; }
+.i2c-visualizer-decoded { margin: 4px 0; overflow-wrap: anywhere; }
+.i2c-visualizer-scan { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.2em, 1fr)); gap: 2px; max-width: 46em; }
+.i2c-visualizer-scan .w-bit { width: auto; } .i2c-visualizer-scan .w-bit.sel { outline: 2px solid var(--copper); outline-offset: -2px; }
+
+/* spi-analyzer */
+.spi-analyzer-modes { margin-top: 12px; font-size: .86rem; } .spi-analyzer-modes tr.on td { background: var(--mask-soft); font-weight: 500; }
+.spi-analyzer-kv { margin: 8px 0; } .spi-analyzer-bad { color: var(--bad); }
+.w-controls select { min-width: 0; max-width: 100%; }
+
+/* can-arbitration */
+.can-arbitration-id { width: 4.4em; } .can-arbitration-node { margin: 0; gap: 4px; }
+.can-arbitration-scroll { overflow-x: auto; margin: 8px 0; }
+.can-arbitration-grid { font: .84rem var(--mono); min-width: 0; }
+.can-arbitration-grid th, .can-arbitration-grid td { padding: 3px 0; text-align: center; min-width: 1.9em; }
+.can-arbitration-grid th[scope=row] { text-align: left; padding: 3px 8px; white-space: nowrap; position: sticky; left: 0; background: var(--sunk); }
+.can-arbitration-grid thead th.cur { color: var(--copper); }
+.can-arbitration-grid td.dom { background: var(--ink); color: var(--surface); } .can-arbitration-grid td.rec { background: var(--surface); }
+.can-arbitration-grid td.quiet, .can-arbitration-grid td.todo { background: var(--sunk); color: var(--muted); }
+.can-arbitration-grid td.lost { background: var(--bad-soft); color: var(--bad); font-weight: 600; box-shadow: inset 0 0 0 2px var(--bad); }
+.can-arbitration-grid td.cur { box-shadow: inset 0 -3px 0 var(--copper); } .can-arbitration-grid td.lost.cur { box-shadow: inset 0 0 0 2px var(--bad); }
+.can-arbitration-grid tr.bus th, .can-arbitration-grid tr.bus td { border-top: 2px solid var(--ink); }
+.can-arbitration-h { margin: 18px 0 6px; }
+.can-arbitration-frame { display: flex; flex-wrap: wrap; gap: 6px 4px; margin: 8px 0; font: .8rem var(--mono); }
+.can-arbitration-frame .fld { display: inline-flex; flex-direction: column; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.can-arbitration-frame .name { background: var(--sunk); color: var(--muted); padding: 0 4px; font-size: .72rem; white-space: nowrap; }
+.can-arbitration-frame .bits { display: flex; flex-wrap: wrap; padding: 2px 3px; } .can-arbitration-frame .bit { width: .8em; text-align: center; }
+.can-arbitration-frame .bit.stuff { outline: 1.5px solid var(--copper); color: var(--copper); font-weight: 600; border-radius: 2px; }

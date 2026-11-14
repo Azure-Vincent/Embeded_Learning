@@ -137,6 +137,7 @@ a.gloss { color: inherit; text-decoration: underline dotted var(--mask); }
 .w-readout > div { background: var(--surface); padding: 8px 10px; } .w-readout .k { font-size: .76rem; color: var(--muted); } .w-readout .v { font: 500 1.02rem var(--mono); }
 .w-svg { width: 100%; height: auto; display: block; background: var(--surface); } .w-svg text { font-family: var(--mono); fill: var(--ink); }
 .w-note { font-size: .88rem; color: var(--muted); margin: 8px 0 0; } .w-msg { margin-top: 10px; padding: 8px 12px; border-radius: var(--r); font-size: .9rem; background: var(--sunk); }
+.w-msg:empty { display: none; }
 .w-msg.ok { background: var(--ok-soft); color: var(--ok); } .w-msg.bad { background: var(--bad-soft); color: var(--bad); } .w-msg.warn { background: var(--warn-soft); color: var(--warn); }
 .w-task { border-left: 3px solid var(--copper); background: var(--copper-soft); padding: 8px 12px; margin-bottom: 12px; border-radius: 0 var(--r) var(--r) 0; } .w-task p { margin: 0 0 .3em; }
 .w-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; } .w-tab { padding: 4px 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--r); font: .85rem var(--sans); cursor: pointer; } .w-tab.on { background: var(--mask); border-color: var(--mask); color: var(--mask-ink); }

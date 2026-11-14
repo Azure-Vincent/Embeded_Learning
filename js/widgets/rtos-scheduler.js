@@ -437,7 +437,7 @@ export default function mount(el, props = {}, ctx = {}) {
     statusEl = h('span', { class: 'w-mono rtos-scheduler-status', 'aria-live': 'polite' });
     root.append(h('div', { class: 'row' }, btns.step, reduced ? null : btns.play, btns.end, btns.reset, statusEl));
 
-    ganttBox = h('div', { class: 'rtos-scheduler-gantt', tabindex: '0', role: 'group', 'aria-label': 'Timeline. The state table and event list below give the same information as text.' });
+    ganttBox = h('div', { class: 'rtos-scheduler-gantt' });
     root.append(ganttBox, legend());
 
     stateBox = h('div', { class: 'table-wrap' });
@@ -520,9 +520,10 @@ export default function mount(el, props = {}, ctx = {}) {
     if ((cfg.interrupts || []).length) lanes.push({ kind: 'isr', label: 'ISR' });
     cfg.tasks.forEach((t, i) => lanes.push({ kind: 'task', label: t.name, name: t.name, c: (i % 5) + 1, prio: t.priority }));
     lanes.push({ kind: 'idle', label: 'Idle' });
-    const W = LBL + D * CW + 12, H = TOP + lanes.length * (LANE + GAP) + 4;
-    const X = (t) => LBL + t * CW, Y = (i) => TOP + i * (LANE + GAP);
+    const PAD = 8, W = PAD + D * CW + 12, H = TOP + lanes.length * (LANE + GAP) + 4;
+    const X = (t) => PAD + t * CW, Y = (i) => TOP + i * (LANE + GAP);
     const svg = s('svg', { class: 'w-svg rtos-scheduler-svg', viewBox: `0 0 ${W} ${H}`, width: W, height: H, 'aria-hidden': 'true' });
+    const lab = s('svg', { class: 'w-svg rtos-scheduler-svg rtos-scheduler-labels', viewBox: `0 0 ${LBL} ${H}`, width: LBL, height: H, 'aria-hidden': 'true' });
     const defs = s('defs', {});
     for (let c = 1; c <= 5; c++) {
       defs.append(s('pattern', { id: `${id}-h${c}`, width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' }, s('line', { x1: 1.5, y1: 0, x2: 1.5, y2: 6, 'stroke-width': 2, class: `rtos-scheduler-s${c}` })));
@@ -536,8 +537,8 @@ export default function mount(el, props = {}, ctx = {}) {
       if (major) svg.append(s('text', { x: X(t), y: 10, 'text-anchor': 'middle', class: 'rtos-scheduler-axis' }, t));
     }
     lanes.forEach((ln, i) => {
-      svg.append(s('text', { x: 4, y: Y(i) + LANE / 2 + 4, class: 'rtos-scheduler-lbl' }, ln.label));
-      if (ln.kind === 'task') svg.append(s('text', { x: LBL - 6, y: Y(i) + LANE / 2 + 4, 'text-anchor': 'end', class: 'rtos-scheduler-prio' }, `p${ln.prio}`));
+      lab.append(s('text', { x: 6, y: Y(i) + LANE / 2 + 4, class: 'rtos-scheduler-lbl' }, ln.label));
+      if (ln.kind === 'task') lab.append(s('text', { x: LBL - 6, y: Y(i) + LANE / 2 + 4, 'text-anchor': 'end', class: 'rtos-scheduler-prio' }, `p${ln.prio}`));
       // merge consecutive ticks in the same drawing state
       let segStart = 0, segKind = null;
       const kindAt = (t) => {
@@ -589,10 +590,11 @@ export default function mount(el, props = {}, ctx = {}) {
       }
     }
     if (cur > 0 && cur < D) svg.append(s('line', { x1: X(cur), y1: 12, x2: X(cur), y2: H - 2, class: 'rtos-scheduler-cursor' }));
-    const keep = ganttBox.scrollLeft;
-    clear(ganttBox).append(svg);
-    const want = X(cur) - ganttBox.clientWidth + 40;
-    ganttBox.scrollLeft = timer || want > keep ? Math.max(0, want) : keep;
+    const old = ganttBox.querySelector('.rtos-scheduler-scroll'), keep = old ? old.scrollLeft : 0;
+    const sc2 = h('div', { class: 'rtos-scheduler-scroll', tabindex: '0', role: 'group', 'aria-label': 'Timeline, scrollable. The state table and event list below give the same information as text.' }, svg);
+    clear(ganttBox).append(lab, sc2);
+    const want = X(cur) - sc2.clientWidth + 40;
+    sc2.scrollLeft = timer || want > keep ? Math.max(0, want) : keep;
   }
 
   function renderStates() {
@@ -601,11 +603,11 @@ export default function mount(el, props = {}, ctx = {}) {
       const st = tl ? tl.states[t.name] : null;
       const state = !st ? '–' : st.interrupted ? 'Running (interrupted by ISR)' : st.state;
       const prio = st && st.eff !== st.base ? `${st.base} → ${st.eff} (inherited)` : String(t.priority);
-      const wait = !st ? '' : st.state === 'Blocked' ? waitText(st.on) : st.state === 'Suspended' ? 'nothing: finished' : '';
+      const wait = !st ? '' : st.state === 'Blocked' ? waitText(st.on) : '';
       const holds = st && st.holds.length ? `holds ${st.holds.join(', ')}` : '';
       return h('tr', {},
         h('th', { scope: 'row' }, h('span', { class: `rtos-scheduler-dot rtos-scheduler-b${(i % 5) + 1}`, 'aria-hidden': 'true' }), t.name),
-        h('td', { class: 'w-mono' }, prio), h('td', { class: st ? 'rtos-scheduler-st-' + st.state.toLowerCase() : '' }, state), h('td', {}, [wait && `waiting for ${wait}`, holds].filter(Boolean).join('; ')));
+        h('td', { class: 'w-mono' }, prio), h('td', { class: st ? 'rtos-scheduler-st-' + st.state.toLowerCase() : '' }, state), h('td', {}, [wait && `waiting for ${wait}`, st && st.state === 'Suspended' && 'no more work', holds].filter(Boolean).join('; ')));
     });
     clear(stateBox).append(h('table', { class: 'rtos-scheduler-table' },
       h('caption', {}, tl ? `During tick ${cur - 1}${tl.isr ? ` (ISR ${tl.isr} has the CPU)` : tl.run == null ? ' (idle task has the CPU)' : ''}` : 'Before the first tick'),

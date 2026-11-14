@@ -238,7 +238,8 @@ export const CAPTURES = {
     },
   },
 };
-for (const k of Object.keys(CAPTURES)) Object.assign(CAPTURES[k], SIG[k]);
+const CH_COLORS = ['var(--sig1)', 'var(--sig3)', 'var(--sig4)', 'var(--sig6)'];   // --sig2 (red) is kept for decode errors
+for (const k of Object.keys(CAPTURES)) { SIG[k].channels.forEach((c, i) => { c.color = CH_COLORS[i % 4]; }); Object.assign(CAPTURES[k], SIG[k]); }
 
 /** Next (dir = 1) or previous (dir = -1) edge of an edge list relative to t; null when there is none. */
 export function stepEdge(edges, t, dir) {

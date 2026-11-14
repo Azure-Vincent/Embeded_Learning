@@ -94,7 +94,7 @@ export default function mount(el, props = {}, ctx = {}) {
   const sel = (label, opts, get, set) => {
     const e = h('select', { 'aria-label': label, onchange: () => { set(e.value); refresh(); } },
       opts.map(([v, t]) => h('option', { value: v, selected: String(get()) === String(v) }, t)));
-    return h('label', { class: 'w-field' }, h('span', null, label.replace(/^(Terminal|Device) (?!behaviour)/, '').replace(/^./, (c) => c.toUpperCase())), e, h('span'));
+    return h('label', { class: 'w-field' }, h('span', null, label.replace(/^(Terminal|Device) /, '').replace(/^./, (c) => c.toUpperCase())), e, h('span'));
   };
   const cfgFields = (c, who) => [
     sel(`${who} baud`, BAUDS.map((b) => [b, b + ' baud']), () => c.baud, (v) => { c.baud = +v; }),

@@ -1,1 +1,11 @@
 /* Styles specific to the security tools. Shared widget primitives live in app.css. */
+.smash-mem { display: grid; gap: 4px; font: .82rem var(--mono); }
+.smash-row { display: grid; grid-template-columns: 7.5em 7em 1fr; gap: 8px; align-items: center; padding: 3px 6px; border: 1px solid var(--line); border-radius: 3px; }
+.smash-row.key { border-color: var(--copper); }
+.smash-addr { color: var(--muted); } .smash-cells { display: flex; flex-wrap: wrap; gap: 2px; }
+.smash-cell { padding: 1px 4px; background: var(--sunk); border-radius: 2px; } .smash-cell.hit { background: var(--bad-soft); color: var(--bad); }
+.smash-fns { margin-top: 10px; }
+.sbc-stages { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 10px 0; }
+.sbc-stage { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; } .sbc-stage h4 { margin: 0 0 6px; }
+.sbc-log { font-size: .9rem; margin: 10px 0; } .sbc-log .bad { color: var(--bad); }
+.sbc-tasks { list-style: none; padding: 0; margin: 4px 0 0; font-size: .9rem; } .sbc-tasks .ok { color: var(--ok); }

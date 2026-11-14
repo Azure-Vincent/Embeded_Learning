@@ -1,13 +1,17 @@
 // Reads the build outputs of build.sh and writes js/sim/fwimages.js.
 // Everything in that file is copied from tool output: bytes from llvm-objcopy, listings from llvm-objdump,
 // line tables and variable locations from llvm-dwarfdump, symbols and sections from the ELF files themselves.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { parseElf } from '../../js/widgets/firmware-inspector.js';
 
 const OUT = process.argv[2];
 if (!OUT) { console.error('usage: node gen.mjs <build dir>'); process.exit(1); }
 const here = new URL('.', import.meta.url);
+// The ELF parser lives with the inspector widget, which imports the file this script generates.
+// On a first run that file does not exist yet, so put an empty one in place before importing.
+const target = new URL('../../js/sim/fwimages.js', here);
+if (!existsSync(target)) writeFileSync(target, "export const INSPECTOR_IMAGES = {};\nexport const TOOLCHAIN = '';\nexport function b64ToBytes() {}\n");
+const { parseElf } = await import('../../js/widgets/firmware-inspector.js');
 const run = (cmd, args) => execFileSync(cmd, args, { encoding: 'utf8', maxBuffer: 64 << 20 });
 const b64 = (buf) => Buffer.from(buf).toString('base64');
 const src = (name) => readFileSync(new URL('./src/' + name, here), 'utf8');
@@ -93,7 +97,7 @@ function debugInfo(path, symAddr) {
   for (const cu of tree.kids) {
     for (const n of cu.kids) {
       if (n.tag === 'typedef') typedefs[unq(n.attrs.name)] = typeName(n.attrs.type);
-      if (n.tag === 'variable' && n.attrs.location) {
+      if (n.tag === 'variable' && n.attrs.location && n.attrs.name) { // string literals are nameless variables
         const name = unq(n.attrs.name);
         if (!(name in symAddr)) throw new Error('no symbol for global ' + name);
         globals.push({ name, type: typeName(n.attrs.type), addr: symAddr[name], file: base(n.attrs.decl_file) });
@@ -214,5 +218,5 @@ export const DEBUG_PROGRAMS = ${JSON.stringify(debug, null, 1)};
 
 export const DISASM = ${JSON.stringify(disasm, null, 1)};
 `;
-writeFileSync(new URL('../../js/sim/fwimages.js', here), js);
+writeFileSync(target, js);
 console.log(`js/sim/fwimages.js written (${js.length} bytes)`);

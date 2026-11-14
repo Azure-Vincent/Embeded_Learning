@@ -19,7 +19,7 @@ export function debounceVerdict(sim) {
 export default function mount(el, props = {}) {
   const num = (x, d) => (x == null || isNaN(+x) ? d : +x);
   const st = { mode: props.mode === 'debounce' ? 'debounce' : 'charge', r: num(props.r, 10e3), c: num(props.c, 100e-9), dir: 'charge', thPct: 70, bounce: 4, seed: 7 };
-  const cList = eSeriesValues('E12', -9, -3).filter((_, i) => i % 2 === 0 || true);
+  const cList = eSeriesValues('E12', -9, -3);
   const sR = slider({ label: 'R', list: eSeriesValues('E12', 2, 6), value: st.r, fmt: fmtR, oninput: (v) => { st.r = v; render(); } });
   const sC = slider({ label: 'C', list: cList, value: st.c, fmt: (v) => fmtSI(v, 'F'), oninput: (v) => { st.c = v; render(); } });
   const sTh = slider({ label: 'Threshold', min: 5, max: 95, step: 1, value: st.thPct, fmt: (v) => `${v} % = ${(VCC * v / 100).toFixed(2)} V`, oninput: (v) => { st.thPct = v; render(); } });
@@ -49,14 +49,14 @@ export default function mount(el, props = {}) {
     const pts = []; for (let k = 0; k <= 120; k++) { const t = tEnd * k / 120; pts.push([sc.x(t), sc.y(rcVoltage(v0, vf, t, tau))]); }
     const vTau = rcVoltage(v0, vf, tau, tau);
     clear(fig).append(svg(340, 302, `RC ${up ? 'charging' : 'discharging'} curve, time constant ${fT(tau)}, reaches the threshold after ${fT(tTh)}.`,
-      up ? g({}, rail(40, 46, '3.3 V'), wire([40, 46], [40, 60], [60, 60]), sw(60, 60, 'h', true, 'closes at t = 0'))
-        : g({}, wire([40, 100], [40, 60], [60, 60]), gnd(40, 100), sw(60, 60, 'h', true, 'closes at t = 0'), txt(16, 50, 'C starts at 3.3 V', { cls: 'sub' })),
+      up ? g({}, rail(40, 46, '3.3 V'), wire([40, 46], [40, 60], [60, 60]), sw(60, 60, 'h', true), txt(80, 80, 'closes at t = 0', { anchor: 'middle', cls: 'sub' }))
+        : g({}, wire([40, 100], [40, 60], [60, 60]), gnd(40, 100), sw(60, 60, 'h', true), txt(80, 46, 'closes at t = 0', { anchor: 'middle', cls: 'sub' }), txt(300, 100, 'C starts at 3.3 V', { anchor: 'end', cls: 'sub' })),
       wire([100, 60], [130, 60]), resistor(130, 60, 'h', 'R ' + fmtR(st.r)), wire([190, 60], [250, 60]), dot(230, 60), wire([230, 60], [230, 66]), capacitor(230, 66, 'v', 'C ' + fmtSI(st.c, 'F')), gnd(230, 106),
       txt(256, 56, 'Vc', { cls: 'sig' }),
       axes(sc, { ylabel: 'Vc (V)', xlabel: 'time', xticks: [1, 2, 3, 4, 5].map((n) => [n * tau, n + 'τ']), yticks: [[0, '0'], [VCC, '3.3']] }),
       s('path', { d: `M${sc.x(0)} ${sc.y(vth)}H${sc.x(tEnd)}`, class: 'el-trace t2 thin dashed' }), txt(sc.x(tEnd) - 2, sc.y(vth) - 4, 'threshold', { anchor: 'end', cls: 'sub' }),
       polyline(pts, 't1'),
-      s('circle', { cx: sc.x(tau), cy: sc.y(vTau), r: 3.5, class: 'marker' }), txt(sc.x(tau) + 6, sc.y(vTau) + (up ? 12 : -6), up ? '63.2 % at τ' : '36.8 % at τ', { cls: 'sub' }),
+      s('circle', { cx: sc.x(tau), cy: sc.y(vTau), r: 3.5, class: 'marker' }), txt(sc.x(tau) + (up ? -6 : 6), sc.y(vTau) - 6, up ? '63.2 % at τ' : '36.8 % at τ', { anchor: up ? 'end' : 'start', cls: 'sub' }),
       isFinite(tTh) && tTh <= tEnd ? g({}, s('path', { d: `M${sc.x(tTh)} ${sc.y(vth)}V${sc.y(0)}`, class: 'el-trace t2 thin' }), s('circle', { cx: sc.x(tTh), cy: sc.y(vth), r: 3.5, class: 'f2' })) : null));
     ro.set([['Time constant τ', fT(tau)], ['Reaches threshold', fT(tTh)], ['Settled (5τ, 99.3 %)', fT(5 * tau)], ['Low-pass cutoff', fmtSI(rcCutoff(st.r, st.c), 'Hz')]]);
     eq.set([`τ = R × C = ${fmtR(st.r)} × ${fmtSI(st.c, 'F')} = ${fT(tau)}`,
@@ -75,14 +75,14 @@ export default function mount(el, props = {}) {
     const X = { x: 44, w: 282 }, n = sim.raw.length, tx = (k) => X.x + k / (n - 1) * X.w;
     const row = (y, hgt) => scale({ x: X.x, y, w: X.w, h: hgt }, 0, WINDOW, 0, 1);
     const digital = (arr, sc0) => { const p = []; let prev = arr[0]; p.push([tx(0), sc0.y(prev * 0.8 + 0.1)]); for (let k = 1; k < n; k++) { if (arr[k] !== prev) { p.push([tx(k), sc0.y(prev * 0.8 + 0.1)], [tx(k), sc0.y(arr[k] * 0.8 + 0.1)]); prev = arr[k]; } } p.push([tx(n - 1), sc0.y(prev * 0.8 + 0.1)]); return p; };
-    const r1 = row(160, 44), r2 = scale({ x: X.x, y: 226, w: X.w, h: 84 }, 0, WINDOW, 0, VCC * 1.05), r3 = row(332, 44);
+    const r1 = row(178, 44), r2 = scale({ x: X.x, y: 244, w: X.w, h: 84 }, 0, WINDOW, 0, VCC * 1.05), r3 = row(350, 44);
     const ticks = [0, 20, 40, 60, 80].map((ms) => [ms / 1000, ms + ' ms']);
     const vcPts = []; for (let k = 0; k < n; k += 2) vcPts.push([tx(k), r2.y(sim.vc[k])]);
-    clear(fig).append(svg(340, 400, `Debounce traces: raw switch signal has ${sim.rawEdges} edges, the filtered output has ${sim.outEdges}.`,
+    clear(fig).append(svg(340, 420, `Debounce traces: raw switch signal has ${sim.rawEdges} edges, the filtered output has ${sim.outEdges}.`,
       rail(40, 30, '3.3 V'), resistor(40, 30, 'v', 'Rp', '10 kΩ'), wire([40, 90], [40, 96]), dot(40, 93), sw(40, 96, 'v', false), gnd(40, 136), txt(52, 122, 'button', { cls: 'sub' }),
       wire([40, 93], [96, 93]), resistor(96, 93, 'h', 'R ' + fmtR(st.r)), wire([156, 93], [236, 93]), dot(190, 93), wire([190, 93], [190, 96]), capacitor(190, 96, 'v', 'C', fmtSI(st.c, 'F')), gnd(190, 136),
-      g({ class: 'el-part' }, s('path', { d: 'M236 75V111L270 93Z', class: 'el-body' }), s('path', { d: 'M243 97h5v-8h5M248 97h5v-8h5' }), s('path', { d: 'M270 93H300' })), txt(303, 97, 'GPIO', { cls: 'sub' }), txt(253, 126, 'Schmitt input', { anchor: 'middle', cls: 'sub' }),
-      txt(64, 86, 'raw', { cls: 'sig' }), txt(208, 86, 'Vc', { cls: 'sig' }),
+      g({ class: 'el-part' }, s('path', { d: 'M236 75V111L270 93Z', class: 'el-body' }), s('path', { d: 'M243 97h5v-8h5M248 97h5v-8h5' }), s('path', { d: 'M270 93H300' })), txt(303, 97, 'GPIO', { cls: 'sub' }), txt(262, 68, 'Schmitt input', { anchor: 'middle', cls: 'sub' }),
+      txt(62, 107, 'raw', { cls: 'sig' }), txt(208, 86, 'Vc', { cls: 'sig' }),
       axes(r1, { ylabel: `raw switch node — ${sim.rawEdges} edges` }), polyline(digital(sim.raw, r1), 't2 thin'),
       axes(r2, { ylabel: 'Vc after the RC filter', yticks: [[0, '0'], [VCC, '3.3']] }),
       s('rect', { x: X.x, y: r2.y(VT_HIGH), width: X.w, height: r2.y(VT_LOW) - r2.y(VT_HIGH), class: 'band-warn' }),

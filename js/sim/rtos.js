@@ -279,7 +279,10 @@ export function simulate(cfg) {
     for (;;) {
       chosen = pick();
       if (!chosen || !advance(chosen, t)) break;
-      if (++guard > 2000) { chosen = null; break; }
+      if (++guard > 2000) {
+        result.errors.push(ev(t, 'error', chosen, { text: `${chosen.name} loops without ever consuming time or blocking` }));
+        chosen.state = 'suspended'; chosen.on = null; if (current === chosen) current = null; guard = 0;
+      }
     }
     const runner = chosen ? chosen.name : null;
     if (lastRunner !== undefined && runner !== lastRunner) { st.switches++; ev(t, 'switch', null, { from: lastRunner, to: runner }); }

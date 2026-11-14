@@ -282,6 +282,10 @@ export function gpioSolve(cfg, P = GPIO_DEFAULTS) {
   if (ext === 'led-vdd' && !(v > vdd - ledVf)) {
     if (!isNaN(v)) { br.push({ v: vdd - ledVf, r: rLed, name: 'LED' }); v = solve(br); ledOn = true; }
   }
+  // With only an unlit LED attached, its leakage holds the node at the LED's own rail, but only weakly.
+  let weak = false;
+  if (isNaN(v) && ext === 'led-gnd') { v = 0; weak = true; }
+  if (isNaN(v) && ext === 'led-vdd') { v = vdd; weak = true; }
   let floating = isNaN(v), iClamp = 0;
   // Protection diode to VDD: clamps at about VDD + 0.6 V and carries whatever the outside world pushes in.
   if (!floating && v > vdd + 0.6) {
@@ -293,8 +297,9 @@ export function gpioSolve(cfg, P = GPIO_DEFAULTS) {
   const iPin = drv && !floating ? (drv.v - v) / drv.r : 0;
   const vil = P.vilFrac * vdd, vih = P.vihFrac * vdd;
   const logic = floating ? 'float' : v <= vil ? 0 : v >= vih ? 1 : 'x';
-  const iLed = ledOn ? Math.abs((v - br[br.length - 1].v) / rLed) : 0;
-  return { v, floating, logic, iPin, iClamp, ledOn, iLed, vil, vih, contention: !!drv && Math.abs(iPin) > 0.02, branches: br };
+  const ledBr = br.find((b) => b.name === 'LED');
+  const iLed = ledOn ? Math.abs((v - ledBr.v) / rLed) : 0;
+  return { v, floating, weak, logic, iPin, iClamp, ledOn, iLed, vil, vih, contention: !!drv && Math.abs(iPin) > 0.02, branches: br };
 }
 
 // ---------------------------------------------------------------- PWM

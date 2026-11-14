@@ -438,12 +438,19 @@ skim the table and move on.
 | Which program runs | \`which idf.py\`, \`command -v gcc\` | Tells you which copy is on your PATH |
 | Environment variables | \`echo $PATH\`, \`export NAME=value\`, \`env\` | Set for the current shell only |
 | Run a script *in* this shell | \`. ./export.sh\` (same as \`source ./export.sh\`) | Needed when the script must change your current shell's environment |
-| Pipes and redirection | \`cmd1 | cmd2\`, \`cmd > out.txt\`, \`cmd 2>&1 | tee log.txt\` | \`tee\` shows output and saves it |
+| Save output to a file | \`cmd > out.txt\`, \`cmd >> out.txt\` | \`>\` overwrites, \`>>\` appends |
 | Become administrator for one command | \`sudo cmd\` | For installing packages and editing system files only |
 | Install software | \`sudo apt update\`, \`sudo apt install pkg\` | |
 | Who am I, which groups | \`whoami\`, \`id\`, \`groups\` | |
 | Processes | \`ps aux\`, \`pgrep -a name\`, \`kill PID\` | |
 | Manual | \`man cmd\`, \`cmd --help\` | |
+
+A **pipe** connects the output of one command to the input of the next. You will use two forms constantly:
+
+\`\`\`bash
+dmesg | grep -i tty            # keep only the lines that mention tty
+idf.py build 2>&1 | tee build.log   # show the output and save it; 2>&1 includes error messages
+\`\`\`
 
 Two shell behaviours cause most beginner confusion:
 

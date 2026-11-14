@@ -1,1 +1,80 @@
-/* Styles for the realtime tools. */
+/* Styles for the real-time tools: rtos-scheduler, race-condition. */
+
+/* ---- rtos-scheduler ---- */
+.rtos-scheduler-framing { max-width: 76ch; margin: 0 0 12px; }
+.rtos-scheduler-opts { display: grid; gap: 4px; margin: 6px 0 10px; }
+.rtos-scheduler-opt { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; }
+.rtos-scheduler-opt:has(input:checked) { border-color: var(--copper); }
+.rtos-scheduler-wrong { color: var(--bad); font-weight: 500; }
+.rtos-scheduler-status { color: var(--muted); }
+.rtos-scheduler-gantt { display: flex; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 6px 0; }
+.rtos-scheduler-svg { width: auto; max-width: none; flex: none; }
+.rtos-scheduler-labels { border-right: 1px solid var(--line); }
+.rtos-scheduler-scroll { overflow-x: auto; flex: 1; min-width: 0; }
+.rtos-scheduler-svg text { font-size: 11px; }
+.rtos-scheduler-grid { stroke: var(--line); stroke-width: 1; opacity: .55; }
+.rtos-scheduler-grid.major { opacity: 1; }
+.rtos-scheduler-svg .rtos-scheduler-axis, .rtos-scheduler-svg .rtos-scheduler-prio { fill: var(--muted); font-size: 10px; }
+.rtos-scheduler-svg .rtos-scheduler-lbl { font-family: var(--sans); font-weight: 500; }
+.rtos-scheduler-f1 { fill: var(--sig1); } .rtos-scheduler-f2 { fill: var(--sig2); } .rtos-scheduler-f3 { fill: var(--sig3); } .rtos-scheduler-f4 { fill: var(--sig4); } .rtos-scheduler-f5 { fill: var(--sig5); }
+.rtos-scheduler-s1 { stroke: var(--sig1); } .rtos-scheduler-s2 { stroke: var(--sig2); } .rtos-scheduler-s3 { stroke: var(--sig3); } .rtos-scheduler-s4 { stroke: var(--sig4); } .rtos-scheduler-s5 { stroke: var(--sig5); }
+.rtos-scheduler-o1 { stroke: var(--sig1); } .rtos-scheduler-o2 { stroke: var(--sig2); } .rtos-scheduler-o3 { stroke: var(--sig3); } .rtos-scheduler-o4 { stroke: var(--sig4); } .rtos-scheduler-o5 { stroke: var(--sig5); }
+.rtos-scheduler-svg rect[class*="rtos-scheduler-o"] { stroke-width: 1; }
+.rtos-scheduler-svg rect.dashed { stroke-dasharray: 3 2; }
+.rtos-scheduler-svg line.timed { stroke-width: 1.5; stroke-dasharray: 1 3; }
+.rtos-scheduler-isr { fill: var(--ink); }
+.rtos-scheduler-idle { fill: var(--line); }
+.rtos-scheduler-svg .rtos-scheduler-mk { font-size: 10px; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 2.5px; }
+.rtos-scheduler-svg .rtos-scheduler-mk.bad { fill: var(--bad); } .rtos-scheduler-svg .rtos-scheduler-mk.big { font-size: 13px; font-weight: 600; }
+.rtos-scheduler-svg .rtos-scheduler-mk.rel { fill: var(--muted); font-size: 9px; }
+.rtos-scheduler-svg .rtos-scheduler-mk.onfill { fill: var(--surface); stroke: var(--ink); }
+.rtos-scheduler-miss { stroke: var(--bad); stroke-width: 1.5; }
+.rtos-scheduler-sw-mark { stroke: var(--copper); stroke-width: 2; }
+.rtos-scheduler-cursor { stroke: var(--copper); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.rtos-scheduler-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 14px; font-size: .8rem; color: var(--muted); }
+.rtos-scheduler-key { display: inline-flex; align-items: center; gap: 5px; }
+.rtos-scheduler-sw { display: inline-block; width: 18px; height: 10px; border: 1px solid var(--sig1); border-radius: 1px; }
+.rtos-scheduler-sw.run { background: var(--sig1); }
+.rtos-scheduler-sw.ready { background: repeating-linear-gradient(45deg, var(--sig1) 0 2px, transparent 2px 5px); }
+.rtos-scheduler-sw.blocked { border-style: dashed; background: repeating-linear-gradient(45deg, var(--sig1) 0 1px, transparent 1px 4px), repeating-linear-gradient(-45deg, var(--sig1) 0 1px, transparent 1px 4px); }
+.rtos-scheduler-sw.timed { border: 0; height: 0; border-top: 2px dotted var(--sig1); }
+.rtos-scheduler-glyph { font: .8rem var(--mono); color: var(--ink); } .rtos-scheduler-glyph.bad { color: var(--bad); } .rtos-scheduler-glyph.cu { color: var(--copper); font-weight: 600; }
+.rtos-scheduler-panels { margin-bottom: 14px; }
+.rtos-scheduler-table { width: 100%; font-size: .86rem; } .rtos-scheduler-table caption { text-align: left; font-size: .8rem; color: var(--muted); padding-bottom: 4px; }
+.rtos-scheduler-table th, .rtos-scheduler-table td { padding: 4px 8px; }
+.rtos-scheduler-st-running { font-weight: 600; } .rtos-scheduler-st-blocked { color: var(--bad); } .rtos-scheduler-st-suspended { color: var(--muted); }
+.rtos-scheduler-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+.rtos-scheduler-b1 { background: var(--sig1); } .rtos-scheduler-b2 { background: var(--sig2); } .rtos-scheduler-b3 { background: var(--sig3); } .rtos-scheduler-b4 { background: var(--sig4); } .rtos-scheduler-b5 { background: var(--sig5); }
+.rtos-scheduler-log { list-style: none; margin: 0; padding: 6px 10px; height: 11.5em; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunk); font-size: .84rem; }
+.rtos-scheduler-log li { margin: 0; padding: 2px 0; } .rtos-scheduler-log li.bad { color: var(--bad); font-weight: 500; }
+.rtos-scheduler-log code { background: var(--surface); } .rtos-scheduler-t { font: .78rem var(--mono); color: var(--muted); display: inline-block; min-width: 2.6em; }
+.rtos-scheduler-params { margin: 0 0 12px; display: grid; gap: 6px; }
+.rtos-scheduler-group { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
+.rtos-scheduler-group legend { font: 600 .84rem var(--cond); padding: 0 4px; }
+.rtos-scheduler-field { display: inline-flex; align-items: center; gap: 6px; font-size: .86rem; }
+.rtos-scheduler-field input[type=number] { width: 4.2em; padding: 3px 6px; } .rtos-scheduler-field select { padding: 3px 6px; max-width: 100%; }
+.rtos-scheduler-code { margin-top: 12px; } .rtos-scheduler-code summary { cursor: pointer; font-size: .9rem; color: var(--link); margin-bottom: 6px; }
+
+/* ---- race-condition ---- */
+.race-condition-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, auto) minmax(0, 1fr); gap: 12px; align-items: start; margin: 12px 0; }
+.race-condition-actor { border: 1px solid var(--line); border-top: 3px solid var(--sig1); border-radius: var(--r); padding: 10px; display: grid; gap: 8px; min-width: 0; }
+.race-condition-actor.race-condition-a1 { border-top-color: var(--sig4); }
+.race-condition-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; align-items: baseline; }
+.race-condition-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.race-condition-steps li { margin: 0; padding: 4px 8px; border-left: 3px solid transparent; border-radius: 2px; display: grid; }
+.race-condition-steps code { background: none; padding: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.race-condition-asm { font: .74rem var(--mono); color: var(--muted); }
+.race-condition-steps li.done { opacity: .55; } .race-condition-steps li.done code { text-decoration: line-through; }
+.race-condition-steps li.cur { border-left-color: var(--copper); background: var(--copper-soft); }
+.race-condition-step.refused { background: transparent; color: var(--muted); border-color: var(--line); border-style: dashed; }
+.race-condition-shared { border: 1px dashed var(--line); border-radius: var(--r); background: var(--sunk); padding: 10px; display: grid; gap: 8px; text-align: center; }
+.race-condition-var { display: grid; } .race-condition-var span { font-size: .78rem; color: var(--muted); } .race-condition-var b { font: 600 1.25rem var(--mono); }
+.race-condition-bad { color: var(--bad); }
+.race-condition-htag { margin-top: 14px; }
+.race-condition-history { margin: 0; padding: 6px 10px 6px 2.4em; border: 1px solid var(--line); border-radius: var(--r); font-size: .86rem; max-height: 14em; overflow-y: auto; }
+.race-condition-history li { margin: 0; padding: 1px 0; } .race-condition-history li.muted { list-style: none; margin-left: -1.4em; }
+.race-condition-history li.race-condition-a0 strong { color: var(--sig1); } .race-condition-history li.race-condition-a1 strong { color: var(--sig4); }
+@media (max-width: 620px) {
+  .race-condition-stage { grid-template-columns: 1fr; }
+  .race-condition-shared { order: -1; grid-auto-flow: column; }
+}

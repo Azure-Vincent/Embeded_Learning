@@ -26,7 +26,7 @@
 .el-svg .marker { fill: var(--ink); stroke: var(--surface); stroke-width: 1; }
 
 .el-eq { font: .86rem/1.6 var(--mono); background: var(--sunk); border-left: 3px solid var(--mask); border-radius: 0 var(--r) var(--r) 0; padding: 8px 12px; margin-top: 10px; overflow-x: auto; white-space: pre-wrap; }
-.w-field[hidden] { display: none; }
+.w-field[hidden], .el-check[hidden] { display: none; }
 .el-ro { grid-template-columns: 1fr 1fr; } .el-ro > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
 .el-msgs .w-msg { margin-top: 8px; } .el-msgs:empty { display: none; }
 .el-check { display: flex; align-items: center; gap: 6px; font-size: .9rem; } .el-check input { accent-color: var(--mask); width: 1.05em; height: 1.05em; }

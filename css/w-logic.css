@@ -53,3 +53,17 @@
 .logic-analyzer .la-in { width: 9.5em; }
 .logic-analyzer .la-notes { margin-top: 14px; font-size: .9rem; } .logic-analyzer .la-notes summary { cursor: pointer; font-weight: 600; }
 .logic-analyzer .la-notes ul { margin-top: 8px; }
+
+/* ---- protocol-debug ---- */
+.protocol-debug .pd-ev { border: 1px solid var(--line); border-left: 3px solid var(--mask); border-radius: var(--r); padding: 8px 12px; margin: 8px 0; background: var(--surface); }
+.protocol-debug .pd-ev p { margin: 6px 0 2px; }
+.protocol-debug .pd-symptom { border-left-color: var(--bad); }
+.protocol-debug .pd-evh { font: 600 .82rem var(--cond); letter-spacing: .03em; color: var(--muted); }
+.protocol-debug .pd-term { min-height: 0; margin: 6px 0; }
+.protocol-debug .pd-meter { display: inline-flex; flex-direction: column; margin: 6px 0; padding: 6px 14px; border: 2px solid var(--ink); border-radius: 6px; background: var(--sunk); }
+.protocol-debug .pd-mv { font: 600 1.35rem var(--mono); } .protocol-debug .pd-mk { font-size: .76rem; color: var(--muted); }
+.protocol-debug .pd-bar { justify-content: space-between; margin-top: 14px; }
+.protocol-debug .pd-steps { font: .86rem var(--mono); color: var(--copper); }
+.protocol-debug .pd-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.protocol-debug .pd-checks .btn { text-align: left; }
+.protocol-debug .pd-q h4 { margin: 1.2em 0 .3em; }

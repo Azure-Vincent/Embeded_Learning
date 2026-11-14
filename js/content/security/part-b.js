@@ -5,5 +5,7 @@ import l1 from './b/l1.js';
 import l2 from './b/l2.js';
 import l3 from './b/l3.js';
 import l4 from './b/l4.js';
+import l5 from './b/l5.js';
+import l6 from './b/l6.js';
 
-export default { skills, lessons: [l1, l2, l3, l4], labs: [], glossary, troubleshooting, refs };
+export default { skills, lessons: [l1, l2, l3, l4, l5, l6], labs: [], glossary, troubleshooting, refs };

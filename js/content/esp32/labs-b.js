@@ -73,12 +73,12 @@ const p6Figure = (() => {
   b += wire('130,220 270,220') + dot(246, 220) + wire('246,220 246,190 270,190');
   b += T(200, 240, '100 nF across', 'middle', 'font-size="10" opacity=".7"') + T(200, 252, 'pins 16 and 8', 'middle', 'font-size="10" opacity=".7"');
   outs.forEach((n, i) => {
-    const y = 50 + i * 26;
+    const y = 66 + i * 26;
     b += T(394, y + 4, n, 'end') + wire(`400,${y} 440,${y}`, 4) + res(440, y) + wire(`470,${y} 492,${y}`) + led(492, y) + wire(`508,${y} 545,${y}`) + dot(545, y) + T(553, y + 4, 'D' + i);
   });
-  b += T(394, 276, "QH' 9", 'end') + T(408, 276, 'not connected (cascade output)', 'start', 'font-size="10" opacity=".7"');
-  b += wire('545,50 545,296') + gnd(545, 296);
-  b += T(455, 36, '1 kΩ each', 'middle', 'font-size="10" opacity=".7"');
+  b += T(394, 282, "QH' 9", 'end') + T(408, 282, 'not connected (cascade output)', 'start', 'font-size="10" opacity=".7"');
+  b += wire('545,66 545,296') + gnd(545, 296);
+  b += T(455, 46, '1 kΩ each', 'middle', 'font-size="10" opacity=".7"');
   return svg(600, 320, b);
 })();
 
@@ -554,7 +554,7 @@ const p7Figure = (() => {
   b += T(300, 88, 'TX crosses to RX', 'middle', 'font-size="10" opacity=".8"');
   b += wire('170,185 430,185') + T(300, 178, 'common ground: the voltage reference', 'middle', 'font-size="10" opacity=".8"');
   b += wire('95,210 95,246', 0, true) + wire('505,210 505,246', 0, true);
-  b += box(40, 246, 110, 30, 'USB: PC') + box(450, 246, 110, 30, 'USB: PC or supply');
+  b += box(40, 246, 110, 30, 'USB: PC') + box(435, 246, 140, 30, 'USB: PC or supply');
   b += T(300, 262, 'UART0 on each board stays the', 'middle', 'font-size="10" opacity=".7"') + T(300, 274, 'log and flashing port', 'middle', 'font-size="10" opacity=".7"');
   return svg(600, 290, b);
 })();
@@ -1197,7 +1197,7 @@ const p8Arch = (() => {
     + box(215, 206, 180, 46, 'HTTP server task', 'root_get, status_get')
     + box(15, 206, 140, 46, 'Browser on your LAN', '');
   b += arr(155, 53, 215, 53, 1) + T(185, 46, 'events', 'middle', `font-size="10" fill="${col(1)}"`);
-  b += arr(395, 42, 455, 38, 4) + T(425, 30, 'set / clear', 'middle', `font-size="10" fill="${col(4)}"`);
+  b += arr(395, 42, 455, 38, 4) + T(425, 62, 'set / clear', 'middle', `font-size="10" fill="${col(4)}"`);
   b += arr(540, 52, 540, 86, 4);
   b += arr(305, 76, 305, 116, 3) + T(311, 100, 'start_once(wait)', 'start', `font-size="10" fill="${col(3)}"`);
   b += wire('215,139 85,139 85,84', 2) + arr(85, 90, 85, 76, 2) + T(150, 133, 'esp_wifi_connect()', 'middle', `font-size="10" fill="${col(2)}"`);
@@ -1762,8 +1762,8 @@ const p9Figure = (() => {
   b += arr(110, 270, 150, 270) + arr(215, 250, 215, 203, 4);
   b += `<circle cx="215" cy="226" r="9" fill="var(--surface)" stroke="${col(4)}" stroke-width="1.8"/>` + T(230, 230, 's_button (binary semaphore)', 'start', `font-size="10" fill="${col(4)}"`);
   b += T(215, 20, 'feeds task watchdog', 'middle', 'font-size="10" opacity=".75"') + T(525, 20, 'feeds task watchdog', 'middle', 'font-size="10" opacity=".75"');
-  b += T(330, 286, 'Data moves by copy through the queue; only s_stats is shared, and only under the mutex.', 'start', 'font-size="10" opacity=".75"');
-  return svg(760, 300, b);
+  b += T(10, 312, 'Data moves by copy through the queue; only s_stats is shared, and only under the mutex.', 'start', 'font-size="10" opacity=".75"');
+  return svg(640, 322, b);
 })();
 
 const p9 = {
@@ -2273,7 +2273,7 @@ const p10States = (() => {
   b += arr(160, 52, 400, 52, 3) + T(280, 44, 'sample ≥ threshold', 'middle', 'font-size="10"');
   b += arr(400, 74, 160, 74, 4) + T(280, 90, 'sample < threshold − hysteresis', 'middle', 'font-size="10"');
   b += arr(465, 84, 465, 190, 2) + T(471, 140, 'button', 'start', 'font-size="10"');
-  b += arr(400, 200, 150, 84, 4) + T(300, 160, 'sample < threshold − hysteresis', 'start', 'font-size="10"');
+  b += arr(400, 200, 150, 84, 4) + T(392, 208, 'sample < threshold − hysteresis', 'end', 'font-size="10"');
   b += arr(80, 190, 80, 84, 4) + T(74, 140, 'good', 'end', 'font-size="10"') + T(74, 152, 'sample', 'end', 'font-size="10"');
   b += arr(400, 222, 160, 222, 5, true) + T(280, 240, 'sensor error (from every state)', 'middle', `font-size="10" fill="${col(5)}"`);
   return svg(560, 256, b);

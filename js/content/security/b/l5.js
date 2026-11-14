@@ -137,9 +137,9 @@ Part A describes the mechanisms. The review checklist, in dependency order:
 2. **Every stage verifies the next, every boot**, over header and body together.
 3. **Structural checks, then signature, then version**, and only then any use of the image:`,
     code(UPDATE_CHECK, 'host-tested', { caption: 'Order of acceptance checks for an update image. Tested on the host with a stub sig_verify: bad magic, zero and oversized length, bad signature, older, equal and newer versions.', explain: [
-      { lines: '29-31', md: 'Length is bounded by the slot before it is used for anything, including the hash. An unbounded length would make the verifier itself read outside the image (lessons 1 and 2).' },
-      { lines: '32-34', md: 'The signature covers the header as well as the body, so `version` and `length` are trustworthy after this line and not before.' },
-      { lines: '35-37', md: 'The rollback test uses the signed version. `min_version` comes from storage that an update cannot rewrite: one-time-programmable fuses or a protected flash region. Equal versions are accepted so that a unit can be re-flashed with the same release.' },
+      { lines: '26-28', md: 'Length is bounded by the slot before it is used for anything, including the hash. An unbounded length would make the verifier itself read outside the image (lessons 1 and 2).' },
+      { lines: '29-31', md: 'The signature covers the header as well as the body, so `version` and `length` are trustworthy after this line and not before.' },
+      { lines: '32-34', md: 'The rollback test uses the signed version. `min_version` comes from storage that an update cannot rewrite: one-time-programmable fuses or a protected flash region. Equal versions are accepted so that a unit can be re-flashed with the same release.' },
     ] }),
     `4. **Raise the minimum version only after the new image has booted and confirmed itself.** Raising it at install time turns a bad release into a permanently dead unit.
 5. **Production keys only** in production bootloaders; fail the release build if a development key is present.

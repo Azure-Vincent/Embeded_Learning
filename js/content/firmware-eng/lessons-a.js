@@ -519,12 +519,12 @@ Two properties make state machines the right tool:
     <text x="300" y="98">LOCK, or TICK [deadline passed] / close latch</text>
     <text x="290" y="168">PIN bad [3rd in a row] / LED on, deadline = now + 30 s</text>
     <text x="290" y="238">TICK [deadline passed] / LED off, count = 0</text>
-    <text x="100" y="62">PIN bad [fewer than 3]</text>
-    <text x="100" y="76">/ count++</text>
-    <text x="20" y="20" text-anchor="start">power-on</text>
+    <text x="100" y="34">PIN bad [fewer than 3]</text>
+    <text x="100" y="48">/ count++</text>
+    <text x="2" y="86" text-anchor="start">power-on</text>
   </g>
-  <circle cx="14" cy="34" r="5" fill="currentColor"/>
-  <path d="M18,38 L52,98" marker-end="url(#fwa)"/>
+  <circle cx="10" cy="120" r="5" fill="currentColor"/>
+  <path d="M15,120 L38,120" marker-end="url(#fwa)"/>
   <path d="M150,98 C240,45 380,40 458,45" marker-end="url(#fwa)"/>
   <path d="M460,58 C380,105 250,110 162,115" marker-end="url(#fwa)"/>
   <path d="M150,142 C240,180 380,190 458,195" marker-end="url(#fwa)"/>

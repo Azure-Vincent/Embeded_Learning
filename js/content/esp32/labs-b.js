@@ -2244,4 +2244,732 @@ No solution is given. The deliverable is the task table (name, priority, period,
   ],
 };
 
-export default { skills, lessons: [], labs: [p6, p7, p8, p9], glossary: [], troubleshooting: [], refs: [] };
+
+// ───────────────────────────── Project 10: custom device ─────────────────────────────
+const p10Block = (() => {
+  let b = box(260, 16, 170, 40, 'USB 5 V', 'power, console, flashing')
+    + box(260, 96, 170, 150, 'ESP32', '')
+    + box(15, 70, 160, 44, 'I2C sensor', 'address from datasheet')
+    + box(15, 140, 160, 44, 'OLED display', 'SSD1306-style, I2C')
+    + box(15, 226, 160, 40, 'Button', 'to GND, pull-up')
+    + box(515, 70, 160, 44, 'Buzzer driver', 'transistor + buzzer')
+    + box(515, 140, 160, 40, 'Status LED', 'with resistor')
+    + box(515, 214, 160, 44, 'Access point', 'then your server')
+    + box(260, 276, 170, 36, 'NVS in module flash', '');
+  b += arr(345, 56, 345, 96);
+  b += wire('175,92 215,92 215,162 175,162', 1) + dot(215, 127, 1) + wire('215,127 260,127', 1) + T(218, 84, 'I2C bus', 'start', `font-size="10" fill="${col(1)}"`);
+  b += T(266, 131, 'GPIO21 SDA', 'start', 'font-size="10"') + T(266, 145, 'GPIO22 SCL', 'start', 'font-size="10"');
+  b += arr(175, 246, 260, 222, 4) + T(266, 226, 'GPIO27 in', 'start', 'font-size="10"');
+  b += arr(430, 127, 515, 96, 3) + T(424, 131, 'GPIO25 PWM', 'end', 'font-size="10"');
+  b += arr(430, 165, 515, 162, 2) + T(424, 169, 'GPIO26 out', 'end', 'font-size="10"');
+  b += arr(430, 222, 515, 234, 5, true) + T(424, 226, 'Wi-Fi 2.4 GHz', 'end', 'font-size="10"');
+  b += wire('345,246 345,276', 0, true);
+  b += T(95, 204, '4.7 kΩ pull-ups to 3V3', 'middle', 'font-size="10" opacity=".7"') + T(95, 216, 'on SDA and SCL (once)', 'middle', 'font-size="10" opacity=".7"');
+  return svg(690, 322, b);
+})();
+
+const p10States = (() => {
+  let b = state(30, 40, 130, 44, 'NORMAL', 'buzzer off', 4) + state(400, 40, 130, 44, 'ALARM', 'buzzer on', 3) + state(400, 190, 130, 44, 'SILENCED', 'buzzer off', 2) + state(30, 190, 130, 44, 'FAULT', 'sensor failed', 5);
+  b += arr(160, 52, 400, 52, 3) + T(280, 44, 'sample ≥ threshold', 'middle', 'font-size="10"');
+  b += arr(400, 74, 160, 74, 4) + T(280, 90, 'sample < threshold − hysteresis', 'middle', 'font-size="10"');
+  b += arr(465, 84, 465, 190, 2) + T(471, 140, 'button', 'start', 'font-size="10"');
+  b += arr(400, 200, 150, 84, 4) + T(300, 160, 'sample < threshold − hysteresis', 'start', 'font-size="10"');
+  b += arr(80, 190, 80, 84, 4) + T(74, 140, 'good', 'end', 'font-size="10"') + T(74, 152, 'sample', 'end', 'font-size="10"');
+  b += arr(400, 222, 160, 222, 5, true) + T(280, 240, 'sensor error (from every state)', 'middle', `font-size="10" fill="${col(5)}"`);
+  return svg(560, 256, b);
+})();
+
+const p10 = {
+  id: 'esp-p10', title: 'Project 10: Custom embedded device combining multiple peripherals', kind: 'Project', minutes: 480,
+  summary: 'Specify, design, build and test a device of your own that combines a sensor, a display, a button, a PWM output, Wi-Fi reporting and stored settings. You get the engineering method and a skeleton; the design decisions are yours.',
+  skills: ['esp-pb-system-design', 'esp-pb-rtos-pipeline', 'esp-pb-net-sec', 'esp-pb-debug-link'],
+  objectives: [
+    'Write requirements that can be tested, and separate what the device must do from how it will do it.',
+    'Draw a block diagram and derive a pin budget that survives the chip\'s restrictions.',
+    'Estimate a power budget from datasheet figures and check it against the supply.',
+    'Assign every peripheral and every piece of shared data to exactly one owner, and draw the task and queue diagram.',
+    'Express the device\'s behaviour as a state machine, implement it as pure C and test it on a PC.',
+    'Integrate one peripheral at a time with a test for each, and store validated settings in NVS.',
+    'Write a test plan that covers faults — sensor missing, network down, corrupt settings — as well as normal operation.',
+  ],
+  hardware: [
+    'ESP32 DevKit and a USB cable',
+    'An I2C sensor of your choice that runs at 3.3 V (temperature, humidity, pressure, light, distance …) and its datasheet',
+    'A small display — a 128×64 SSD1306-style I2C OLED is the reference choice — or no display, with a serial dashboard instead',
+    'Push button',
+    'Alarm output: a piezo buzzer or an LED, with a transistor and resistor if the load needs more current than a pin may supply',
+    'Two 4.7 kΩ resistors for I2C pull-ups if your breakout boards do not already carry them',
+    'Breadboard, jumper wires, multimeter, logic analyser',
+  ],
+  software: [
+    'ESP-IDF v6.1',
+    'gcc on your PC for the logic tests',
+    'A drawing tool or paper for the diagrams: they are deliverables, not decoration',
+    'A server endpoint you control if you report over the network',
+  ],
+  background: [
+    `### The problem
+
+Projects 1 to 9 each asked for one thing. Real devices fail at the joins: the display and the sensor share a bus and corrupt each other's transfers; the pin that was free turns out to be a strapping pin; the alarm stops because the network library is waiting for a server that is down; a setting saved by last month's firmware crashes this month's. None of these is hard to fix once seen. All of them are cheap to prevent on paper and expensive to find on a breadboard.
+
+This project is therefore mostly method. The reference design is an **environmental monitor**: it measures a quantity, shows it, raises an alarm above a threshold, lets the user silence the alarm, reports over Wi-Fi and remembers its settings. You may build that, or specify a different device of similar scope. Either way you produce the same artefacts, in this order:
+
+1. Requirements
+2. Block diagram
+3. Pin budget
+4. Power budget
+5. Task and queue diagram, with an owner for every resource
+6. State machine
+7. Test plan
+8. Then firmware, integrated one peripheral at a time
+
+### Requirements that can be tested
+
+"The device shows the temperature" cannot be failed. "The display shows the last reading, in °C with one decimal, and is no more than 2 s old; if the sensor has failed it shows a fault indication and never a stale number" can. Write each requirement so that a specific test could prove it false. Include the unhappy paths: what must still work when Wi-Fi is down, when the sensor is unplugged, when the stored settings are garbage.
+
+### One owner per resource
+
+The rule that prevents most integration bugs: every peripheral, and every piece of state, has exactly one task that touches it. Everything else sends that task a message. If two tasks must share something — an I2C bus used by a sensor driver and a display driver, say — then either one task owns the whole bus and serves both, or a single mutex guards every transaction on it. Decide which, write it on the diagram, and never make an exception.`,
+    { t: 'callout', kind: 'decision', title: 'Why the logic is kept apart from the hardware', md: `In the skeleton, the file \`app_logic.c\` knows nothing about FreeRTOS, GPIO or Wi-Fi. It answers one question: given the current state and an event, what is the next state? Tasks only gather events and act on states. This costs a little indirection and buys three things: the decisions are tested on a PC in milliseconds, including faults that are awkward to produce on a bench; the behaviour is one function you can read from top to bottom; and changing the sensor or the display cannot break the alarm rules.` },
+    `### Hysteresis
+
+A threshold with a single trip point chatters: a reading hovering at 30.0 °C with ±0.1 °C of noise would switch the alarm on and off several times a second. Hysteresis uses two points — on at the threshold, off only when the reading has fallen a margin below it — so that noise smaller than the margin cannot cause a transition. It is the same idea as the Schmitt trigger input from the electronics section, applied in software.
+
+### Failing safe
+
+Decide, for each fault, which way the device should fail. A monitor that cannot read its sensor does not know whether conditions are safe. Showing the last good value hides the fault; the reference design enters a distinct FAULT state and says so. A corrupted state variable also leads to FAULT. Stored settings that fail validation are replaced by defaults, and that event is logged.`,
+    { t: 'callout', kind: 'security', title: 'Security requirements are requirements', md: `A device with a radio and stored settings has assets: the Wi-Fi credentials, the integrity of its readings, the settings that decide when it alarms. Write security requirements beside the functional ones and test them the same way. At minimum: no secrets in the repository; TLS with certificate verification for anything leaving the device; every input from the network, the button and storage validated before use; no unauthenticated way to change a setting over the network. If the device's alarm protects something, also ask what an attacker gains by silencing it.` },
+    { t: 'widget', name: 'threat-model', props: { template: 'blank' }, caption: 'Fill in assets, adversaries and entry points for your device. Export it to your notebook; it is part of the hand-in.' },
+  ],
+  diagram: [
+    { t: 'figure', svg: p10Block, caption: 'Block diagram of the reference design. Yours will differ; draw it before choosing pins.' },
+    { t: 'ascii', caption: 'Pin budget for the reference design on an original ESP32 DevKit. Fill in the same table for your own device before placing a single wire.', text: `
+GPIO   Dir   Function            Peripheral   Electrical notes                      Checked against
+----   ---   -----------------   ----------   -----------------------------------   -------------------------
+21     I/O   I2C SDA             I2C0         open-drain, 4.7 kΩ pull-up to 3V3     not strapping, not flash
+22     I/O   I2C SCL             I2C0         open-drain, 4.7 kΩ pull-up to 3V3     not strapping, not flash
+27     in    Button              GPIO + ISR   to GND, internal pull-up, falling     has pull-up (not 34-39)
+25     out   Buzzer PWM          LEDC         via transistor if load > pin limit    ADC2 pin: ADC not needed
+26     out   Status LED          GPIO         series resistor                       ADC2 pin: ADC not needed
+34     in    spare analog input  ADC1 ch 6    0..3.3 V only                         ADC1, usable with Wi-Fi
+1, 3   -     console             UART0        reserved for log and flashing         do not reuse
+0, 2, 5, 12, 15                               strapping pins: left unconnected
+6-11                                          module flash: never use
+--     --    Wi-Fi               radio        no pins; ADC2 unavailable for ADC     current peaks on 3V3
+
+I2C address map (fill in from YOUR datasheets; two devices must not share an address)
+Device          Address     Source
+-------------   ---------   ---------------------------------------
+Sensor          0x__        datasheet, section ______
+Display         0x__        module documentation (often selectable by a solder jumper)
+` },
+    { t: 'ascii', caption: 'Task and queue diagram of the skeleton. Each box is a task; each arrow is a queue carrying copies. No arrow means no communication.', text: `
+sensor_task ──(app_msg_t: EV_SAMPLE / EV_SENSOR_ERROR)──┐
+  owns: sensor                                          ▼
+                                                   ┌──────────────┐      s_view_ui (len 1, overwrite)
+button_task ──(app_msg_t: EV_BUTTON)──────────────▶│ controller   │────────────────────────────────▶ display_task
+  owns: button GPIO, debounce        s_events (8)  │ owns: state, │                                    owns: display
+                                                   │ settings,    │      s_view_net (len 1, overwrite)
+                                                   │ buzzer PWM   │────────────────────────────────▶ network_task
+                                                   └──────────────┘                                    owns: Wi-Fi, HTTP
+Rules
+ - Only the controller changes state or settings. It never waits on I/O.
+ - Display and network get a COPY of the latest view. If they are slow or stuck, the
+   controller overwrites the old copy and carries on. The alarm never depends on them.
+ - If sensor and display share the I2C bus: one mutex around every transaction, or one
+   bus-owner task. Write down which.
+` },
+    { t: 'figure', svg: p10States, caption: 'Alarm state machine of the reference design. From FAULT, a good sample leads to NORMAL or directly to ALARM, depending on its value (only the NORMAL arrow is drawn).' },
+    { t: 'callout', kind: 'note', title: 'Adapting to other chips', md: `The method is identical on the ESP32-S3, C3 and C6; the pin budget is not. Redo the table from that chip's GPIO page: strapping pins, flash pins, USB pins (GPIO19/20 on the S3, GPIO18/19 on the C3, GPIO12/13 on the C6) and the ADC-channel-to-GPIO map all differ. A pin table copied from another chip is the most common way to lose an evening.` },
+  ],
+  steps: [
+    { title: 'Write the requirements', blocks: [
+      `Start a design document. Write 8 to 12 numbered functional requirements and 4 to 6 security requirements for **your** device. The requirements listed for this project further down are those of the reference design; use them as a model for the level of detail, and change them to describe what you are building.
+
+For each requirement, write one line saying how you will test it. If you cannot think of a test, the requirement is not finished.`,
+      { t: 'exercise', prompt: `Rewrite this requirement so that it can be tested: *"The alarm should be reliable and respond quickly."* Include at least one fault condition.`, hints: ['Reliable against what? Name the conditions.', 'Quickly: put a number and a starting point on it.', 'What must the alarm do when the network is down or the sensor is missing?'], solution: `One possible answer, as three requirements:
+
+- *F-a.* When a reading at or above the threshold is taken, the alarm output is active within 500 ms of that reading.
+- *F-b.* The alarm behaviour of F-a is unaffected by the state of the Wi-Fi connection or the reporting server; tested with the access point switched off and with the server address unreachable.
+- *F-c.* If the sensor cannot be read for 3 consecutive attempts, the device enters a fault state within 5 s, shows a fault indication distinct from any reading, and does not display the last good value as current.
+
+Each has a number, a condition and an observation, so each can fail a test. "Reliable" was three different claims hiding in one word.` },
+    ] },
+    { title: 'Draw the block diagram and choose the parts', md: `Draw every part of the system as a box and every connection as a line labelled with its interface (I2C, GPIO, PWM, Wi-Fi) and voltage. Include power. For each part, open its datasheet and note: supply voltage range, interface and address, typical and peak current, and anything it needs externally (pull-ups, decoupling, a reset line).
+
+Check each connection with the three questions from project 7: is the high level high enough, is the low level low enough, and does anything exceed an absolute maximum? A 5 V display module on a 3.3 V I2C bus is a common trap: its pull-ups may go to 5 V.` },
+    { title: 'Make the pin budget', blocks: [
+      `Fill in the pin table for your design. For every signal, check it against the chip's restrictions and write what you checked in the last column.`,
+      { t: 'predict', q: 'A learner\'s first pin budget for an original ESP32 puts the button on GPIO0, the buzzer on GPIO12, a second analog sensor on GPIO26 and the display\'s reset line on GPIO34. The device will use Wi-Fi. How many of these four choices are faulty?', choices: [
+        { t: 'All four', ok: true, why: 'GPIO0 is a strapping pin: a button held to ground at reset puts the chip in download mode. GPIO12 is a strapping pin too, and a load pulling it at reset can stop the module booting. GPIO26 is an ADC2 input, unusable for analog readings while Wi-Fi runs. GPIO34 is input-only and cannot drive a reset line. Each is found by reading one page of documentation, and none is visible in a quick bench test until it bites.' },
+        { t: 'Two: only the strapping pins are a problem', why: 'The strapping pins are indeed wrong. Now check the direction capability of the pin chosen for an output, and which ADC unit the analog pin belongs to.' },
+        { t: 'One: only GPIO34, because it cannot be an output', why: 'That one is real. Look also at what GPIO0 and GPIO12 do during reset, and at what else uses the ADC behind GPIO26.' },
+        { t: 'None, since all are valid GPIO numbers', why: 'Existing as a GPIO is not the same as being free. Several pins have duties at reset or hardware limits that the number alone does not show.' },
+      ], reveal: 'Go through your own table with the same four questions: strapping? flash? input-only? ADC2 with Wi-Fi? Then one more: does anything on the board already use this pin (an on-board LED, a USB bridge)?' },
+    ] },
+    { title: 'Estimate the power budget', blocks: [
+      `Make a table with one row per consumer and these columns: supply rail, typical current, peak current, duty (what fraction of the time it is in each condition), and the datasheet section the numbers came from. Do not use numbers from memory or from a web search; the point of the exercise is to find them in the primary source.
+
+\`\`\`
+Consumer         Rail   Typical   Peak     When the peak occurs        Source
+--------------   ----   -------   ------   -------------------------   ------------------------
+ESP32, Wi-Fi     3V3    ____ mA   ____ mA  transmit bursts             module datasheet, § ____
+Sensor           3V3    ____ µA   ____ mA  during a conversion         sensor datasheet, § ____
+Display          3V3    ____ mA   ____ mA  all pixels lit              display datasheet, § ____
+Buzzer           ____   ____ mA   ____ mA  alarm active                buzzer datasheet
+LED              3V3    ____ mA   -        (3.3 V − Vf) / R            your calculation
+--------------   ----   -------   ------
+Total            3V3    ____ mA   ____ mA
+\`\`\`
+
+Then answer three questions in writing:
+
+1. Is the **peak** total on the 3.3 V rail within what the DevKit's regulator can supply? Find the regulator's part number on your board and read its datasheet.
+2. Is the total drawn from USB within what the port provides? A standard USB 2.0 port is specified for 500 mA.
+3. If this ran from a battery of capacity C mAh, how long would it last at the **average** current (typical currents weighted by duty)? What single change would extend that the most?
+
+Verify one number by measurement: put a multimeter in series with the 5 V supply, or use a USB power meter, and compare the average with your estimate. A meter will not show the short transmit peaks; that is what the datasheet figure and the bulk capacitor near the module are for.`,
+      { t: 'callout', kind: 'mistake', title: 'Powering the load from a GPIO', md: `A GPIO is a signal, not a supply. A buzzer, a relay, a motor or a strip of LEDs must take its current from a rail through a transistor that the GPIO only controls, with a flyback diode across anything inductive. Check the pin's maximum current in the ESP32 datasheet before connecting any load directly, and remember that the limit for all pins together is lower than the per-pin limit multiplied by the number of pins.` },
+    ] },
+    { title: 'Assign owners and draw the task diagram', blocks: [
+      `List every resource: each peripheral, each bus, each piece of state (current state, settings, latest reading). Give each exactly one owner task. Then draw the queues. For each queue decide: what type travels on it, how long it is, what the sender does when it is full, and whether old data should be kept (a normal queue) or replaced (\`xQueueOverwrite\` on a length-1 queue).
+
+Fill in a task table:
+
+| Task | Priority | Blocks on | Period or deadline | Stack (measured) | Owns |
+|---|---|---|---|---|---|
+| controller | highest | \`s_events\` | reacts within 10 ms | … | state, settings, buzzer |
+| sensor | … | delay | 1 s | … | sensor |
+| button | … | semaphore from ISR | 50 ms | … | button |
+| display | low | \`s_view_ui\` | 200 ms | … | display |
+| network | lowest | \`s_view_net\`, timeouts | minutes | … | Wi-Fi, HTTP |`,
+      { t: 'predict', q: 'In the skeleton the controller sends the view to the display with `xQueueOverwrite` on a queue of length 1, not `xQueueSend` on a queue of length 8. Why?', choices: [
+        { t: 'The display only needs the newest state; overwriting never blocks the controller and never shows a backlog of stale views', ok: true, why: 'With a normal queue, a slow display would either block the controller when the queue fills or fall seconds behind. A mailbox that holds only the latest value suits "show the current state".' },
+        { t: 'Because a length-1 queue uses less RAM', why: 'It does, slightly, but that is not the reason. Think about what happens to the alarm logic when the display stops reading.' },
+        { t: 'Because `xQueueSend` cannot carry a struct', why: 'Any queue carries items of whatever size it was created with, structs included. The two calls differ in what they do when the queue is full.' },
+      ], reveal: 'The same reasoning does **not** apply to `s_events`: button presses and samples are events that must each be processed once, so that queue is a normal one, and the sender counts failures.' },
+    ] },
+    { title: 'Write and test the state machine on your PC', blocks: [
+      `Draw the state diagram for your device: every state, every event, every transition, and what the outputs are in each state. Then check it for completeness by making a table with states down the side and events across the top; every cell must say what happens, even if the answer is "nothing".
+
+The reference design's logic follows. Adapt it to your device and extend the test until every cell of your table is exercised.`,
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'app_logic.h', code: String.raw`/* app_logic.h - the decisions of the device, with no hardware in them.
+ * Everything here compiles and is tested on a PC. */
+#ifndef APP_LOGIC_H
+#define APP_LOGIC_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* ---- settings (stored in NVS on the device) ---- */
+typedef struct {
+    int16_t  alarm_on_c10;    /* alarm threshold, tenths of a degree C   */
+    int16_t  hysteresis_c10;  /* how far below it we must fall to clear  */
+    uint16_t report_period_s; /* Wi-Fi report interval                   */
+} settings_t;
+
+void settings_defaults(settings_t *s);
+bool settings_valid(const settings_t *s);
+
+/* ---- alarm state machine ---- */
+typedef enum { AL_NORMAL, AL_ALARM, AL_SILENCED, AL_FAULT } alarm_state_t;
+
+typedef enum {
+    EV_SAMPLE,        /* a new temperature is available (value in arg) */
+    EV_SENSOR_ERROR,  /* the sensor read failed                        */
+    EV_BUTTON         /* the user pressed the button                   */
+} app_event_t;
+
+alarm_state_t alarm_step(alarm_state_t st, app_event_t ev, int16_t temp_c10,
+                         const settings_t *cfg);
+bool          alarm_buzzer_on(alarm_state_t st);
+
+#endif` },
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'app_logic.c', code: String.raw`#include "app_logic.h"
+
+void settings_defaults(settings_t *s)
+{
+    s->alarm_on_c10    = 300;   /* 30.0 C */
+    s->hysteresis_c10  = 10;    /*  1.0 C */
+    s->report_period_s = 60;
+}
+
+/* Never trust what comes out of storage: a fresh chip, a half-written
+ * page or an old firmware's layout can all hand you nonsense. */
+bool settings_valid(const settings_t *s)
+{
+    return s->alarm_on_c10 >= -400 && s->alarm_on_c10 <= 1250 &&
+           s->hysteresis_c10 >= 1  && s->hysteresis_c10 <= 100 &&
+           s->report_period_s >= 5 && s->report_period_s <= 3600;
+}
+
+alarm_state_t alarm_step(alarm_state_t st, app_event_t ev, int16_t temp_c10,
+                         const settings_t *cfg)
+{
+    int16_t off_below = (int16_t)(cfg->alarm_on_c10 - cfg->hysteresis_c10);
+
+    if (ev == EV_SENSOR_ERROR) return AL_FAULT;       /* from any state */
+
+    switch (st) {
+    case AL_NORMAL:
+        if (ev == EV_SAMPLE && temp_c10 >= cfg->alarm_on_c10) return AL_ALARM;
+        return AL_NORMAL;
+
+    case AL_ALARM:
+        if (ev == EV_BUTTON) return AL_SILENCED;
+        if (ev == EV_SAMPLE && temp_c10 < off_below) return AL_NORMAL;
+        return AL_ALARM;
+
+    case AL_SILENCED:                 /* still too hot, but acknowledged */
+        if (ev == EV_SAMPLE && temp_c10 < off_below) return AL_NORMAL;
+        return AL_SILENCED;
+
+    case AL_FAULT:                    /* leave only on a good sample */
+        if (ev == EV_SAMPLE)
+            return temp_c10 >= cfg->alarm_on_c10 ? AL_ALARM : AL_NORMAL;
+        return AL_FAULT;
+    }
+    return AL_FAULT;                  /* unknown state: fail safe */
+}
+
+bool alarm_buzzer_on(alarm_state_t st) { return st == AL_ALARM; }`, explain: [
+        { lines: '12-17', md: 'Range checks on everything read from storage. Erased flash reads as all ones, which as an `int16_t` is −1 and as a `uint16_t` is 65535; the checks reject that pattern.' },
+        { lines: '24', md: 'A sensor error leads to FAULT from any state. Putting it before the `switch` means no state can forget to handle it.' },
+        { lines: '31-34', md: 'Hysteresis: the alarm switches on at the threshold and off only below `off_below`. Between the two, the state does not change.' },
+        { lines: '36-38', md: 'SILENCED remembers that the user has acknowledged the alarm. It ends only when the condition has cleared, so a new excursion alarms again.' },
+        { lines: '45', md: 'An impossible state value means memory was corrupted. The function returns FAULT instead of guessing.' },
+      ] },
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'app_logic_test.c — gcc -Wall -Wextra -std=c11 app_logic.c app_logic_test.c -o app_logic_test && ./app_logic_test', code: String.raw`/* Build: gcc -Wall -Wextra -std=c11 app_logic.c app_logic_test.c -o app_logic_test */
+#include "app_logic.h"
+#include <assert.h>
+#include <stdio.h>
+
+int main(void)
+{
+    settings_t cfg;
+    settings_defaults(&cfg);
+    assert(settings_valid(&cfg));
+
+    settings_t erased = { -1, -1, 0xFFFF };    /* what blank flash looks like */
+    assert(!settings_valid(&erased));
+
+    alarm_state_t st = AL_NORMAL;
+    st = alarm_step(st, EV_SAMPLE, 299, &cfg);  assert(st == AL_NORMAL);
+    st = alarm_step(st, EV_BUTTON, 0, &cfg);    assert(st == AL_NORMAL);
+    st = alarm_step(st, EV_SAMPLE, 300, &cfg);  assert(st == AL_ALARM);
+    assert(alarm_buzzer_on(st));
+
+    /* Hysteresis: hovering just under the threshold does not clear it. */
+    st = alarm_step(st, EV_SAMPLE, 295, &cfg);  assert(st == AL_ALARM);
+    st = alarm_step(st, EV_SAMPLE, 290, &cfg);  assert(st == AL_ALARM);
+    st = alarm_step(st, EV_SAMPLE, 289, &cfg);  assert(st == AL_NORMAL);
+
+    /* Silence: buzzer off, state remembered until it cools down. */
+    st = alarm_step(st, EV_SAMPLE, 310, &cfg);  assert(st == AL_ALARM);
+    st = alarm_step(st, EV_BUTTON, 0, &cfg);    assert(st == AL_SILENCED);
+    assert(!alarm_buzzer_on(st));
+    st = alarm_step(st, EV_SAMPLE, 320, &cfg);  assert(st == AL_SILENCED);
+    st = alarm_step(st, EV_SAMPLE, 200, &cfg);  assert(st == AL_NORMAL);
+
+    /* Sensor fault from any state, recovery straight into the right state. */
+    st = alarm_step(AL_SILENCED, EV_SENSOR_ERROR, 0, &cfg);  assert(st == AL_FAULT);
+    st = alarm_step(st, EV_BUTTON, 0, &cfg);                 assert(st == AL_FAULT);
+    st = alarm_step(st, EV_SAMPLE, 350, &cfg);               assert(st == AL_ALARM);
+    st = alarm_step(AL_FAULT, EV_SAMPLE, 210, &cfg);         assert(st == AL_NORMAL);
+
+    /* A corrupted state variable fails safe. */
+    assert(alarm_step((alarm_state_t)99, EV_SAMPLE, 0, &cfg) == AL_FAULT);
+
+    printf("app_logic: all checks passed\n");
+    return 0;
+}` },
+      `You should see \`app_logic: all checks passed\`.`,
+      { t: 'exercise', prompt: `With the default settings (alarm at 30.0 °C, hysteresis 1.0 °C) the device is in ALARM. It then receives the samples 29.5, 29.1, 29.0, 28.9, 29.6, 30.0 in that order (values in °C). After which sample does it leave ALARM, and what state is it in at the end?`, hints: ['Compute the switch-off point: threshold minus hysteresis.', 'The comparison in the code is `<`, not `<=`.', 'After it returns to NORMAL, which sample is at or above the threshold?'], answer: { type: 'text', accept: ['28\\.9.*alarm', 'fourth.*alarm', '4th.*alarm', '289.*alarm'], nudge: 'Give both parts: the sample at which it leaves ALARM, and the final state.' }, solution: `The switch-off point is 30.0 − 1.0 = 29.0 °C and the test is strictly less than. 29.5, 29.1 and 29.0 all leave it in ALARM (29.0 is not below 29.0). **28.9** returns it to NORMAL. 29.6 is below the threshold, so it stays NORMAL. 30.0 is at the threshold (\`>=\`), so it ends in **ALARM** again. Add exactly this sequence to the test file as a new case and confirm it.` },
+    ] },
+    { title: 'Bring up the skeleton, then one peripheral at a time', blocks: [
+      CMAKE_NOTE({ srcs: '"main.c" "app_logic.c"', req: 'nvs_flash esp_driver_gpio esp_driver_i2c esp_driver_ledc' }),
+      `Add further components (\`esp_wifi\`, \`esp_http_client\`, …) as you add the features that need them.`,
+      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c — a skeleton, not a finished design', code: String.raw`/* Project 10 reference skeleton. It shows the SHAPE of the firmware:
+ * who owns which peripheral, what flows through which queue, where the
+ * state machine runs. Every TODO is a design decision that is yours. */
+#include <stdbool.h>
+#include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "esp_err.h"
+#include "esp_log.h"
+#include "nvs.h"
+#include "nvs_flash.h"
+#include "app_logic.h"
+
+/* One message type for everything the controller reacts to. */
+typedef struct {
+    app_event_t ev;
+    int16_t     temp_c10;      /* valid when ev == EV_SAMPLE */
+} app_msg_t;
+
+/* What the display and the network need to know. Sent BY VALUE so the
+ * receivers never touch the controller's own variables. */
+typedef struct {
+    alarm_state_t state;
+    int16_t       temp_c10;
+    bool          sensor_ok;
+} view_t;
+
+static const char *TAG = "p10";
+static QueueHandle_t s_events;     /* sensor task, button task -> controller */
+static QueueHandle_t s_view_ui;    /* controller -> display task  (length 1) */
+static QueueHandle_t s_view_net;   /* controller -> network task  (length 1) */
+static settings_t    s_cfg;        /* written only by the controller task    */
+
+/* ---- settings in NVS ---- */
+static void settings_load(settings_t *out)
+{
+    settings_defaults(out);
+    nvs_handle_t h;
+    if (nvs_open("app", NVS_READONLY, &h) != ESP_OK) return;    /* first boot */
+    settings_t tmp;
+    size_t len = sizeof tmp;
+    if (nvs_get_blob(h, "cfg", &tmp, &len) == ESP_OK &&
+        len == sizeof tmp && settings_valid(&tmp)) {
+        *out = tmp;
+    } else {
+        ESP_LOGW(TAG, "stored settings missing or invalid, using defaults");
+    }
+    nvs_close(h);
+}
+
+static esp_err_t settings_save(const settings_t *in)
+{
+    if (!settings_valid(in)) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t h;
+    esp_err_t err = nvs_open("app", NVS_READWRITE, &h);
+    if (err != ESP_OK) return err;
+    err = nvs_set_blob(h, "cfg", in, sizeof *in);
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    return err;
+}
+
+/* ---- tasks ---- */
+static void sensor_task(void *arg)
+{
+    (void)arg;
+    /* This task is the ONLY code that touches the sensor. If the display
+     * shares the I2C bus, decide now: one bus-owner task, or a mutex. */
+    while (1) {
+        app_msg_t m = { .ev = EV_SENSOR_ERROR };
+        /* TODO: read your sensor; on success set m.ev = EV_SAMPLE and
+         *       m.temp_c10. Range-check the value before you believe it. */
+        xQueueSend(s_events, &m, 0);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+static void controller_task(void *arg)
+{
+    (void)arg;
+    alarm_state_t st = AL_NORMAL;
+    view_t v = { .state = st };
+    app_msg_t m;
+    while (1) {
+        if (xQueueReceive(s_events, &m, portMAX_DELAY) != pdTRUE) continue;
+
+        st = alarm_step(st, m.ev, m.temp_c10, &s_cfg);
+        if (m.ev == EV_SAMPLE)       { v.temp_c10 = m.temp_c10; v.sensor_ok = true; }
+        if (m.ev == EV_SENSOR_ERROR) { v.sensor_ok = false; }
+        v.state = st;
+
+        /* TODO: drive the alarm output from alarm_buzzer_on(st) (LEDC PWM). */
+        xQueueOverwrite(s_view_ui, &v);      /* latest value wins; never blocks */
+        xQueueOverwrite(s_view_net, &v);
+    }
+}
+
+static void display_task(void *arg)
+{
+    (void)arg;
+    view_t v;
+    while (1) {
+        if (xQueueReceive(s_view_ui, &v, portMAX_DELAY) == pdTRUE) {
+            /* TODO: draw to your display. Until it exists, a serial dashboard: */
+            ESP_LOGI(TAG, "state=%d temp_c10=%d sensor=%s", (int)v.state,
+                     (int)v.temp_c10, v.sensor_ok ? "ok" : "FAULT");
+        }
+    }
+}
+
+/* TODO: button_task  - debounced press -> EV_BUTTON into s_events (project 9).
+ * TODO: network_task - Wi-Fi with reconnect; every s_cfg.report_period_s take the
+ *                      latest view from s_view_net and report it (project 8).
+ *                      The device must keep measuring and alarming with no network. */
+
+void app_main(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+    settings_load(&s_cfg);
+    (void)settings_save;           /* call it from your settings UI */
+
+    s_events   = xQueueCreate(8, sizeof(app_msg_t));
+    s_view_ui  = xQueueCreate(1, sizeof(view_t));
+    s_view_net = xQueueCreate(1, sizeof(view_t));
+    configASSERT(s_events && s_view_ui && s_view_net);
+
+    xTaskCreate(controller_task, "ctrl",    4096, NULL, 6, NULL);
+    xTaskCreate(sensor_task,     "sensor",  4096, NULL, 5, NULL);
+    xTaskCreate(display_task,    "display", 4096, NULL, 3, NULL);
+}` },
+      `Flash the skeleton unchanged first. The sensor task has no sensor yet and reports an error every second, so you should see \`state=3 temp_c10=0 sensor=FAULT\` once a second: the pipeline from sensor task through controller to display task works, and the fault path is the first thing you have tested.
+
+Then integrate in this order, proving each stage before starting the next:
+
+1. **A fake sensor.** Make \`sensor_task\` produce a slow ramp from 25.0 to 32.0 °C and back. You should see NORMAL → ALARM as the ramp crosses 30.0 and back to NORMAL below 29.0. The whole application now runs with no hardware attached.
+2. **The button.** Reuse the ISR, semaphore and debounce from project 9. You should see ALARM → SILENCED on a press during the alarm, and no effect in NORMAL.
+3. **The alarm output.** Drive it from \`alarm_buzzer_on(st)\` with LEDC. You should hear or see it only in ALARM.
+4. **The real sensor.** Scan the I2C bus first and confirm the address against the datasheet. Read the identification register if the part has one. Only then read measurements, and compare them with a second instrument.
+5. **The display.** Start with one fixed string. Then draw from \`view_t\`.
+6. **Settings in NVS**, with a way to change them (step 8).
+7. **Wi-Fi reporting**, last, from project 8. Then switch the access point off and confirm that steps 1 to 6 are unaffected.`,
+      { t: 'callout', kind: 'why', title: 'Why the fake sensor comes first', md: `With a fake, you control the input exactly: you can produce a threshold crossing on demand, hold a value in the hysteresis band, or inject an error every tenth reading. When the real sensor is fitted and something misbehaves, you already know the logic is sound, so the fault is in the new part. Integrating everything at once means every fault could be anywhere.` },
+    ] },
+    { title: 'Store and validate settings', blocks: [
+      `The skeleton's \`settings_load\` and \`settings_save\` keep the settings as one blob in NVS and run every value through \`settings_valid\` in both directions. Add a way to change a setting — a long button press that steps the threshold, or a command typed on the serial console — and call \`settings_save\` from the controller task.
+
+Test the three cases that matter:
+
+- **First boot.** Erase the flash (\`idf.py erase-flash\`), then flash and run. You should see the defaults in use and no error.
+- **Persistence.** Change the threshold, power-cycle the board. You should see the new value after restart.
+- **Corruption.** Temporarily make \`settings_save\` skip validation and store a threshold of 30000, restart, and you should see \`stored settings missing or invalid, using defaults\`. Then restore the validation.`,
+      { t: 'predict', q: 'A later firmware version adds a field to `settings_t`. A device updated in the field still has the old, shorter blob in NVS. What does `settings_load` do, as written?', reveal: '`nvs_get_blob` is asked for `sizeof tmp` bytes of the new, larger structure. The stored blob is shorter, so the returned `len` is not equal to `sizeof tmp`; the code treats that as invalid and falls back to defaults. That is safe, but the user\'s settings are silently lost on every update that changes the structure. A product would store a version number with the settings and migrate old layouts. Decide what your device does and write it in the design document.' },
+      { t: 'callout', kind: 'security', title: 'What NVS does and does not protect', md: `NVS is ordinary flash. Anyone with the device and a USB cable can read it, and modify it, unless NVS encryption and flash encryption are enabled. Do not store a secret there and assume it is hidden, and do not assume a value read from it is one your firmware wrote. Validation on load is a safety measure and also a security measure.` },
+    ] },
+    { title: 'Write and run the test plan', md: `Turn every requirement into at least one test case with: an identifier, the requirement it covers, the set-up, the action, the expected observation ("you should see …") and space for the result. Include a capture or log extract as evidence for the ones that need it. Then run the plan from start to finish on the finished device and record the results honestly, including failures.
+
+A requirement with no test is untested; a test with no requirement is either unnecessary or reveals a requirement you forgot to write. The testing section below lists the minimum set for the reference design.` },
+    { title: 'Debugging exercises', blocks: [
+      { t: 'exercise', prompt: `**Exercise A.** The sensor and the OLED are on the same I2C bus. Each works perfectly alone. With both tasks running, the display shows corrupted rows every few minutes and the sensor occasionally returns an error. A capture during a failure shows a start condition and an address byte for the sensor in the middle of a long display data transfer. What is the cause, and what are the two sound ways to fix it?`, hints: ['How many tasks issue transactions on the bus?', 'What happens if one task is pre-empted part-way through a transfer made of several driver calls?'], answer: { type: 'text', accept: ['mutex', 'lock', 'owner', 'share', 'interleav', 'one task'], nudge: 'Think about who is allowed to start a transaction and when.' }, solution: `Two tasks use one bus with nothing coordinating them. A multi-part display update is pre-empted by the higher-priority sensor task, whose transaction lands inside it; the display interprets what follows as its own data, and the sensor's transfer may be rejected. It is rare because the pre-emption must fall inside a transfer. Fix one: a single **mutex** taken around every complete logical transaction on the bus by both drivers. Fix two: a single **bus-owner task** that performs all I2C work and takes requests from a queue. Either way the rule is one owner per resource. Check whether your I2C driver already serialises individual calls; even if it does, a sequence of calls that must not be split still needs your own lock.` },
+      { t: 'exercise', prompt: `**Exercise B.** In testing, switching the access point off makes the alarm respond up to 10 s late, and the display freezes for the same time. The controller is below. Find the design error.`, code: String.raw`static void controller_task(void *arg)
+{
+    app_msg_t m;
+    for (;;) {
+        xQueueReceive(s_events, &m, portMAX_DELAY);
+        st = alarm_step(st, m.ev, m.temp_c10, &s_cfg);
+        set_buzzer(alarm_buzzer_on(st));
+        update_display(st, m.temp_c10);
+        if (m.ev == EV_SAMPLE)
+            http_post_reading(m.temp_c10);     /* timeout_ms = 10000 */
+    }
+}`, hints: ['Which call can take seconds?', 'While that call is waiting, what happens to events arriving in `s_events`?', 'Which requirement of the reference design does this violate?'], answer: { type: 'text', accept: ['block', 'network', 'post', 'http', 'separate task', 'synchronous'], nudge: 'Look for the one call whose duration depends on something outside the device.' }, solution: `The controller makes a **blocking network call**. With the access point down, \`http_post_reading\` waits for its 10 s timeout, and for that time the controller is not reading \`s_events\`: button presses and samples queue up, the alarm and display lag. The task that owns the safety behaviour must never wait on I/O it does not control. Move reporting to a network task that receives a copy of the latest view through a length-1 overwrite queue, as in the skeleton, and move the display out likewise. The requirement violated is that measuring and alarming continue with no network — and the test that found it is exactly the one that is tempting to skip.` },
+      { t: 'exercise', prompt: `**Exercise C.** A device in the field starts sounding its alarm continuously at 21 °C after a firmware update. The update changed \`settings_t\` by inserting a new first field. The new firmware's load function is below. Explain the failure, and list what should have prevented it.`, code: String.raw`static void settings_load(settings_t *out)
+{
+    nvs_handle_t h;
+    size_t len = sizeof *out;
+    if (nvs_open("app", NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_blob(h, "cfg", out, &len);
+        nvs_close(h);
+    }
+}`, hints: ['What bytes are in the stored blob, and which fields do they land on now?', 'What is checked after the read?', 'What does `out` contain if the read fails entirely?'], answer: { type: 'text', accept: ['valid', 'version', 'layout', 'default', 'check', 'length'], nudge: 'Follow the old bytes into the new structure.' }, solution: `The old blob's bytes are copied into the new structure, whose fields have moved: the old threshold lands in the new first field, the old hysteresis is read as the threshold, and so on. A hysteresis of 10 (1.0 °C) interpreted as the alarm threshold means "alarm above 1.0 °C". Nothing is checked: not the return code, not the length, not the values. And if the read fails, \`out\` is left uninitialised. What should have prevented it: load defaults first; check the return value and that \`len\` matches; run every field through a range check; store a **layout version** and migrate or reject old layouts; and have a test in the plan that boots new firmware on top of settings written by the old one.` },
+    ] },
+  ],
+  walkthrough: [
+    `### How the skeleton is put together
+
+**Messages, not shared variables.** \`app_msg_t\` is the only way anything reaches the controller. The sensor task and the button task each build one on their own stack and \`xQueueSend\` copies it into the queue's storage. From then on there is no shared memory between sender and receiver, so there is nothing to lock.
+
+**The controller is a loop around one pure function.** It blocks in \`xQueueReceive\` using no CPU. When a message arrives, \`alarm_step\` computes the next state from the old state, the event and the settings; the controller then updates the view and the outputs. It makes no call that can wait on a bus, a display or a network. Its worst-case response time is therefore the time to run a few dozen instructions plus the time for which higher-priority tasks or interrupts hold the CPU.
+
+**\`xQueueOverwrite\` as a mailbox.** \`s_view_ui\` and \`s_view_net\` have length 1. Overwrite replaces the stored item if one is there and never blocks. The display task wakes when a view is available, takes its copy, and may spend as long as it likes drawing; meanwhile the controller may have overwritten the mailbox several times, and the display then gets only the newest. That is exactly the wanted behaviour for "show the current state".
+
+**Settings have one writer.** \`s_cfg\` is written only by the controller task (at start-up in \`app_main\` before the tasks exist, and later from the settings UI running in the controller). Other tasks that need a setting receive it in a message. This is why it needs no mutex. If you let another task read it directly, you have created shared state and must protect it.
+
+### What NVS does on the flash
+
+\`nvs_open("app", …)\` finds or creates a namespace, a prefix that keeps your keys apart from those of the Wi-Fi driver and other components. \`nvs_set_blob\` appends a new entry for the key to a log-structured page in the NVS partition; flash bits can only be changed from 1 to 0 without an erase, so NVS never rewrites in place and instead marks the old entry as superseded. \`nvs_commit\` makes sure the entry is written out. When a page fills, live entries are copied to a fresh page and the old one is erased, which also spreads erase cycles across the partition. The consequence for you: writing a setting is cheap, but writing it every second for years will wear the flash out. Save when the user changes something, not periodically.
+
+### Where each earlier project fits
+
+| Part of the device | Comes from | What to carry over |
+|---|---|---|
+| Sensor on I2C | project 5 | address scan first; check every return code |
+| Button | projects 2 and 9 | ISR gives a semaphore; debounce in the task |
+| Buzzer or LED PWM | project 3 | LEDC timer and channel; transistor for the load |
+| Display over I2C or SPI | projects 5 and 6 | one owner for the bus; verify with a capture |
+| Wi-Fi reporting | project 8 | events and backoff; TLS with verification; no blocking in handlers |
+| Task structure | project 9 | queue by value; mutex only for true shared state; stack marks; watchdog |
+| A second board as remote display | project 7 | framed protocol with CRC |`,
+  ],
+  testing: [
+    `Minimum test plan for the reference design. Extend it to cover every requirement of your own device.
+
+| ID | Covers | Action | You should see |
+|---|---|---|---|
+| T1 | logic | \`./app_logic_test\` on the PC | \`app_logic: all checks passed\` |
+| T2 | F1, F2 | Normal running; compare with a second thermometer | Display and log within the sensor's stated accuracy of the reference; updated every period |
+| T3 | F3 | Warm the sensor past the threshold (hand, warm air — not a flame) | Alarm output active within the required time of the crossing sample |
+| T4 | F4 | Let it cool slowly through the threshold | No chatter; alarm clears only below threshold minus hysteresis |
+| T5 | F5 | Press the button during an alarm | Output off at once; display shows the silenced state; re-alarms on the next excursion |
+| T6 | F6 | Unplug the sensor's SDA wire while running | Fault state within the required time; no stale reading shown; recovery when reconnected |
+| T7 | F7 | Change the threshold; power-cycle | New value in use after restart |
+| T8 | F7, S3 | Boot with erased flash; boot with an invalid stored value | Defaults used; a log line says so; no crash |
+| T9 | F8 | Normal running with network | A report at your server each period, with plausible values |
+| T10 | F9 | Switch the access point off for 10 minutes, repeat T3 and T5 during the outage | Alarm and button behave exactly as before; reporting resumes afterwards |
+| T11 | S1 | Search the repository and its history for the passphrase | Not present |
+| T12 | S2 | Point the report URL at a host with an untrusted certificate | Report refused; nothing received by that host |
+| T13 | robustness | Run for an hour; read the stack marks and free heap at start and end | Every stack keeps a margin; free heap is not falling steadily |
+| T14 | robustness | Hang one task deliberately | The task watchdog names it |
+| T15 | bus | Capture I2C during a display update and a sensor read | Complete, non-overlapping transactions; every address acknowledged |`,
+    { t: 'callout', kind: 'note', title: 'Evidence', md: `For each test keep something another person could inspect: a log extract with timestamps, a capture file, a photograph of the meter. "It worked when I tried it" is not a result. Nothing in this course's material was itself run on hardware, so your records are the first real measurements of your design — treat any expected value given here as a prediction to be checked.` },
+  ],
+  troubleshooting: [
+    { symptom: 'Each peripheral works alone but they fail together', cause: 'A shared bus or shared pin without a single owner; or two drivers configuring the same peripheral instance', fix: 'Go back to the ownership table. Capture the bus during a failure and look for interleaved transactions.' },
+    { symptom: 'Board no longer boots or flashes once everything is wired', cause: 'A load or pull resistor on a strapping pin, or something connected to GPIO6–11', fix: 'Disconnect peripherals one by one until it boots; re-check the pin budget against the strapping pin list.' },
+    { symptom: 'Resets when the buzzer sounds or Wi-Fi transmits', cause: 'Supply droop: load powered through a GPIO or from a rail that cannot supply the peak; no bulk capacitance', fix: 'Redo the power budget with peak currents; drive the load through a transistor from the 5 V rail; add capacitance near the load.' },
+    { symptom: 'I2C scan finds nothing', cause: 'Missing pull-ups, SDA and SCL swapped, device unpowered, or wrong pins in the bus configuration', fix: 'Measure SDA and SCL idle: both must sit at 3.3 V. Capture the scan: every address should at least be clocked out.' },
+    { symptom: 'Display shows garbage or half a screen', cause: 'Wrong controller or resolution assumed, wrong address, or transfers interrupted by another bus user', fix: 'Confirm the controller from the module documentation; send one known pattern; check bus ownership.' },
+    { symptom: 'Alarm flickers on and off near the threshold', cause: 'No hysteresis, or hysteresis smaller than the sensor noise', fix: 'Log raw readings to see the noise amplitude; set the margin above it or filter the readings first.' },
+    { symptom: 'Everything stalls for seconds when the network is down', cause: 'A blocking network call in a task that also does local work', fix: 'Move all network I/O to its own low-priority task fed by an overwrite queue.' },
+    { symptom: 'Settings revert to defaults after every update', cause: 'The settings structure changed size or layout and the stored blob fails validation', fix: 'Add a layout version and a migration path; test updates on top of old stored settings.' },
+    { symptom: 'Device works for hours, then resets or hangs', cause: 'Stack exhaustion on a rare path, a slow heap leak, or a deadlock', fix: 'Log stack marks and free heap periodically; subscribe tasks to the watchdog; read the reset reason at start-up.' },
+  ],
+  challenge: `Take your device from "works on the bench" to something you would leave running unattended for a month, and then hand it to someone else to attack.
+
+- **Update path.** Add over-the-air update using ESP-IDF's OTA support with two application partitions. State what verifies an image before it is run, and what happens if power fails half-way through an update. Test both.
+- **Recovery.** Read the reset reason at start-up and count unexpected resets in NVS. Decide what the device does after three watchdog resets in a row.
+- **Hardening review.** Go through the security requirements with a second person playing the attacker, with physical access to a unit you own: what can they read over the serial port, from the flash, from the network? Which ESP-IDF features (secure boot, flash encryption, NVS encryption) would change the answer, and which of those are irreversible once enabled? Do **not** enable eFuse-based features on a board you are not prepared to dedicate to that purpose; write the plan instead.
+- **Soak test.** Run for at least 24 hours with periodic access-point outages. Report uptime, reset count, minimum stack margins, heap trend, and reports sent versus expected.
+
+No solution is given. The deliverable is the updated design document, the soak-test log, and a one-page list of what an attacker with the device in hand can still do.`,
+  requirements: {
+    functional: [
+      '**F1.** The device measures the chosen quantity at least once per second and discards any reading outside the sensor\'s specified range.',
+      '**F2.** The display (or serial dashboard) shows the latest reading with its unit, and the current state, no more than 2 s after the reading was taken.',
+      '**F3.** When a reading is at or above the configured threshold, the alarm output becomes active within 500 ms of that reading.',
+      '**F4.** The alarm clears only when a reading falls below the threshold minus the configured hysteresis.',
+      '**F5.** A button press during an alarm silences the output until the condition has cleared; a later excursion alarms again.',
+      '**F6.** If the sensor cannot be read, the device enters a fault state within 5 s, indicates the fault distinctly, and never presents a stale reading as current.',
+      '**F7.** Threshold, hysteresis and report period are stored in NVS, survive power loss, and are replaced by defaults if missing or invalid.',
+      '**F8.** While the network is available, the device reports the latest reading and state to a configured server once per report period.',
+      '**F9.** Requirements F1 to F7 hold with the network unavailable for any length of time, and reporting resumes without a reset when the network returns.',
+      '**F10.** A hung task is detected by a watchdog and results in a logged, diagnosable reset.',
+    ],
+    security: [
+      '**S1.** No credential, key or token appears in the source repository or its history.',
+      '**S2.** All data leaving the device over the network uses TLS with server certificate verification; a server with an untrusted certificate is refused.',
+      '**S3.** Every value taken from storage, the network or the user is range-checked before use; no input can cause a write or read outside a buffer.',
+      '**S4.** No setting can be changed over the network without authentication; if no authenticated channel is implemented, settings are changeable only locally.',
+      '**S5.** The serial log contains no secrets, and the design document states what an attacker with physical access to the device can read and modify.',
+      '**S6.** The device has no default or shared password; any per-device secret is unique to that device.',
+    ],
+  },
+  rubric: [
+    { criterion: 'Requirements', points: 10, evidence: 'Numbered, testable functional and security requirements, each with a named test; fault conditions included.' },
+    { criterion: 'Block diagram and part selection', points: 10, evidence: 'Every part and interface shown with voltages; datasheet references for supply range, interface, address and current.' },
+    { criterion: 'Pin budget', points: 10, evidence: 'Completed table; each pin checked against strapping, flash, input-only and ADC2 restrictions; I2C address map without conflicts.' },
+    { criterion: 'Power budget', points: 10, evidence: 'Typical and peak currents from datasheets with sections cited; comparison with regulator and USB limits; one measured value compared with the estimate.' },
+    { criterion: 'Task architecture', points: 15, evidence: 'Task and queue diagram; ownership table with one owner per resource; task table with priorities justified by deadlines; measured stack margins.' },
+    { criterion: 'State machine and host tests', points: 15, evidence: 'State diagram and complete state/event table; pure-C implementation; PC tests covering every transition, hysteresis and the fault paths, all passing.' },
+    { criterion: 'Implementation quality', points: 10, evidence: 'No blocking I/O in the controller or in event handlers; return codes checked; no shared state without a stated rule; builds without warnings.' },
+    { criterion: 'Test plan and results', points: 10, evidence: 'Executed plan with evidence per test, including network-down, sensor-missing and corrupt-settings cases; failures recorded honestly.' },
+    { criterion: 'Security', points: 10, evidence: 'Threat model; S1 to S6 each demonstrated or explicitly marked as not met with the reason; bad-certificate test result.' },
+  ],
+  quiz: [
+    { kind: 'arch', q: 'A sensor driver task and a display driver task both use the same I2C bus. Which arrangement is sound?', choices: [
+      { t: 'One mutex taken around every complete transaction by both, or a single bus-owner task serving requests from a queue', ok: true, why: 'Both give the bus one owner at a time for the whole of a logical transaction, so transfers cannot interleave.' },
+      { t: 'Give the sensor task a higher priority so that its transfers always finish first', why: 'Higher priority is precisely what lets it interrupt the display task in the middle of a transfer. Priority orders tasks; it does not make a sequence of bus operations indivisible.' },
+      { t: 'Nothing special: I2C addresses keep the two devices apart', why: 'Addresses select which device listens. They do not stop one controller-side task from starting a new transaction inside another task\'s unfinished one.' },
+    ] },
+    { kind: 'circuit', q: 'On an original ESP32 that uses Wi-Fi, which pin assignment is acceptable?', choices: [
+      { t: 'An analog sensor on GPIO34', ok: true, why: 'GPIO34 is an ADC1 input, which is unaffected by Wi-Fi, and an analog sensor needs only an input, which is all GPIO34 can be.' },
+      { t: 'An analog sensor on GPIO27', why: 'GPIO27 is on ADC2, which the Wi-Fi driver uses; conversions there are not available while Wi-Fi is in use.' },
+      { t: 'An LED on GPIO35', why: 'GPIO34 to GPIO39 are input-only. The pin has no output driver to light an LED.' },
+      { t: 'A push button to ground on GPIO0', why: 'GPIO0 is sampled at reset to choose the boot mode. A button holding it low during reset stops the application from starting.' },
+    ] },
+    { kind: 'concept', q: 'The alarm threshold is 30.0 °C with 1.0 °C hysteresis and readings carry ±0.3 °C of noise. Why does the alarm not chatter when the true temperature sits at 30.0 °C?', choices: [
+      { t: 'Once on, it stays on until a reading falls below 29.0 °C, and noise of ±0.3 °C cannot carry a 30.0 °C value that far', ok: true, why: 'Two separate trip points mean the noise would have to span the gap between them to cause repeated transitions.' },
+      { t: 'Because hysteresis averages the readings', why: 'No averaging takes place. The readings are compared as they are, but against two different levels depending on the current state.' },
+      { t: 'Because the alarm is only evaluated once per minute', why: 'It is evaluated on every sample. What prevents chatter is the gap between the on and off levels.' },
+    ] },
+    { kind: 'arch', q: 'Why must the controller task never perform an HTTP request itself?', choices: [
+      { t: 'The request can block for seconds when the network is down, and during that time the controller would not process sensor or button events', ok: true, why: 'The task that owns the alarm behaviour must have a response time that does not depend on anything outside the device.' },
+      { t: 'HTTP functions can only be called from the main task', why: 'They can be called from any task with enough stack. The issue is what the calling task fails to do while it waits.' },
+      { t: 'It would use too much flash', why: 'The HTTP code takes the same flash whichever task calls it. The concern is time, not size.' },
+    ] },
+    { kind: 'security', q: 'Settings are loaded from NVS at start-up. Why validate them even though only your own firmware writes them?', choices: [
+      { t: 'Flash can be blank, partly written, written by an older layout, or modified by someone with physical access; unvalidated values then drive the device\'s behaviour', ok: true, why: 'Storage is an input like any other. Validation protects against accidents and against tampering with the same few lines.' },
+      { t: 'NVS returns random data on every read unless the values are validated', why: 'NVS returns what was stored. The danger is that what was stored may not be what the current firmware expects.' },
+      { t: 'Validation is needed only if NVS encryption is enabled', why: 'Encryption hides contents from a reader; it does not make an old layout or an out-of-range value meaningful to new firmware.' },
+    ] },
+    { kind: 'concept', q: 'Why is the fake-sensor stage worth doing before the real sensor is connected?', choices: [
+      { t: 'It proves the tasks, queues and state machine with fully controlled input, so that later faults can be attributed to the newly added hardware', ok: true, why: 'Integrating one unknown at a time keeps the search space for any fault small, and the fake can produce cases the real sensor cannot produce on demand.' },
+      { t: 'Real sensors must warm up for several hours before use', why: 'Some sensors do need settling time, but that is not why a fake is used. The reason is control over the input and isolation of faults.' },
+      { t: 'The ESP32 cannot run I2C and FreeRTOS tasks until the logic has been tested', why: 'There is no such restriction. The order is an engineering choice to make faults easy to locate.' },
+    ] },
+  ],
+};
+
+
+// ───────────────────────────── section-level material ─────────────────────────────
+const glossary = [
+  { term: 'SPI mode', def: 'One of four combinations of clock polarity (CPOL, the level SCLK rests at) and clock phase (CPHA, whether data is sampled on the first or second edge). Controller and peripheral must use a mode in which data changes on the edge opposite to the one it is sampled on.' },
+  { term: 'Chip select', def: 'The active-low line (CS, also SS or nCS) with which an SPI controller selects one peripheral and marks the start and end of a transaction.' },
+  { term: 'Shift register', def: 'A chain of flip-flops that moves each stored bit one stage along on every clock edge. A serial-in, parallel-out part such as the 74HC595 turns a serial bit stream into several output pins.' },
+  { term: 'JEDEC ID', def: 'Three bytes (manufacturer, memory type, capacity) that an SPI NOR flash chip returns in response to command `0x9F`. Reading it is a standard first test of an SPI bus, because the expected value is in the datasheet.' },
+  { term: 'Loopback test', def: 'Connecting a transmitter to its own receiver so that one device can verify its configuration and pins without a second device.' },
+  { term: 'Framing', def: 'The rules that divide a stream of bytes into messages: typically a start marker, a length, the payload and a check value.' },
+  { term: 'CRC', def: 'Cyclic redundancy check. The remainder of dividing a message, treated as a binary polynomial, by a fixed generator polynomial. It detects accidental corruption very well and offers no protection against deliberate forgery, since it uses no secret.' },
+  { term: 'Logic-level compatibility', def: 'Whether one part\'s output voltages are valid inputs for another: output-high above the receiver\'s VIH, output-low below its VIL, and nothing above the receiver\'s absolute maximum input voltage.' },
+  { term: 'Station mode', def: 'The Wi-Fi role in which a device joins an existing access point as a client, as opposed to acting as an access point itself.' },
+  { term: 'Event loop', def: 'In ESP-IDF, a queue plus a task that delivers posted events to registered handler functions one at a time. A handler that blocks delays every other event on that loop.' },
+  { term: 'Exponential backoff', def: 'Doubling the wait between retries after each failure, up to a cap, so that short faults recover quickly and long ones cause little load.' },
+  { term: 'Certificate verification', def: 'The TLS client\'s check that the server\'s certificate chains to a trusted root, names the intended host and is backed by the matching private key. Without it, TLS encrypts the connection to whoever answers.' },
+  { term: 'Kconfig', def: 'The configuration system used by ESP-IDF. Options declared in `Kconfig` files are set with `idf.py menuconfig`, stored in `sdkconfig` and exposed to C code as `CONFIG_…` macros.' },
+  { term: 'Binary semaphore', def: 'An RTOS object with two states, available or not, used to signal that an event happened. It has no owner, so an interrupt may give it; it is not suitable for protecting data.' },
+  { term: 'Mutex', def: 'An RTOS lock with an owner, used to ensure that only one task at a time uses a resource. FreeRTOS mutexes apply priority inheritance to the holder.' },
+  { term: 'Priority inheritance', def: 'Temporarily raising a mutex holder\'s priority to that of the highest-priority task waiting for the mutex, which bounds how long that task can be kept waiting.' },
+  { term: 'Stack high-water mark', def: 'The smallest amount of free stack a task has had since it started, as recorded by the kernel. In ESP-IDF it is reported in bytes.' },
+  { term: 'Task watchdog', def: 'An ESP-IDF timer that subscribed tasks must reset periodically. A task that fails to do so is reported by name, and the chip can be made to reset.' },
+  { term: 'Deadlock', def: 'A state in which two or more tasks each wait for a resource another of them holds, so none can proceed. Taking locks in one fixed global order prevents it.' },
+  { term: 'Hysteresis', def: 'Using different thresholds for switching on and switching off, so that noise smaller than the gap cannot cause repeated transitions.' },
+  { term: 'Pin budget', def: 'A table assigning every signal of a design to a pin, checked against the chip\'s restrictions (strapping pins, flash pins, input-only pins, peripheral conflicts) before any hardware is built.' },
+  { term: 'NVS', def: 'Non-volatile storage: ESP-IDF\'s key–value store kept in a flash partition. It survives resets and power loss, is wear-levelled, and is readable by anyone with the device unless encryption is enabled.' },
+];
+
+const troubleshooting = [
+  { symptom: 'SPI peripheral gives no sign of life although the function calls return ESP_OK', area: 'SPI', causes: 'SPI has no acknowledgement, so the driver cannot detect a missing or miswired device. Typical causes are a wrong CS pin, the peripheral unpowered, or MOSI and MISO swapped.', fix: 'Capture CS, SCLK and MOSI at the peripheral\'s own pins. Read a register with a known value, such as an ID, to prove both directions.' },
+  { symptom: 'SPI data is shifted by one bit or correct only some of the time', area: 'SPI', causes: 'Mode mismatch: the controller changes data on the edge the peripheral samples on. Less often, ringing on a long clock wire produces extra edges.', fix: 'Derive CPOL and CPHA from the datasheet timing diagram and confirm on a capture that data is stable across every sampling edge.' },
+  { symptom: 'UART link between two boards receives nothing', area: 'UART', causes: 'TX connected to TX, wrong pins passed to `uart_set_pin`, or the link placed on pins used by the module\'s flash.', fix: 'Loopback-test each board alone, then probe each RX pin for the other board\'s traffic.' },
+  { symptom: 'UART link works on the bench and fails when the boards have separate supplies', area: 'UART', causes: 'No common ground. Shared USB power had been providing the reference.', fix: 'Connect ground between the boards alongside the data wires.' },
+  { symptom: 'Receiver gets out of step and misreads every following message', area: 'Protocols', causes: 'Raw bytes with no framing, or a parser with no timeout that waits for ever for the rest of a truncated frame.', fix: 'Frame messages with a start marker, length and CRC; abandon a partial frame after a period of silence.' },
+  { symptom: 'Device never rejoins Wi-Fi after the access point restarts', area: 'Wi-Fi', causes: 'The disconnected event is not handled, the handler blocks the event loop, or a retry timer is not re-armed.', fix: 'Handle `WIFI_EVENT_STA_DISCONNECTED` by scheduling `esp_wifi_connect()` with backoff from a timer; test with a deliberate outage.' },
+  { symptom: 'Brownout reset when Wi-Fi starts or transmits', area: 'Power', causes: 'The supply or cable cannot deliver the transmit current peaks.', fix: 'Use a short cable and a capable port or supply; add bulk capacitance near the module; check the peak current in the module datasheet.' },
+  { symptom: 'HTTPS request fails until certificate checking is disabled', area: 'Wi-Fi', causes: 'The server\'s root certificate is not trusted by the firmware, the URL host name does not match the certificate, or dates are checked without a valid clock.', fix: 'Embed the correct root or use the certificate bundle, fix the host name, set the time. Leave verification on.' },
+  { symptom: 'Random crashes far from recently changed code', area: 'RTOS', causes: 'A task stack overflow overwriting neighbouring memory, or a task-level kernel call made from an ISR.', fix: 'Enable stack overflow checking, log high-water marks, and audit ISRs for calls without `FromISR`.' },
+  { symptom: 'Task watchdog fires and names the idle task', area: 'RTOS', causes: 'A higher-priority task runs without ever blocking.', fix: 'Make the task wait on a queue, semaphore or delay instead of polling in a loop.' },
+  { symptom: 'System freezes and the watchdog names two tasks', area: 'RTOS', causes: 'Deadlock from two mutexes taken in opposite orders.', fix: 'Adopt one lock order everywhere, or give each resource an owner task so that no task holds two locks.' },
+  { symptom: 'Alarm or user interface lags whenever the network is slow', area: 'Architecture', causes: 'Blocking network I/O performed in the task that also handles local events.', fix: 'Move network work to its own task and pass it copies of the data through a queue.' },
+];
+
+const refs = [
+  { org: 'Espressif', title: 'ESP-IDF v6.1: SPI master driver', url: IDF + 'api-reference/peripherals/spi_master.rst', note: 'Documentation source on GitHub; the URL path was not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: UART driver', url: IDF + 'api-reference/peripherals/uart.rst', note: 'Documentation source on GitHub; not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: GPIO summary for the original ESP32 (strapping, input-only, flash and ADC2 pins)', url: IDF + 'api-reference/peripherals/gpio/esp32.inc' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: ADC oneshot driver (ADC2 and Wi-Fi)', url: IDF + 'api-reference/peripherals/adc/adc_oneshot.rst' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: Wi-Fi driver guide (events, reason codes)', url: IDF + 'api-guides/wifi.rst', note: 'Not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: HTTP server', url: IDF + 'api-reference/protocols/esp_http_server.rst', note: 'Not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: HTTP client', url: IDF + 'api-reference/protocols/esp_http_client.rst', note: 'Not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: certificate bundle', url: IDF + 'api-reference/protocols/esp_crt_bundle.rst', note: 'Not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: FreeRTOS in ESP-IDF (stack sizes in bytes, dual-core behaviour)', url: IDF + 'api-reference/system/freertos_idf.rst', note: 'Not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: watchdogs', url: IDF + 'api-reference/system/wdts.rst', note: 'Not load-tested.' },
+  { org: 'Espressif', title: 'ESP-IDF v6.1: non-volatile storage', url: IDF + 'api-reference/storage/nvs_flash.rst', note: 'Not load-tested.' },
+  { org: 'FreeRTOS', title: 'FreeRTOS kernel source (queue.c, tasks.c, semphr.h)', url: 'https://github.com/FreeRTOS/FreeRTOS-Kernel' },
+  { org: 'Texas Instruments', title: 'SN74HC595 datasheet (pinout, timing diagram, current limits)', url: 'https://www.ti.com/lit/ds/symlink/sn74hc595.pdf', note: 'Not load-tested. Use the datasheet from the manufacturer of the part you actually have.' },
+  { org: 'sigrok', title: 'PulseView logic analyser software', url: 'https://github.com/sigrokproject/pulseview' },
+];
+
+export default { skills, lessons: [], labs: [p6, p7, p8, p9, p10], glossary, troubleshooting, refs };

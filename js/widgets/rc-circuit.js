@@ -53,10 +53,10 @@ export default function mount(el, props = {}) {
         : g({}, wire([40, 100], [40, 60], [60, 60]), gnd(40, 100), sw(60, 60, 'h', true), txt(80, 46, 'closes at t = 0', { anchor: 'middle', cls: 'sub' }), txt(300, 100, 'C starts at 3.3 V', { anchor: 'end', cls: 'sub' })),
       wire([100, 60], [130, 60]), resistor(130, 60, 'h', 'R ' + fmtR(st.r)), wire([190, 60], [250, 60]), dot(230, 60), wire([230, 60], [230, 66]), capacitor(230, 66, 'v', 'C ' + fmtSI(st.c, 'F')), gnd(230, 106),
       txt(256, 56, 'Vc', { cls: 'sig' }),
-      axes(sc, { ylabel: 'Vc (V)', xlabel: 'time', xticks: [1, 2, 3, 4, 5].map((n) => [n * tau, n + 'τ']), yticks: [[0, '0'], [VCC, '3.3']] }),
+      axes(sc, { ylabel: 'Vc (V)', xlabel: 'time', xticks: [1, 2, 3, 4, 5].map((n) => [n * tau, n + 'τ']), yticks: [[0, '0'], [VCC, '3.3'], [vTau, up ? '63 %' : '37 %']] }),
       s('path', { d: `M${sc.x(0)} ${sc.y(vth)}H${sc.x(tEnd)}`, class: 'el-trace t2 thin dashed' }), txt(sc.x(tEnd) - 2, sc.y(vth) - 4, 'threshold', { anchor: 'end', cls: 'sub' }),
       polyline(pts, 't1'),
-      s('circle', { cx: sc.x(tau), cy: sc.y(vTau), r: 3.5, class: 'marker' }), txt(sc.x(tau) + (up ? -6 : 6), sc.y(vTau) - 6, up ? '63.2 % at τ' : '36.8 % at τ', { anchor: up ? 'end' : 'start', cls: 'sub' }),
+      s('circle', { cx: sc.x(tau), cy: sc.y(vTau), r: 3.5, class: 'marker' }),
       isFinite(tTh) && tTh <= tEnd ? g({}, s('path', { d: `M${sc.x(tTh)} ${sc.y(vth)}V${sc.y(0)}`, class: 'el-trace t2 thin' }), s('circle', { cx: sc.x(tTh), cy: sc.y(vth), r: 3.5, class: 'f2' })) : null));
     ro.set([['Time constant τ', fT(tau)], ['Reaches threshold', fT(tTh)], ['Settled (5τ, 99.3 %)', fT(5 * tau)], ['Low-pass cutoff', fmtSI(rcCutoff(st.r, st.c), 'Hz')]]);
     eq.set([`τ = R × C = ${fmtR(st.r)} × ${fmtSI(st.c, 'F')} = ${fT(tau)}`,

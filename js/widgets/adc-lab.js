@@ -27,10 +27,11 @@ export default function mount(el, props = {}) {
   st.fs = sFs.get();
   const codeIn = h('input', { type: 'number', min: 0, step: 1, value: 0, 'aria-label': 'ADC code to convert to a voltage' });
   codeIn.addEventListener('input', () => renderConv(true));
-  const fig = h('div'), fig2 = h('div'), ro = readout(), eq = equation(), eq2 = equation(), msg = messages(), msg2 = messages();
+  const legend = h('div', { class: 'adc-lab-legend' }), fig = h('div'), fig2 = h('div'), ro = readout(), eq = equation(), eq2 = equation(), msg = messages(), msg2 = messages();
   clear(el).append(h('div', { class: 'w-grid adc-lab' },
-    h('div', { class: 'el-col' }, h('div', { class: 'el-sub' }, 'Sampling a sine wave'), fig, eq.el),
-    h('div', { class: 'el-col' }, h('div', { class: 'w-controls' }, sBits.el, sVref.el, sF.el, sFs.el, sAmp.el), ro.el, msg.el),
+    h('div', { class: 'el-col' }, h('div', { class: 'el-sub' }, 'Sampling a sine wave'), fig, legend, eq.el),
+    h('div', { class: 'el-col' }, h('div', { class: 'w-controls' }, sBits.el, sVref.el, sF.el, sFs.el, sAmp.el), ro.el, msg.el)),
+  h('div', { class: 'w-grid adc-lab adc-lab-second' },
     h('div', { class: 'el-col' }, h('div', { class: 'el-sub' }, 'One conversion: voltage → code → voltage'), fig2, eq2.el),
     h('div', { class: 'el-col' }, h('div', { class: 'w-controls' }, sVin.el, h('div', { class: 'w-field adc-lab-code' }, h('label', {}, 'Code → voltage'), codeIn, h('output', {}))), msg2.el)),
   note('ideal ADC: instant sampling, perfectly even steps, no noise, offset or gain error, and code = floor(Vin / Vref × 2^n) clamped to 0 … 2^n − 1. Some datasheets and libraries divide by 2^n − 1 instead; the difference is under one step. Real converters lose one to two bits to noise, need a low source impedance, and are damaged by inputs beyond the supply rails: check your chip\'s datasheet for its absolute maximum input voltage.'));
@@ -52,7 +53,8 @@ export default function mount(el, props = {}) {
       polyline(stair, 't1'),
       p.aliased ? polyline(curve((t) => Math.min(st.vref, Math.max(0, offset + amp * Math.sin(2 * Math.PI * p.fSigned * t)))), 't2 dashed') : null,
       samples.length <= 120 ? samples.map((q) => s('circle', { cx: sc.x(q.t), cy: sc.y(q.vq), r: 2.6, class: 'f1' })) : null,
-      txt(sc.x(0) + 4, sc.y(top) + 12, 'grey: real signal   blue: what the ADC stores' + (p.aliased ? '   red: what it looks like' : ''), { cls: 'sub' })));
+      txt(sc.x(WINDOW) - 4, sc.y(top) + 12, 'above Vref: clips', { anchor: 'end', cls: 'sub' })));
+    clear(legend).append(h('span', { class: 'k6' }, 'real signal'), h('span', { class: 'k1' }, 'what the ADC stores'), ...(p.aliased ? [h('span', { class: 'k2' }, 'what the samples look like')] : []));
     ro.set([['Step size (1 LSB)', fmtSI(p.lsb, 'V')], ['Levels', String(p.levels)], ['Nyquist limit (fs / 2)', fmtSI(p.nyquist, 'Hz'), p.aliased ? 'el-hot' : ''], ['Samples per cycle', (+p.perCycle.toPrecision(3)).toString(), p.aliased ? 'el-hot' : ''],
       ['Frequency in the data', fmtSI(p.fApparent, 'Hz'), p.aliased ? 'el-hot' : ''], ['Worst rounding error', fmtSI(p.lsb, 'V')]]);
     eq.set([`1 LSB = Vref / 2^n = ${st.vref} V / ${p.levels} = ${fmtSI(p.lsb, 'V')}`,

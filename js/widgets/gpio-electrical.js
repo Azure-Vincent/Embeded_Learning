@@ -59,7 +59,7 @@ export default function mount(el, props = {}, ctx = {}) {
       case 'drive-5v': k.push(wire([186, Y], [240, Y]), s('rect', { x: 240, y: 76, width: 84, height: 48, rx: 3, class: 'el-chip' }), txt(282, 96, '5 V device', { anchor: 'middle', cls: 'sub' }), txt(282, 112, 'output HIGH', { anchor: 'middle' })); break;
       case 'short-gnd': k.push(wire([186, Y], [256, Y], [256, 120]), gnd(256, 120)); break;
     }
-    if (on('LED') || sol.contention) k.push(flow(`M186 ${Y}H286`, Math.abs(sol.iPin), sol.iPin < 0));
+    if (on('LED') || sol.contention) k.push(flow(`M186 ${Y}H${on('LED') ? 286 : 256}`, Math.abs(sol.iPin), sol.iPin < 0));
     return k;
   }
 
@@ -78,13 +78,13 @@ export default function mount(el, props = {}, ctx = {}) {
       txt(px(0), by + 30, '0 V', { cls: 'sub' }), txt(px(sol.vil), by + 30, 'VIL ' + sol.vil.toFixed(2), { anchor: 'middle', cls: 'sub' }), txt(px(sol.vih), by + 30, 'VIH ' + sol.vih.toFixed(2), { anchor: 'middle', cls: 'sub' }), txt(px(P.vdd), by + 30, 'VDD 3.3', { anchor: 'middle', cls: 'sub' })];
     if (sol.floating) bar.push(s('path', { d: `M${px(0.1)} ${by - 4}H${px(P.vdd)}`, class: 'el-dash' }), txt(px(1.65), by - 12, 'pin voltage: anywhere (floating)', { anchor: 'middle', cls: 'hot' }));
     else bar.push(s('path', { d: `M${px(sol.v)} ${by - 2}l5 -8h-10Z`, class: 'marker' }), s('path', { d: `M${px(sol.v)} ${by - 2}V${by + 16}`, class: 'el-wire' }),
-      txt(Math.min(Math.max(px(sol.v), 70), 270), by - 14, 'pin voltage ' + sol.v.toFixed(2) + ' V', { anchor: 'middle', cls: sol.v > P.vdd + 0.3 || sol.logic === 'x' ? 'hot' : 'good' }));
+      txt(Math.min(Math.max(px(sol.v), 84), 256), by - 14, 'pin voltage ' + sol.v.toFixed(2) + ' V', { anchor: 'middle', cls: sol.v > P.vdd + 0.3 || sol.logic === 'x' ? 'hot' : 'good' }));
     clear(fig).append(svg(340, 290, `GPIO pin as ${st.mode === 'in' ? 'input' : st.mode === 'pp' ? 'push-pull output' : 'open-drain output'}; pin voltage ${sol.floating ? 'floating' : sol.v.toFixed(2) + ' volts'}.`,
-      s('rect', { x: 10, y: 12, width: 168, height: 204, rx: 4, class: 'el-dash' }), txt(170, 28, 'inside the MCU', { anchor: 'end', cls: 'sub' }),
+      s('rect', { x: 10, y: 12, width: 168, height: 204, rx: 4, class: 'el-dash' }), txt(18, 210, 'inside the MCU', { cls: 'sub' }),
       // output stage: two switches standing in for the P-channel (top) and N-channel (bottom) transistors
       rail(52, 40, 'VDD'), g({ class: st.mode === 'od' || !out ? 'off' : '' }, sw(52, 40, 'v', hi)), txt(40, 66, 'P', { anchor: 'end', cls: hi ? 'good' : 'sub' }),
       wire([52, 80], [52, 120]), g({ class: !out ? 'off' : '' }, sw(52, 120, 'v', lo)), gnd(52, 160), txt(40, 146, 'N', { anchor: 'end', cls: lo ? 'good' : 'sub' }),
-      txt(18, 200, !out ? 'driver off (hi-Z)' : st.mode === 'od' ? 'open-drain: P unused' : 'push-pull', { cls: 'sub' }),
+      txt(18, 194, !out ? 'driver off (hi-Z)' : st.mode === 'od' ? 'open-drain: P unused' : 'push-pull', { cls: 'sub' }),
       wire([52, Y], [178, Y]), dot(52, Y), s('rect', { x: 174, y: Y - 6, width: 12, height: 12, class: 'el-body' }), txt(180, Y - 13, 'pad', { anchor: 'middle', cls: 'sub' }),
       st.pull === 'up' ? g({}, rail(104, 40, 'VDD'), resistor(104, 40, 'v', '45 kΩ'), dot(104, Y)) : null,
       st.pull === 'down' ? g({}, resistor(104, Y, 'v', '45 kΩ'), gnd(104, 160), dot(104, Y)) : null,

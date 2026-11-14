@@ -12,7 +12,7 @@ export default [
     blocks: [
       `## The problem
 
-A device runs for eleven days and then reports a configuration value of 1,936,287,828 instead of 100. No code
+A device runs for eleven days and then reports a configuration value of 1,953,719,668 instead of 100. No code
 writes that variable after start-up. Printed as bytes, the number is ¬'t' 'e' 's' 't'¬. Something else wrote
 text over it. On a PC the operating system would have stopped the offending program with a segmentation fault. On
 this microcontroller nothing stopped anything. Why not, and what wrote there?`,
@@ -373,7 +373,7 @@ refuses. Both course cores have one. Uses:
 | Interrupt masking | PRIMASK only | PRIMASK, FAULTMASK, BASEPRI (mask below a chosen priority) |
 | Interrupt lines | Up to 32 | Up to 240 |
 | Unaligned access | Always faults | Supported for most instructions |
-| Atomic bit-set support | No exclusive-access instructions | ¬ldrex¬/¬strex¬ for lock-free updates |
+| Lock-free updates | No exclusive-access instructions | ¬ldrex¬/¬strex¬ for lock-free updates |
 | MPU, VTOR | Optional in the architecture; present on the MSPM0L2228 | Present |
 
 Practical consequences when moving code to the M0+: ¬float¬ arithmetic and division become slow library calls; code

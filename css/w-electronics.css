@@ -73,3 +73,7 @@
 .pwm-lab-led i { width: 30px; height: 30px; border-radius: 50%; background: var(--sig2); border: 1px solid var(--line); flex: none; box-shadow: 0 0 14px var(--sig2); }
 .pwm-lab-led span.cell { width: 30px; height: 30px; border-radius: 50%; background: var(--sunk); display: inline-grid; flex: none; }
 .adc-lab-code input[type=number] { width: 7em; font-family: var(--mono); }
+.adc-lab-second { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.adc-lab-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .8rem; color: var(--muted); }
+.adc-lab-legend span::before { content: ""; display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--sig6); margin-right: 6px; vertical-align: middle; }
+.adc-lab-legend .k1::before { border-color: var(--sig1); } .adc-lab-legend .k2::before { border-color: var(--sig2); border-top-style: dashed; }

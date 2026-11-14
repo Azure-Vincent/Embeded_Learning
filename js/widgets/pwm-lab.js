@@ -68,7 +68,7 @@ export default function mount(el, props = {}) {
       txt(sc2.x(5.9), sc2.y(21), 'not achievable', { anchor: 'end', cls: 'sub' }),
       s('path', { d: `M${sc2.x(lx(st.freq))} ${sc2.y(0)}V${sc2.y(24)}`, class: 'el-grid' }),
       s('circle', { cx: sc2.x(lx(st.freq)), cy: sc2.y(Math.min(24, st.bits)), r: 5, class: p.ok ? 'f3' : 'f2' }),
-      txt(Math.min(sc2.x(lx(st.freq)) + 8, 250), sc2.y(Math.min(24, st.bits)) + (st.bits > 20 ? 14 : -7), `${st.bits} bits @ ${fmtSI(st.freq, 'Hz')}`, { cls: p.ok ? 'good' : 'hot' })));
+      txt(sc2.x(lx(st.freq)) + (st.freq > 300 ? -9 : 9), sc2.y(Math.min(24, st.bits)) + 4, `${st.bits} bits @ ${fmtSI(st.freq, 'Hz')}`, { anchor: st.freq > 300 ? 'end' : 'start', cls: p.ok ? 'good' : 'hot' })));
     clear(lamp).append(st.load === 'led'
       ? h('span', { class: 'cell' }, h('i', { style: { opacity: (0.06 + 0.94 * p.duty).toFixed(2), boxShadow: `0 0 ${Math.round(18 * p.duty)}px var(--sig2)` } }))
       : h('span', { class: 'w-mono' }, 'speed ≈ ' + (p.duty * 100).toFixed(0) + ' %'),

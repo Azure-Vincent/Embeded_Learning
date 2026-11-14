@@ -233,7 +233,7 @@ export default function mount(el, props = {}, ctx) {
       if (res.error) msg = { cls: 'bad', text: res.error };
       else { env = res.env; msg = { cls: '', text: res.stmts.some((s) => s.target) ? 'Done.' : `Value: ${hex(env._)} = ${env._}` }; }
     }
-    draw();
+    draw(); input.focus();
   }
 
   function draw() {

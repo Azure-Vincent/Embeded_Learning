@@ -523,7 +523,7 @@ Because a peripheral cannot speak first, events that originate at the peripheral
 - **Switch to a peer bus**: if many nodes generate events, a bus designed for it (CAN) may fit better than polling everyone.
 
 And because a peripheral must respond to a clock it does not control, **being** an I2C target or SPI peripheral in firmware is harder than being the controller: the response must be ready when the controller's clock arrives. I2C lets a target stretch the clock to gain time; SPI gives no such help, which is why SPI peripheral firmware prepares its reply before CS falls.`,
-      { t: 'widget', name: 'spi-analyzer', props: { mode: 0 }, caption: 'Watch which lines the controller drives and which the peripheral drives during the register read, and note when MISO first carries meaningful data.' },
+      { t: 'widget', name: 'spi-analyzer', props: { mode: 3 }, caption: 'Watch which lines the controller drives and which the peripheral drives during the register read, and note when MISO first carries meaningful data.' },
       { t: 'callout', kind: 'mistake', title: 'Two controllers by accident',
         md: 'Two development boards joined by SPI or I2C, both running example code written for the controller role, will both drive SCLK (push-pull contention on SPI) or both issue START conditions and wait for a target that does not exist (I2C). One side must be configured, and written, as the peripheral or target. When joining two MCUs, decide the roles on paper first, and consider whether a UART — which has no roles — is the simpler link.' },
       { t: 'callout', kind: 'decision', title: 'Which side should be the controller?',

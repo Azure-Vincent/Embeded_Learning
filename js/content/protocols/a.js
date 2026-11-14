@@ -377,6 +377,7 @@ int main(void)
           ],
           explain: 'The busy-wait loop is the simplest correct transmitter. Its cost is CPU time: at 9600 baud each byte holds the processor for about a millisecond. Real firmware lets the "transmitter empty" interrupt pull the next byte from a buffer instead; the ESP-IDF driver you saw above does exactly that.',
         } },
+      { t: 'widget', name: 'uart-terminal', props: { baud: 115200, format: '8N1', peer: 'console' }, caption: 'A device with a small command shell, the kind you find on debug headers. Type help. Then set your side to 7E1 and compare what comes back with the case below.' },
       `## A harder case
 A device sends 7E1 frames. Your terminal is set to 8N1 at the same baud rate. Both are ten bits long (start + 7 data + parity + stop, against start + 8 data + stop), so there are no framing errors. What do you see?
 

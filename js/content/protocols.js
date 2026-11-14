@@ -1,9 +1,10 @@
 import a from './protocols/a.js';
 import b from './protocols/b.js';
 import c from './protocols/c.js';
+import labs from './protocols/labs.js';
 import meta from './protocols/meta.js';
 
-const parts = [a, b, c, meta];
+const parts = [a, b, c, labs, meta];
 const cat = (k) => parts.flatMap((p) => p[k] || []);
 export default {
   id: 'protocols', title: 'Communication Protocols', track: 'hardware', requires: ['esp32'],

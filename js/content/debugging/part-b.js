@@ -285,7 +285,7 @@ Probes differ in three ways:
           'The probe needs to know the target runs at 1.8 V.',
           'To beat a 2 ms window you need control of the chip before its firmware starts.',
         ],
-        answer: { type: 'text', accept: ['(?i)reset|nrst|srst'], nudge: 'Which signal lets the probe hold the chip still while it connects?' },
+        answer: { type: 'text', accept: ['[Rr][Ee][Ss][Ee][Tt]', '[Nn][Rr][Ss][Tt]', '[Ss][Rr][Ss][Tt]'], nudge: 'Which signal lets the probe hold the chip still while it connects?' },
         solution: `GND, VTref (to the 1.8 V I/O rail), SWCLK, SWDIO and **nRESET**. The reset line is the one that defeats the remap: the probe asserts reset, begins the SWD connection, sets the core to halt on reset, and releases the line. The core stops at the first instruction, before the code that reconfigures the pin. Without nRESET you would have to win a 2 ms race by hand.` },
       `## Harder application: when the probe is the thing that is broken
 
@@ -469,7 +469,7 @@ pc (/32): 0x10000228
           'The second word of a Cortex-M vector table is the reset vector.',
           'Bit 0 of a Cortex-M vector is the Thumb bit, not part of the address.',
         ],
-        answer: { type: 'text', accept: ['^\\s*(0x)?0*c0\\s*$'], nudge: 'Take the second word and clear its lowest bit.' },
+        answer: { type: 'text', accept: ['^\\s*(0[xX])?0*[cC]0\\s*$'], nudge: 'Take the second word and clear its lowest bit.' },
         solution: `The reset vector is \`0x000000C1\`. Clearing the Thumb bit gives **0x000000C0**. The first word, \`0x20208000\`, is the initial stack pointer: the top of a 32 KB RAM that starts at \`0x20200000\`, which is the MSPM0L2228's SRAM base.` },
       `## Harder application: dumping your own firmware, and what stops others doing it
 
@@ -711,7 +711,7 @@ Options, in order of preference: build with \`-Og\`, which optimises without des
           '`w` is a 4-byte unit, and the count is 6.',
           'The words are at sp, sp+4, sp+8, … The last is at sp + 4 × 5.',
         ],
-        answer: { type: 'text', accept: ['^\\s*(0x)?0*20001f54\\s*$', '(?i)20001f54'], nudge: 'Six 4-byte words starting at 0x20001F40: the last one starts 20 bytes later.' },
+        answer: { type: 'text', accept: ['20001[fF]54'], nudge: 'Six 4-byte words starting at 0x20001F40: the last one starts 20 bytes later.' },
         solution: `6 words × 4 bytes = 24 bytes. The words start at \`0x20001F40, …44, …48, …4C, …50, …54\`, so the last is at **0x20001F54**. Because the stack grows downward, these are the six most recently pushed words, the newest first.` },
       `## Harder application: the stuck loop
 
@@ -944,7 +944,7 @@ A **core dump** goes further. With the core-dump component enabled, the panic ha
           '0x1000 is bit 12. Which byte of CFSR is that in?',
           'Bit 12 is in the bus-fault byte (bits 15:8). It concerns exception *entry*.',
         ],
-        answer: { type: 'text', accept: ['(?i)stkerr'], nudge: 'Bit 12 of CFSR, in the BusFault status byte: the fault happened while pushing the frame.' },
+        answer: { type: 'text', accept: ['[Ss][Tt][Kk][Ee][Rr][Rr]'], nudge: 'Bit 12 of CFSR, in the BusFault status byte: the fault happened while pushing the frame.' },
         solution: `(a) Bit 2 of \`0xFFFFFFFD\` is set, so the frame is on the **process stack (PSP)**: an RTOS task was running. (b) Bit 12 is **STKERR**: a bus fault occurred while the core was pushing the exception frame. That means the task's stack pointer pointed outside valid memory, and the usual cause is that the task overflowed its stack. The stacked frame is not trustworthy here, because stacking is what failed. Check the task's stack size and its high-water mark.` },
       `## Harder application: the same fault on three platforms
 

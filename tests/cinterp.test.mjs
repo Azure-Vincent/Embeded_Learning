@@ -415,7 +415,7 @@ test('__attribute__((interrupt)) handler is attached by the simulator', () => {
 });
 test('interrupt between statements causes a lost update; irq_disable protects it', () => {
   const pre = 'volatile int shared = 0;\nvoid timer_isr(void) { TIM_STATUS = 1; shared = shared + 1; }\n';
-  const body = (guard) => `irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 7; TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
+  const body = (guard) => `irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 11; TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
     int mine = 0;
     for (int i = 0; i < 200; i++) { ${guard ? 'irq_disable();' : ''} int tmp = shared; tmp = tmp + 1; shared = tmp; ${guard ? 'irq_enable();' : ''} mine++; }
     TIM_CTRL = 0; printf("%d %d", shared, mine);`;

@@ -1,1 +1,37 @@
 /* Styles specific to the protocols tools. Shared widget primitives live in app.css. */
+
+/* shared waveform renderer (js/widgets/_wave.js) */
+.wave-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); margin: 8px 0; }
+.wave-scroll:focus-visible { outline: 2px solid var(--link); outline-offset: 1px; }
+.wave-svg { width: 100%; height: auto; display: block; }
+.wave-grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 3; }
+.wave-tick { font: 10px var(--mono); fill: var(--muted) !important; }
+.wave-name { font: 600 11px var(--mono); }
+.wave-trace { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.wave-span { stroke-width: 2.6; }
+.wave-ann rect { stroke-width: 1; }
+.wave-ann text { font: 10px var(--mono); fill: var(--ink); }
+.wave-mark { stroke: var(--surface); stroke-width: .8; }
+.wave-cursor { stroke: var(--copper); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.wave-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .84rem; color: var(--muted); margin: 4px 0; }
+.wave-legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+/* uart-terminal */
+.uart-terminal-side { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px 12px; margin: 0; min-width: 0; }
+.uart-terminal-side legend { font: 600 .88rem var(--cond); padding: 0 6px; }
+.uart-terminal-side select { min-width: 0; width: 100%; }
+.uart-terminal-side .w-field { grid-template-columns: 6.5em 1fr 0; gap: 8px 0; }
+.uart-terminal-wirebox { display: grid; grid-template-columns: minmax(220px, 360px) minmax(200px, 1fr); gap: 8px 16px; align-items: center; margin: 12px 0; }
+@media (max-width: 560px) { .uart-terminal-wirebox { grid-template-columns: 1fr; } }
+.uart-terminal-wiring { max-width: 360px; } .uart-terminal-wiring text { font-size: 11px; }
+.uart-terminal-chip { fill: var(--sunk); stroke: var(--line); } .uart-terminal-chipname { fill: var(--muted) !important; font-size: 10px !important; }
+.uart-terminal-pin { fill: var(--ink); }
+.uart-terminal-wire { fill: none; stroke-width: 2; } .uart-terminal-wire.a { stroke: var(--sig1); } .uart-terminal-wire.b { stroke: var(--sig3); }
+.uart-terminal-wire.gnd { stroke: var(--sig6); } .uart-terminal-wire.bad { stroke: var(--bad); stroke-dasharray: 5 3; }
+.uart-terminal-screen { min-height: 9em; max-height: 14em; }
+.uart-terminal-sys { color: #7f95a1; } .uart-terminal-np { color: #e6b673; } .uart-terminal-err { color: #ff9e8a; text-decoration: underline wavy; }
+.uart-terminal-inrow { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; align-items: center; margin: 4px 0 12px; } .uart-terminal-inrow .w-term-in { margin: 0; }
+.uart-terminal-h { margin: 18px 0 6px; }
+.uart-terminal-info { margin: 4px 0; overflow-wrap: anywhere; }
+.uart-terminal-led { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--muted); margin-left: 4px; vertical-align: baseline; }
+.uart-terminal-led.on { background: var(--warn); border-color: var(--warn); box-shadow: 0 0 6px var(--warn); }

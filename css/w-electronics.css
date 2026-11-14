@@ -1,1 +1,75 @@
 /* Styles specific to the electronics tools. Shared widget primitives live in app.css. */
+/* Shared schematic and plot styling (js/sim/electronics-draw.js), used by ohms-law … adc-lab. */
+.el-svg { max-width: 600px; margin: 0 auto; border: 1px solid var(--line); border-radius: var(--r); overflow: visible; }
+.el-svg .el-wire, .el-svg .el-part path { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.el-svg .el-part .el-fill, .el-svg .el-dot { fill: var(--ink); stroke: var(--ink); stroke-width: 1; }
+.el-svg .el-body { fill: var(--surface); stroke: var(--ink); stroke-width: 1.6; }
+.el-svg .el-chip { fill: var(--sunk); stroke: var(--ink); stroke-width: 1.6; }
+.el-svg .el-t { font-size: 11.5px; } .el-svg .el-t.sub { font-size: 10.5px; fill: var(--muted); } .el-svg .el-t.rail { font-size: 11px; fill: var(--copper); font-weight: 600; }
+.el-svg .el-t.hot { fill: var(--bad); font-weight: 600; } .el-svg .el-t.good { fill: var(--ok); font-weight: 600; } .el-svg .el-t.sig { fill: var(--sig1); } .el-svg .el-t.big { font-size: 13px; font-weight: 600; }
+.el-svg .el-arrow path { fill: none; stroke: var(--sig1); stroke-width: 1.4; } .el-svg .el-arrow .head { fill: var(--sig1); stroke-width: .6; }
+.el-svg .el-part .el-ray path { stroke: var(--copper); stroke-width: 1.1; } .el-svg .el-part .el-ray .head { fill: var(--copper); }
+.el-svg .el-glow { fill: var(--el-led, var(--sig2)); stroke: none; filter: blur(5px); }
+.el-svg .el-part.hot path, .el-svg .el-part.hot .el-body { stroke: var(--bad); } .el-svg .el-part.hot .el-fill { fill: var(--bad); stroke: var(--bad); }
+.el-svg .el-part.off path, .el-svg .el-part.off .el-body { stroke: var(--muted); stroke-dasharray: 3 3; }
+.el-svg .el-dash { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 3; }
+.el-svg .el-flow { fill: none; stroke: var(--sig1); stroke-width: 3; stroke-dasharray: 2 14; stroke-linecap: round; opacity: .8; animation: el-flow 1s linear infinite; }
+.el-svg .el-flow.rev { animation-direction: reverse; }
+@keyframes el-flow { to { stroke-dashoffset: -16; } }
+@media (prefers-reduced-motion: reduce) { .el-svg .el-flow { animation: none; } }
+.el-svg .el-plot { fill: var(--sunk); stroke: var(--line); } .el-svg .el-grid { fill: none; stroke: var(--line); stroke-width: 1; }
+.el-svg .el-trace { fill: none; stroke-width: 1.8; stroke-linejoin: round; }
+.el-svg .t1 { stroke: var(--sig1); } .el-svg .t2 { stroke: var(--sig2); } .el-svg .t3 { stroke: var(--sig3); } .el-svg .t4 { stroke: var(--sig4); } .el-svg .t5 { stroke: var(--sig5); } .el-svg .t6 { stroke: var(--sig6); }
+.el-svg .thin { stroke-width: 1.1; } .el-svg .dashed { stroke-dasharray: 5 4; }
+.el-svg .f1 { fill: var(--sig1); } .el-svg .f2 { fill: var(--sig2); } .el-svg .f3 { fill: var(--sig3); } .el-svg .f4 { fill: var(--sig4); } .el-svg .f5 { fill: var(--sig5); }
+.el-svg .band-bad { fill: var(--bad); opacity: .16; } .el-svg .band-ok { fill: var(--ok); opacity: .16; } .el-svg .band-warn { fill: var(--warn); opacity: .22; } .el-svg .band-fill { fill: var(--sig1); opacity: .18; }
+.el-svg .marker { fill: var(--ink); stroke: var(--surface); stroke-width: 1; }
+
+.el-eq { font: .86rem/1.6 var(--mono); background: var(--sunk); border-left: 3px solid var(--mask); border-radius: 0 var(--r) var(--r) 0; padding: 8px 12px; margin-top: 10px; overflow-x: auto; white-space: pre-wrap; }
+.w-field[hidden] { display: none; }
+.el-ro { grid-template-columns: 1fr 1fr; } .el-ro > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.el-msgs .w-msg { margin-top: 8px; } .el-msgs:empty { display: none; }
+.el-check { display: flex; align-items: center; gap: 6px; font-size: .9rem; } .el-check input { accent-color: var(--mask); width: 1.05em; height: 1.05em; }
+.el-selfield { grid-template-columns: minmax(7em, auto) 1fr; } .el-selfield select { min-width: 0; width: 100%; }
+.el-col { display: grid; gap: 12px; min-width: 0; } .el-col > * { min-width: 0; }
+.el-col > button, .series-parallel-stage > button { justify-self: start; }
+.w-tabs[hidden], .btn[hidden] { display: none; }
+.el-wide { grid-column: 1 / -1; }
+.el-sub { font: 600 .82rem var(--cond); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 4px 0 0; }
+.el-table { border-collapse: collapse; font: .84rem var(--mono); width: 100%; } .el-table th, .el-table td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: right; } .el-table th { font: 600 .8rem var(--sans); color: var(--muted); } .el-table td { white-space: nowrap; } .el-table td:first-child, .el-table th:first-child { text-align: left; }
+.el-hot { color: var(--bad); font-weight: 600; } .el-good { color: var(--ok); }
+@media (max-width: 420px) { .w-field { grid-template-columns: 1fr auto; } .w-field input[type=range] { grid-column: 1 / -1; grid-row: 2; } .el-selfield { grid-template-columns: 1fr; } }
+
+/* ohms-law: power bar */
+.ohms-law-bar { height: 14px; background: var(--sunk); border: 1px solid var(--line); border-radius: 7px; overflow: hidden; position: relative; }
+.ohms-law-bar > i { display: block; height: 100%; background: var(--ok); } .ohms-law-bar.warn > i { background: var(--warn); } .ohms-law-bar.bad > i { background: var(--bad); }
+.ohms-law-barlab { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); }
+
+/* resistor-code: physical band colours. These are the colours printed on real parts, so they are fixed, not themed. */
+.resistor-code { --rc-black: #111; --rc-brown: #7a4a21; --rc-red: #d22b2b; --rc-orange: #f08a1c; --rc-yellow: #f2d21b; --rc-green: #2e9e4a; --rc-blue: #2459c9; --rc-violet: #8a3fc2; --rc-grey: #8d8d8d; --rc-white: #fafafa; --rc-gold: #c9a227; --rc-silver: #c4c8cc; --rc-body: #d9c3a0; }
+.resistor-code .rc-body { fill: var(--rc-body); stroke: var(--ink); stroke-width: 1.4; } .resistor-code .rc-lead { stroke: var(--muted); stroke-width: 4; stroke-linecap: round; }
+.resistor-code .rc-band { stroke: #0006; stroke-width: .8; } .resistor-code .rc-band.sel { stroke: var(--ink); stroke-width: 2.5; }
+.resistor-code-pick { display: grid; gap: 8px; } .resistor-code-row { display: grid; grid-template-columns: 6.5em 1fr; gap: 8px; align-items: center; font-size: .86rem; }
+.resistor-code-sw { display: flex; flex-wrap: wrap; gap: 3px; }
+.resistor-code-sw button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 3px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: var(--r); font: .76rem var(--sans); cursor: pointer; }
+.resistor-code-sw button i { width: 14px; height: 14px; border-radius: 2px; border: 1px solid #0006; display: inline-block; }
+.resistor-code-sw button[aria-pressed=true] { border-color: var(--mask); box-shadow: 0 0 0 2px var(--mask); }
+.resistor-code-big { font: 600 1.4rem var(--mono); } .resistor-code input[type=text] { width: 9em; font-family: var(--mono); }
+.resistor-code-score { font: .84rem var(--mono); color: var(--muted); }
+
+/* series-parallel: network editor */
+.series-parallel-stage { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; display: grid; gap: 6px; background: var(--surface); }
+.series-parallel-stage h4 { margin: 0; font: 600 .84rem var(--cond); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.series-parallel-r { display: grid; grid-template-columns: 2.6em 1fr auto; gap: 6px; align-items: center; font: .86rem var(--mono); } .series-parallel-r select { min-width: 0; }
+.series-parallel-x { border: 1px solid var(--line); background: var(--surface); color: var(--bad); border-radius: var(--r); cursor: pointer; padding: 2px 8px; font: .84rem var(--sans); }
+
+/* gpio-electrical */
+.gpio-electrical-reads { font: .9rem var(--mono); letter-spacing: .12em; word-break: break-all; }
+.gpio-electrical-exp { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: .88rem; }
+.gpio-electrical-exp li { display: grid; grid-template-columns: 1.4em 1fr; } .gpio-electrical-exp li.done { color: var(--ok); } .gpio-electrical-exp li::before { content: "○"; } .gpio-electrical-exp li.done::before { content: "●"; }
+
+/* pwm-lab / adc-lab small extras */
+.pwm-lab-led { display: flex; align-items: center; gap: 12px; font-size: .88rem; }
+.pwm-lab-led i { width: 30px; height: 30px; border-radius: 50%; background: var(--sig2); border: 1px solid var(--line); flex: none; box-shadow: 0 0 14px var(--sig2); }
+.pwm-lab-led span.cell { width: 30px; height: 30px; border-radius: 50%; background: var(--sunk); display: inline-grid; flex: none; }
+.adc-lab-code input[type=number] { width: 7em; font-family: var(--mono); }

@@ -1,0 +1,55 @@
+/* Styles for the logic tools: packet-explorer, logic-analyzer, protocol-debug. */
+
+/* ---- packet-explorer ---- */
+.packet-explorer .pk-strip { display: flex; flex-wrap: wrap; gap: 6px 4px; align-items: flex-end; margin-bottom: 4px; }
+.packet-explorer .pk-group { display: flex; flex-wrap: wrap; gap: 2px; padding-top: 1.25em; position: relative; border-bottom: 3px solid var(--fc); }
+.packet-explorer .pk-lbl { position: absolute; top: 0; left: 0; font: 600 .7rem var(--cond); letter-spacing: .04em; color: var(--fc); white-space: nowrap; }
+.packet-explorer .pk-sof { --fc: var(--sig6); } .packet-explorer .pk-len { --fc: var(--sig4); } .packet-explorer .pk-type { --fc: var(--sig1); }
+.packet-explorer .pk-seq { --fc: var(--sig5); } .packet-explorer .pk-payload { --fc: var(--sig3); } .packet-explorer .pk-check { --fc: var(--sig2); }
+.packet-explorer .pk-cell { display: inline-flex; flex-direction: column; align-items: center; justify-content: flex-end; min-width: 2.1em; padding: 3px 4px; font: .86rem var(--mono); color: var(--ink);
+  background: color-mix(in srgb, var(--fc, var(--line)) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--fc, var(--line)) 45%, var(--surface)); border-radius: 2px; }
+.packet-explorer .pk-cell small { font-size: .62rem; color: var(--muted); line-height: 1.1; }
+.packet-explorer .pk-cell.esc { border-style: dashed; border-color: var(--ink); }
+.packet-explorer .pk-cell.wrong { border-color: var(--bad); color: var(--bad); text-decoration: line-through; }
+.packet-explorer .pk-info { margin: 0 0 12px; }
+.packet-explorer .pk-builder { margin-bottom: 14px; padding: 10px 12px; background: var(--sunk); border-radius: var(--r); }
+.packet-explorer .pk-builder .w-field { grid-template-columns: auto minmax(0, 1fr) auto; }
+.packet-explorer .pk-builder input[type=text] { min-width: 0; }
+.packet-explorer .pk-byte { width: 3.4em; } .packet-explorer .pk-num { width: 4.6em; }
+.packet-explorer .pk-rx, .packet-explorer .pk-mem { display: flex; flex-wrap: wrap; gap: 2px; margin: 8px 0; }
+.packet-explorer .pk-pick { cursor: pointer; } .packet-explorer .pk-cell.sel { outline: 2px solid var(--copper); outline-offset: 1px; }
+.packet-explorer .pk-cell.diff { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); font-weight: 600; }
+.packet-explorer .pk-cell.used { opacity: .55; }
+.packet-explorer .pk-cell.empty { color: var(--muted); }
+.packet-explorer .pk-cell.beyond { border-style: dashed; color: var(--muted); background: repeating-linear-gradient(135deg, var(--sunk) 0 4px, var(--surface) 4px 8px); }
+.packet-explorer .pk-cell.beyond.hit { background: var(--bad-soft); border: 1px solid var(--bad); color: var(--bad); font-weight: 600; }
+.packet-explorer .pk-memlbl { font-size: .86rem; color: var(--muted); }
+.packet-explorer .pk-table { width: 100%; font-size: .86rem; } .packet-explorer .pk-table th, .packet-explorer .pk-table td { padding: 4px 8px; }
+.packet-explorer .pk-table tr.cur th, .packet-explorer .pk-table tr.cur td { background: var(--copper-soft); }
+.packet-explorer .pk-table tr.skip td { color: var(--muted); font-style: italic; } .packet-explorer .pk-table tr.bad td { background: var(--bad-soft); }
+.packet-explorer .pk-table tr.split td { border-top: 2px solid var(--ink); }
+.packet-explorer .pk-hit { color: var(--ok); } .packet-explorer .pk-miss { color: var(--bad); }
+.packet-explorer .pk-trace { max-height: 21em; overflow-y: auto; margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r); }
+.packet-explorer .pk-trace table { margin: 0; } .packet-explorer .pk-trace th { position: sticky; top: 0; }
+.packet-explorer .pk-reg { display: flex; align-items: center; gap: 6px; margin: 12px 0; flex-wrap: wrap; }
+.packet-explorer .pk-reg .w-bit { cursor: default; } .packet-explorer .pk-reg .w-bit.tap { outline: 2px solid var(--copper); outline-offset: -1px; }
+.packet-explorer .pk-out { display: inline-block; width: 1.9em; text-align: center; padding: 3px 0; border: 1px dashed var(--muted); border-radius: 2px; font: .84rem var(--mono); }
+.packet-explorer .pk-out.on { border-color: var(--copper); color: var(--copper); font-weight: 600; }
+.packet-explorer .pk-arrow { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+.packet-explorer .pk-code { font-size: .78rem; }
+.packet-explorer .pk-fix { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--copper); }
+
+/* ---- logic-analyzer ---- */
+.logic-analyzer .la-tools { display: flex; flex-wrap: wrap; gap: 0 18px; }
+.logic-analyzer .la-tools .btn { min-width: 2.4em; justify-content: center; }
+.logic-analyzer .la-wave svg { cursor: crosshair; touch-action: pan-y; user-select: none; }
+.logic-analyzer .la-curA.on { background: var(--copper); border-color: var(--copper); }
+.logic-analyzer .la-curB.on { background: var(--sig5); border-color: var(--sig5); }
+.logic-analyzer .la-curA { border-color: var(--copper); } .logic-analyzer .la-curB { border-color: var(--sig5); }
+.logic-analyzer .w-readout { margin-bottom: 10px; }
+.logic-analyzer .la-rnote { grid-column: 1 / -1; font-size: .84rem; color: var(--muted); }
+.logic-analyzer .la-decoder select, .logic-analyzer .la-tools select { max-width: 100%; }
+.logic-analyzer .la-answer { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--copper); }
+.logic-analyzer .la-in { width: 9.5em; }
+.logic-analyzer .la-notes { margin-top: 14px; font-size: .9rem; } .logic-analyzer .la-notes summary { cursor: pointer; font-weight: 600; }
+.logic-analyzer .la-notes ul { margin-top: 8px; }

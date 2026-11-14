@@ -1,0 +1,10 @@
+# build outputs of the host examples
+elfdemo/fw.elf
+elfdemo/fw.bin
+elfdemo/fw.hex
+elfdemo/fw.srec
+elfdemo/fw.map
+cfsr_decode
+ihex_check
+baud_guess
+gdb_practice

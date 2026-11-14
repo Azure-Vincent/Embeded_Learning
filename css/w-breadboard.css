@@ -1,0 +1,99 @@
+/* Styles for the breadboard tools: breadboard, circuit-debug. */
+
+/* ---- breadboard ---- */
+.breadboard-layout { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 760px) { .breadboard-layout { grid-template-columns: minmax(0, 1fr); } }
+.breadboard h4, .circuit-debug h4 { margin: 14px 0 6px; font: 600 .82rem var(--cond, var(--sans)); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.breadboard-side > :first-child h4 { margin-top: 0; }
+.breadboard-palette { margin-bottom: 6px; }
+.breadboard-options { min-height: 0; margin: 0 0 6px; font-size: .88rem; }
+.breadboard-options:empty { display: none; }
+.breadboard select, .circuit-debug select { font: .86rem var(--sans); padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); max-width: 100%; }
+.breadboard-status { margin: 0 0 8px; font-size: .88rem; color: var(--copper); min-height: 2.6em; }
+.breadboard-readout { margin: 8px 0 0; min-height: 2.8em; padding: 6px 8px; background: var(--sunk); border-radius: var(--r); }
+.breadboard-pick { font-size: .86rem; color: var(--muted); }
+.breadboard-check { font-size: .88rem; display: inline-flex; align-items: center; gap: 6px; }
+.breadboard-check input { accent-color: var(--mask); }
+
+.breadboard-svg { border: 1px solid var(--line); border-radius: var(--r); touch-action: manipulation; user-select: none; }
+.breadboard-svg .mcu { fill: var(--mask-soft); stroke: var(--mask); }
+.breadboard-svg .board { fill: var(--sunk); stroke: var(--line); }
+.breadboard-svg .gap { fill: var(--surface); stroke: var(--line); }
+.breadboard-svg text { font-size: 8px; fill: var(--muted); pointer-events: none; }
+.breadboard-svg .hlabel { font-size: 9px; font-weight: 600; fill: var(--ink); }
+.breadboard-svg .rlabel { font-size: 11px; font-weight: 600; }
+.breadboard-svg .plus { fill: var(--sig2); stroke: var(--sig2); }
+.breadboard-svg .minus { fill: var(--sig1); stroke: var(--sig1); }
+.breadboard-svg text.plus, .breadboard-svg text.minus { stroke: none; }
+.breadboard-svg .railmark { stroke-width: 1; opacity: .7; }
+.breadboard-svg .strip { stroke: var(--copper); stroke-width: 9; stroke-linecap: round; opacity: .28; pointer-events: none; }
+.breadboard-svg .hole { cursor: pointer; outline: none; }
+.breadboard-svg .hole .hit { fill: transparent; }
+.breadboard-svg .hole .pit { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
+.breadboard-svg .hole.hdr .pit { fill: var(--copper-soft); stroke: var(--copper); }
+.breadboard-svg .hole.same .pit { stroke: var(--copper); stroke-width: 2; }
+.breadboard-svg .hole:hover .pit { stroke: var(--ink); stroke-width: 2; }
+.breadboard-svg .hole:focus-visible .hit { stroke: var(--link); stroke-width: 2; fill: var(--copper-soft); }
+.breadboard-svg .hole.pending .pit { fill: var(--copper); stroke: var(--copper); }
+.breadboard-svg .part { pointer-events: none; }
+.breadboard-svg .part.live .body, .breadboard-svg .part.live .cap, .breadboard-svg .part.live .wire { pointer-events: auto; cursor: pointer; }
+.breadboard-svg .leg { stroke: var(--muted); stroke-width: 1.6; }
+.breadboard-svg .wire { fill: none; stroke-width: 3; stroke-linecap: round; opacity: .9; }
+.breadboard-svg .pinend { fill: var(--ink); }
+.breadboard-svg .part-resistor .body { fill: var(--copper-soft); stroke: var(--copper); stroke-width: 1.2; }
+.breadboard-svg .part-led .body { stroke-width: 1.6; }
+.breadboard-svg .part-led .pol { font-size: 10px; font-weight: 600; fill: var(--ink); }
+.breadboard-svg .part-button .body, .breadboard-svg .part-pot .body { fill: var(--surface); stroke: var(--ink); stroke-width: 1.2; }
+.breadboard-svg .part-button .cap { fill: var(--sunk); stroke: var(--ink); }
+.breadboard-svg .part-button .cap.down { fill: var(--copper); }
+.breadboard-svg .part-pot .mark { stroke: var(--copper); stroke-width: 2; stroke-linecap: round; }
+.breadboard-svg .lbl { font-size: 8px; fill: var(--ink); paint-order: stroke; stroke: var(--sunk); stroke-width: 2.5px; }
+
+.breadboard-pin { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+.breadboard-pinread { color: var(--muted); text-align: right; }
+.breadboard-pinread.bad { color: var(--bad); }
+.breadboard-list { list-style: none; margin: 0; padding: 0; }
+.breadboard-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .88rem; }
+.breadboard-list .at { color: var(--muted); font: .8rem var(--mono); }
+.breadboard-list .ctl { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.breadboard-list .ctl input[type=range] { flex: 1 1 120px; accent-color: var(--mask); }
+.breadboard-problems .w-msg { margin-top: 6px; }
+.breadboard-problems .btn { margin-top: 8px; }
+
+/* ---- circuit-debug ---- */
+.circuit-debug-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.circuit-debug-pick button { text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font: .9rem var(--sans); cursor: pointer; }
+.circuit-debug-pick button:hover { border-color: var(--mask); }
+.circuit-debug-pick strong { display: block; margin-bottom: 2px; }
+.circuit-debug-pick span { color: var(--muted); font-size: .84rem; }
+.circuit-debug-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 760px) { .circuit-debug-layout { grid-template-columns: minmax(0, 1fr); } }
+.circuit-debug-svg { border: 1px solid var(--line); border-radius: var(--r); touch-action: manipulation; user-select: none; }
+.circuit-debug-svg .w { stroke: var(--ink); stroke-width: 1.5; fill: none; }
+.circuit-debug-svg .sym { stroke: var(--ink); stroke-width: 1.5; fill: var(--surface); }
+.circuit-debug-svg .fillink { fill: var(--ink); stroke: var(--ink); }
+.circuit-debug-svg .chip { fill: var(--mask-soft); stroke: var(--mask); stroke-width: 1.5; }
+.circuit-debug-svg text { font-size: 11px; }
+.circuit-debug-svg text.dim { fill: var(--muted); font-size: 10px; }
+.circuit-debug-svg .tp { cursor: pointer; outline: none; }
+.circuit-debug-svg .tp .hit { fill: transparent; }
+.circuit-debug-svg .tp .dot { fill: var(--surface); stroke: var(--copper); stroke-width: 2; }
+.circuit-debug-svg .tp:hover .dot { fill: var(--copper-soft); }
+.circuit-debug-svg .tp:focus-visible .hit { stroke: var(--link); stroke-width: 2; }
+.circuit-debug-svg .tp.red .dot { fill: var(--sig2); stroke: var(--sig2); }
+.circuit-debug-svg .tp.black .dot { fill: var(--ink); stroke: var(--ink); }
+.circuit-debug-svg .tp.red.black .dot { fill: var(--sig2); stroke: var(--ink); }
+.circuit-debug-svg .tp text { font-size: 10px; font-weight: 600; fill: var(--copper); }
+.circuit-debug-meter { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; background: var(--sunk); }
+.circuit-debug-meter .lcd { font: 600 1.5rem var(--mono); padding: 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-height: 1.9em; margin: 8px 0; }
+.circuit-debug-meter .probe { display: inline-flex; align-items: center; gap: 6px; font-size: .88rem; }
+.circuit-debug-meter .probe i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.circuit-debug-meter .probe.red i { background: var(--sig2); }
+.circuit-debug-meter .probe.black i { background: var(--ink); }
+.circuit-debug-log { margin: 8px 0 0; padding: 0 0 0 1.6em; font: .84rem var(--mono); max-height: 11em; overflow-y: auto; }
+.circuit-debug-opts { display: grid; gap: 6px; margin: 6px 0 10px; }
+.circuit-debug-opts label { display: flex; gap: 8px; align-items: flex-start; padding: 7px 10px; border: 1px solid var(--line); border-radius: var(--r); font-size: .9rem; cursor: pointer; background: var(--surface); }
+.circuit-debug-opts input { margin-top: .25em; accent-color: var(--mask); }
+.circuit-debug-opts label:has(input:checked) { border-color: var(--mask); }
+.circuit-debug fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.circuit-debug legend { padding: 0; font-weight: 600; font-size: .92rem; }

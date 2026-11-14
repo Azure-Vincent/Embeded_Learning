@@ -90,3 +90,26 @@ Library: `printf` (`%d %i %u %x %X %c %s %p %%`, with width, zero-pad and `l`/`l
 Undefined behaviour is surfaced where it teaches something: out-of-bounds writes really corrupt neighbouring memory,
 use-after-free reads stale data and is flagged, signed overflow wraps and is flagged with a warning, uninitialised
 locals contain leftover stack bytes.
+
+## Implementation details authors rely on
+- **Stack layout.** Locals are placed in declaration order from high to low addresses, so an array overflows into
+  variables declared *before* it, then the saved frame pointer, then the return address.
+- **UART.** TX is busy for 4 ticks after a write. RX delivers one byte every 16 ticks into a 16-byte FIFO, whether or
+  not `ENABLE` is set. `RX_OVERRUN` clears when `UART_DATA` is read.
+- **ADC.** A conversion takes 3 ticks. Reading `ADC_DATA` early returns the previous value with a warning.
+- **Timer.** Writing `TIM_LOAD` also loads `TIM_COUNT`.
+- **Interrupts.** Flags are level-triggered: a handler that does not clear its flag re-enters and starves `main`.
+  `__attribute__((interrupt))` with no argument binds by function name (`uart`/`rx` → UART, `tim`/`tick` → timer,
+  otherwise both); `interrupt(IRQ_TIMER)` is also accepted. Dispatch has a reproducible pseudo-random latency of 0–3
+  ticks, so that lost-update bugs cannot hide behind a timer period that happens to align with the loop length.
+- **Formatting.** `%p` prints `0x%08x`.
+- **Limits.** 1000 nested calls (reported as stack overflow), 256 KiB of output, first compile error only.
+- **Rejected with a compile error.** Floating point, bit-fields, `goto`, variable-length arrays, compound literals,
+  user-defined variadic functions, and `case` labels nested inside inner blocks.
+
+## Test objects (`runTest`) beyond the basic contract
+- A runtime fault fails a test unless the test sets `fault: true` or `fault: 'substring'`.
+- Extra expectations: `uartTxIncludes`, `gpioTrace`, `mem[].offset`, and `mem` values given as arrays or strings.
+- Extra inputs: `gpioIn` as `{value, mask}` or `[[tick, value], …]`; `uartRx` as `{data, interval, start}`; `adc` per channel.
+- `ticks` runs exactly that many ticks and stops without error; if `main` returns early, interrupts keep running
+  until the budget ends.

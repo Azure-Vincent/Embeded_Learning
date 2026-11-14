@@ -137,9 +137,9 @@ The conditions are simple: the adversary must be able to supply the input (a UAR
 
 **Remove the defect: every copy is bounded by the destination.** Pass the destination size with the destination pointer, compare before writing, and decide explicitly what "too long" means. For commands and credentials the right answer is nearly always to *reject*, not to truncate: a truncated command is a different command.`,
     code(BOUNDED_COPY, 'host-tested', { caption: 'A bounded copy that rejects oversized input. Tested on the host with lengths 0, size-2, size-1, size and size+1 under ASan.', explain: [
-      { lines: '9-11', md: 'Invalid arguments fail closed. A zero-size destination cannot even hold the terminator.' },
-      { lines: '12-14', md: '`>=` and not `>`: when `src_len == dst_size` the data would fit but the terminator would be written one byte past the end. This off-by-one is the most common form of the defect.' },
-      { lines: '15-16', md: 'Only now is memory written. `memcpy` receives a length that has been proven smaller than the destination.' },
+      { lines: '10-12', md: 'Invalid arguments fail closed. A zero-size destination cannot even hold the terminator.' },
+      { lines: '13-15', md: '`>=` and not `>`: when `src_len == dst_size` the data would fit but the terminator would be written one byte past the end. This off-by-one is the most common form of the defect.' },
+      { lines: '16-17', md: 'Only now is memory written. `memcpy` receives a length that has been proven smaller than the destination.' },
     ] }),
     { t: 'callout', kind: 'mistake', title: 'Replacing `strcpy` with `strncpy` and stopping there', md: `\`strncpy(dst, src, sizeof dst)\` never overflows, but if the source is as long as the destination it leaves **no terminator**, and the next \`strlen\` or \`printf("%s")\` reads past the end. It also silently truncates. If you use it, write the terminator yourself and check for truncation; better, use a function such as the one above or \`snprintf\` and check its return value against the buffer size.` },
     `**Limit the damage of the defects you have not found:**

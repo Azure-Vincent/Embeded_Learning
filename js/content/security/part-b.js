@@ -1,2 +1,9 @@
-// STUB — replaced by real content.
-export default { skills: [], lessons: [], labs: [], glossary: [], troubleshooting: [], refs: [] };
+// Embedded Security, second half: the catalogue of weakness classes, taught for recognition, prevention and test.
+// Part files live in ./b/. Add an import here only after the file exists.
+import { skills, glossary, troubleshooting, refs } from './b/meta.js';
+import l1 from './b/l1.js';
+import l2 from './b/l2.js';
+import l3 from './b/l3.js';
+import l4 from './b/l4.js';
+
+export default { skills, lessons: [l1, l2, l3, l4], labs: [], glossary, troubleshooting, refs };

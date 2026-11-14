@@ -852,7 +852,7 @@ int main(void) {
     uint32_t tmp;
 
     irq_attach(IRQ_TIMER, timer_isr);
-    TIM_LOAD = 13;
+    TIM_LOAD = 11;
     TIM_CTRL = 7;                 /* ENABLE | AUTO_RELOAD | IRQ_EN */
     irq_enable();
 
@@ -887,7 +887,7 @@ int main(void) {
     uint32_t tmp;
 
     irq_attach(IRQ_TIMER, timer_isr);
-    TIM_LOAD = 13;
+    TIM_LOAD = 11;
     TIM_CTRL = 7;                 /* ENABLE | AUTO_RELOAD | IRQ_EN */
     irq_enable();
 

@@ -215,7 +215,7 @@ const step3 = clab({
 
 Two things are wrong:
 
-1. \`uart_init\` overwrites the whole control register, and in doing so never sets \`ENABLE\`... or does it? Read what it writes.
+1. \`uart_init\` is supposed to enable the UART. Work out the value it actually writes to \`UART_CTRL\`.
 2. \`uart_putc\` writes to \`UART_DATA\` without waiting for \`TX_READY\` (bit 0 of \`UART_STATUS\`), which goes low for a few ticks after every byte.
 
 Fix both so the UART sends \`Hello\` and a newline, with \`UART_BAUD\` 104 and only the \`ENABLE\` bit set in \`UART_CTRL\`.`,

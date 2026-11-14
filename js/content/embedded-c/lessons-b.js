@@ -1417,7 +1417,7 @@ To see what went wrong, and why most firmware avoids the question entirely, star
 The size of all static objects is known when the program is linked: it is printed in the map file and by the
 \`size\` tool. If they do not fit in RAM, **the build fails**. Stack and heap usage are decided at run time, and when
 they do not fit, the program fails in the field.`,
-    { t: 'widget', name: 'stack-heap', props: {}, caption: 'Step a small program and watch static data, stack frames and heap blocks appear and disappear.' },
+    { t: 'widget', name: 'stack-heap', props: { program: 'nested' }, caption: 'Step a small program and watch static data and stack frames appear and disappear.' },
     `## The meanings of static
 
 The keyword does two unrelated jobs depending on where it appears.
@@ -1475,6 +1475,7 @@ no memory management unit to move things around.`,
          +--------+--------+-------+-------+------+--------+
                     ^                ^               ^
                     +--- 8 + 8 + 12 = 28 bytes free, largest block 12 ---+` },
+    { t: 'widget', name: 'stack-heap', props: { program: 'fragmentation' }, caption: 'Step through a sequence of malloc and free calls until a request fails with memory still free.' },
     `**Failure handling.** \`malloc\` can return \`NULL\` at any call, so every call site needs an answer to "and then
 what?". In a control loop there is rarely a good one. A design that cannot run out of memory is easier to make correct
 than one that must recover from running out at an arbitrary point.

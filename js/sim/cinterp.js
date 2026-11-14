@@ -2122,7 +2122,7 @@ export function layoutOf(source, { packed = false } = {}) {
   catch (e) { if (e instanceof CError) return { ok: false, error: { line: e.line, msg: e.message }, structs: [] }; throw e; }
   const structs = prog.structDefs.map((d) => {
     const fields = d.fields.map((f) => ({ name: f.name || '(anonymous)', type: typeStr(f.ty), decl: typeStr(f.ty, f.name || ''), offset: f.off, size: sizeOf(f.ty), align: d.packed ? 1 : alignOf(f.ty), line: f.line }));
-    return { name: d.alias || d.name || '(anonymous)', kind: d.union ? 'union' : 'struct', size: d.size, align: d.align, packed: !!d.packed, line: d.line, fields, padding: d.union ? [] : paddingOf(fields, d.size) };
+    return { name: d.alias || d.name || '(anonymous)', tag: d.name || null, alias: d.alias || null, kind: d.union ? 'union' : 'struct', size: d.size, align: d.align, packed: !!d.packed, line: d.line, fields, padding: d.union ? [] : paddingOf(fields, d.size) };
   });
   return { ok: true, error: null, structs };
 }

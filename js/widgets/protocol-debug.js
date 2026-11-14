@@ -83,7 +83,7 @@ export const SCENARIOS = {
   'baud-mismatch': {
     title: 'UART: garbage characters',
     setup: 'A sensor board prints a temperature line once a second. It is wired to a USB-serial adapter: TX to RXD, RX to TXD, GND to GND.',
-    symptom: { text: 'Something arrives once a second, exactly when a line is expected, but it is a few rubbish characters instead of a temperature. It is the same rubbish every time, and the terminal counts framing errors.', term: `${garbLine}\n${garbLine}\n${garbLine}\n(framing errors: ${Math.max(1, garb.framingErrors) * 3})` },
+    symptom: { text: 'Something arrives once a second, exactly when a line is expected, but it is a few rubbish characters instead of a temperature. It is the same rubbish every time.', term: `${garbLine}\n${garbLine}\n${garbLine}` },
     checks: [
       { id: 'measure', label: 'Capture the line and measure the narrowest pulse', short: 'the narrowest pulse is 8.68 µs, which is 115200 baud', text: 'Cursors on the narrowest pulse: Δt = 8.68 µs, 1/Δt = 115.2 kHz. One bit lasts 8.68 µs, so the sender is running at 115200 baud.',
         wave: W([{ name: 'TX', edges: tempWave.edges }], { t1: tempWave.duration, cursors: 'narrowest', decode: { proto: 'uart', ch: 0, baud: 115200 }, caption: 'First two characters. Decoded at 115200 they read "Te".' }) },
@@ -93,7 +93,7 @@ export const SCENARIOS = {
       { id: 'swap', label: 'Check that TX goes to RXD', short: 'TX is wired to RXD', text: 'MCU TX → adapter RXD, MCU RX → adapter TXD. Crossed correctly, and data is clearly reaching the receiver.' },
     ],
     diagnoses: [
-      { id: 'baud', right: true, text: 'The two ends use different baud rates', fb: 'Yes. The sender\'s bits are 8.68 µs long; a 9600-baud receiver samples every 104 µs, so each of its "bits" spans about twelve real ones. It reads a few arbitrary levels, usually finds a low where the stop bit should be, and reports a framing error.' },
+      { id: 'baud', right: true, text: 'The two ends use different baud rates', fb: 'Yes. The sender\'s bits are 8.68 µs long; a 9600-baud receiver samples every 104 µs, so each of its "bits" spans about twelve real ones. It reads a few arbitrary levels and produces far fewer bytes than were sent, none of them right. Depending on where its stop-bit sample lands it may also flag framing errors.' },
       { id: 'swap', text: 'TX and RX are swapped', rule: 'swap', fb: 'With swapped data lines the receiver sees no edges and the terminal stays empty. Here bytes do arrive.' },
       { id: 'gnd', text: 'There is no common ground', rule: 'gnd', fb: 'A missing ground gives erratic results that change when you touch things. This garbage is the same every second.' },
       { id: 'parity', text: 'The parity setting is wrong', rule: 'term', fb: 'A parity mismatch leaves most characters readable and flags parity errors. It does not turn every character into rubbish.' },

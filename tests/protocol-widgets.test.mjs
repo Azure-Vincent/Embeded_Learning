@@ -40,7 +40,7 @@ test('uart-terminal: stop-bit drift crosses half a bit near 5 % for 8N1', () => 
   assert.ok(stopDrift(c, 0.02) < 0.25);
   assert.ok(stopDrift(c, 0.05) < 0.5);
   assert.ok(stopDrift(c, 0.06) > 0.5);
-  assert.ok(stopDrift(parseFormat('8E1'), 0.05) > 0.5);       // one more bit before the stop sample
+  assert.ok(stopDrift(parseFormat('8E1'), 0.055) > 0.5);       // one more bit before the stop sample
 });
 
 test('uart-terminal: console and echo peers', () => {

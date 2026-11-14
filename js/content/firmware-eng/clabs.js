@@ -210,6 +210,7 @@ const frMain = C`
 int main(void)
 {
     session_t s;
+    bool ok;
     static const uint8_t good[]  = { 3, 'a', 'b', 'c', 0x26 };
     static const uint8_t evil[]  = { 12, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 12 };
     static const uint8_t trunc[] = { 6, 'x', 'y', 'z' };              /* claims 6, carries 3 */
@@ -217,7 +218,8 @@ int main(void)
     static const uint8_t full[]  = { 8, 1, 2, 3, 4, 5, 6, 7, 8, 36 };  /* exactly PAYLOAD_MAX */
 
     memset(&s, 0, sizeof s);
-    printf("good=%d len=%u\n", frame_parse(&s, good, sizeof good), (unsigned)s.len);
+    ok = frame_parse(&s, good, sizeof good);
+    printf("good=%d len=%u\n", ok ? 1 : 0, (unsigned)s.len);
     printf("evil=%d\n", frame_parse(&s, evil, sizeof evil));
     printf("trunc=%d\n", frame_parse(&s, trunc, sizeof trunc));
     printf("badsum=%d\n", frame_parse(&s, badsum, sizeof badsum));
@@ -508,7 +510,7 @@ int debounce_step(int raw)
     return 0;
 }
 ` + dbMain,
-  tests: [{ name: 'bouncy press, glitch, second press', stdout: '__DEBOUNCE__' }],
+  tests: [{ name: 'bouncy press, glitch, second press', stdout: 'uududduddDDDDDUDUUDUUuuuudduuuuddDDUU\npresses=2\n' }],
   hints: [
     'Each `case` only needs to look at `raw` and at `btn_count`. Nothing waits: the function returns immediately every time.',
     'The first sample that differs is already sample number 1, so set `btn_count = 1` when you *enter* a MAYBE state and compare with `STABLE_TICKS` after incrementing.',

@@ -125,7 +125,7 @@ export default function mount(el, props = {}, ctx = {}) {
   const legend = h('div', { class: 'wave-legend' },
     h('span', null, h('i', { style: { background: CTRL } }), 'controller drives SDA'),
     h('span', null, h('i', { style: { background: TGT } }), 'target drives SDA'),
-    h('span', null, 'S start · Sr repeated start · P stop'));
+    h('span', null, 'S start · Sr repeated start · P stop · A ACK (SDA low) · N NACK (SDA left high)'));
   const decoded = h('div', { class: 'w-mono i2c-visualizer-decoded' });
   const msg = h('div', { class: 'w-msg', role: 'status' });
   const elec = h('div');
@@ -262,7 +262,7 @@ export default function mount(el, props = {}, ctx = {}) {
     let w, ann = [], spans = [], rise = 0;
     if (decode) {
       w = i2cEncode(st.ch.ops, { freq: 100000 });
-      if (st.chMsg && st.chMsg.ok) ann = w.segments.map((sg) => ({ ch: 1, t0: sg.t0, t1: sg.t1, text: sg.text, color: sg.driver === 'target' ? TGT : CTRL }));
+      if (st.chMsg && st.chMsg.ok) ann = w.segments.map((sg) => ({ ch: 1, t0: sg.t0, t1: sg.t1, text: sg.kind === 'ack' ? sg.text[0] : sg.text, color: sg.driver === 'target' ? TGT : CTRL }));
       msg.hidden = !st.chMsg;
       if (st.chMsg) { msg.className = 'w-msg ' + (st.chMsg.ok ? 'ok' : 'bad'); msg.textContent = st.chMsg.msg; }
     } else {
@@ -274,7 +274,7 @@ export default function mount(el, props = {}, ctx = {}) {
         decoded.textContent = 'decoded: nothing (no start condition can be formed)';
       } else {
         rise = st.r * st.c;
-        ann = w.segments.map((sg) => ({ ch: sg.kind === 'stretch' ? 0 : 1, t0: sg.t0, t1: sg.t1, text: sg.text, color: sg.driver === 'target' ? TGT : CTRL,
+        ann = w.segments.map((sg) => ({ ch: sg.kind === 'stretch' ? 0 : 1, t0: sg.t0, t1: sg.t1, text: sg.kind === 'ack' ? sg.text[0] : sg.text, color: sg.driver === 'target' ? TGT : CTRL,
           title: `${sg.kind}: ${sg.text}, ${sg.kind === 'stretch' ? 'SCL held low by the target' : 'SDA driven by the ' + sg.driver}` }));
         spans = w.segments.filter((sg) => sg.driver === 'target' && sg.kind !== 'stretch').map((sg) => ({ t0: sg.t0, t1: sg.t1, color: TGT }));
         const ev = i2cDecode(w.scl, w.sda);

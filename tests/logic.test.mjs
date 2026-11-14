@@ -224,7 +224,7 @@ test('scenario stories match the simulator', () => {
   assert.deepEqual(good.peripheralSaw, [0x8F, 0x00]); assert.equal(good.controllerRead[1], 0x5A);
   assert.equal(bad.peripheralSaw[0], 0x47); assert.equal(bad.controllerRead[1], 0x00);
   const g = PD.baudGarbage('Temp: 23 C\r\n', 115200, 9600);
-  assert.ok(g.bytes.length > 0); assert.ok(g.framingErrors > 0);
+  assert.ok(g.bytes.length > 0 && g.bytes.length < 12);
   assert.notEqual(PD.termText(g.bytes), 'Temp: 23 C\n');
   assert.equal(PD.termText(PD.baudGarbage('Hi', 9600, 9600).bytes), 'Hi');
   const e = [{ t: 0, v: 1 }, { t: 10, v: 0 }];

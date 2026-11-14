@@ -409,6 +409,7 @@ export default function mount(el, props = {}, ctx) {
     readout.textContent = t;
     for (const [hid, e] of holeEls) e.classList.toggle('same', holeNode(hid) === node);
   }
+  function resetInspect() { lastInspect = null; readout.textContent = ''; }
   function mkHole(id) {
     const [x, y] = holeXY(id), p = parseHole(id), occ = occupied(state).get(id);
     const label = (p.kind === 'header' ? `Header pin ${id === 'GND2' ? 'GND' : id}` : p.kind === 'rail' ? `${p.side === 'L' ? 'Left' : 'Right'} ${p.pol === '+' ? 'plus' : 'minus'} rail, row ${p.row}` : `Hole ${id}`) + (occ ? `, holds ${occ.part.id} ${LEGS[occ.part.type][occ.leg]}` : ', empty');
@@ -470,7 +471,7 @@ export default function mount(el, props = {}, ctx) {
     const hadFocus = svg.contains(document.activeElement);
     clear(svg); holeEls.clear();
     // MCU header
-    svg.append(s('rect', { class: 'mcu', x: 6, y: 6, width: W - 12, height: 50, rx: 4 }), s('text', { class: 'cap', x: W / 2, y: 62, 'text-anchor': 'middle' }, ''));
+    svg.append(s('rect', { class: 'mcu', x: 6, y: 6, width: W - 12, height: 50, rx: 4 }));
     HEADER.forEach((id) => { const [x, y] = holeXY(id); svg.append(s('text', { class: 'hlabel', x, y: y - 12, 'text-anchor': 'middle' }, id === 'GND2' ? 'GND' : id)); });
     // board body
     svg.append(s('rect', { class: 'board', x: 4, y: 68, width: W - 8, height: H - 72, rx: 6 }), s('rect', { class: 'gap', x: 163, y: ROW0 - 12, width: 14, height: (ROWS - 1) * P + 24, rx: 2 }));
@@ -564,9 +565,9 @@ export default function mount(el, props = {}, ctx) {
   const brokenSel = h('select', { 'aria-label': 'Broken example', 'data-opt': 'broken' }, BROKEN.map((b, i) => h('option', { value: i }, b.title)));
   const tools = h('div', { class: 'row' },
     h('label', { class: 'breadboard-check' }, h('input', { type: 'checkbox', checked: showInternal, 'data-opt': 'internal', onchange: (e) => { showInternal = e.target.checked; drawBoard(); } }), ' Show internal connections'),
-    h('button', { type: 'button', class: 'btn small ghost', 'data-act': 'clear', onclick: () => { const pins = state.pins; state = newState(); state.pins = pins; revealed = true; pending = []; feedback.hidden = true; refresh(true); } }, 'Clear board'));
+    h('button', { type: 'button', class: 'btn small ghost', 'data-act': 'clear', onclick: () => { const pins = state.pins; state = newState(); state.pins = pins; revealed = true; pending = []; feedback.hidden = true; resetInspect(); refresh(true); } }, 'Clear board'));
   const brokenRow = h('div', { class: 'row' }, brokenSel,
-    h('button', { type: 'button', class: 'btn small ghost', 'data-act': 'broken', onclick: () => { brokenIdx = +brokenSel.value; state = BROKEN[brokenIdx].make(); revealed = false; pending = []; tool = 'inspect'; feedback.hidden = true; drawPalette(); drawPins(); refresh(true); } }, 'Load a broken example'));
+    h('button', { type: 'button', class: 'btn small ghost', 'data-act': 'broken', onclick: () => { brokenIdx = +brokenSel.value; state = BROKEN[brokenIdx].make(); revealed = false; pending = []; tool = 'inspect'; feedback.hidden = true; resetInspect(); drawPalette(); drawPins(); refresh(true); } }, 'Load a broken example'));
   el.append(taskBox, feedback, h('div', { class: 'breadboard-layout' },
     h('div', { class: 'breadboard-main' }, palette, options, status, svg, readout, tools),
     h('div', { class: 'breadboard-side' }, pinsBox, partsBox, problemsBox, h('h4', {}, 'Practise diagnosis'), brokenRow)),

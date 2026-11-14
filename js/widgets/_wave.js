@@ -25,7 +25,8 @@ const SIG = ['var(--sig1)', 'var(--sig2)', 'var(--sig3)', 'var(--sig4)', 'var(--
 export function niceStep(span, target = 6) {
   if (!(span > 0)) return 1;
   const raw = span / Math.max(1, target), p = Math.pow(10, Math.floor(Math.log10(raw))), m = raw / p;
-  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+  const e = 1 + 1e-9;
+  return +((m <= e ? 1 : m <= 2 * e ? 2 : m <= 5 * e ? 5 : 10) * p).toPrecision(12);
 }
 
 /** SVG path for one trace between ta and tb. Pure string building, exported for tests. */

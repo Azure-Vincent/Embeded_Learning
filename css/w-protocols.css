@@ -66,3 +66,6 @@
 .can-arbitration-frame .name { background: var(--sunk); color: var(--muted); padding: 0 4px; font-size: .72rem; white-space: nowrap; }
 .can-arbitration-frame .bits { display: flex; flex-wrap: wrap; padding: 2px 3px; } .can-arbitration-frame .bit { width: .8em; text-align: center; }
 .can-arbitration-frame .bit.stuff { outline: 1.5px solid var(--copper); color: var(--copper); font-weight: 600; border-radius: 2px; }
+
+/* the hidden attribute must win over the display set by layout classes */
+.w-grid[hidden], .w-controls[hidden], .w-kv[hidden], .w-readout[hidden], .row[hidden], .w-msg[hidden], .w-task[hidden], .wave-legend[hidden], .wave-scroll[hidden] { display: none; }

@@ -708,7 +708,7 @@ void app_main(void)
     ESP_ERROR_CHECK(gpio_isr_handler_add(BTN_GPIO, btn_isr, NULL));
 }`;
 
-const P2_FIG = sch.open(470, 250, 'Schematic: push-button from GPIO19 to ground with the internal pull-up, optional series resistor and capacitor')
+const P2_FIG = sch.open(540, 250, 'Schematic: push-button from GPIO19 to ground with the internal pull-up, optional series resistor and capacitor')
   + sch.box(20, 30, 130, 190, 'ESP32 DevKit', [[110, 'GPIO19'], [200, 'GND']])
   + sch.rail(210, 50, '3V3 (inside the chip)') + sch.wire('210,50 210,55') + `<g stroke-dasharray="4 3">` + sch.resV(210, 55, '', 12) + `</g>` + sch.txt(222, 78, 'internal pull-up', 'start', 'font-size="10"') + sch.txt(222, 90, 'enabled in software', 'start', 'font-size="10"')
   + sch.wire('210,105 210,110') + sch.dot(210, 110)
@@ -1107,7 +1107,7 @@ void app_main(void)
     }
 }`;
 
-const P3_FIG = sch.open(540, 260, 'Schematic: GPIO23 drives the gate of an N-channel MOSFET that switches a DC motor on its own supply, with a flyback diode across the motor')
+const P3_FIG = sch.open(580, 260, 'Schematic: GPIO23 drives the gate of an N-channel MOSFET that switches a DC motor on its own supply, with a flyback diode across the motor')
   + sch.box(20, 30, 130, 200, 'ESP32 DevKit', [[130, 'GPIO23'], [210, 'GND']])
   + sch.wire('162,130 175,130', 'stroke="var(--sig1)"') + sch.resH(175, 130, 'R1 220 Ω') + sch.wire('225,130 262,130', 'stroke="var(--sig1)"')
   + sch.dot(240, 130) + sch.wire('240,130 240,150') + sch.resV(240, 150, 'R2 100 kΩ', -12) + sch.wire('240,200 240,210') + sch.dot(240, 210)
@@ -1115,10 +1115,10 @@ const P3_FIG = sch.open(540, 260, 'Schematic: GPIO23 drives the gate of an N-cha
   + sch.wire('304,104 304,85') + sch.dot(304, 85) + sch.motor(304, 40, 'M1') + sch.wire('304,85 304,80') + sch.wire('304,40 304,30') + sch.dot(304, 30)
   + sch.wire('304,85 380,85 380,78') + sch.diode(380, 38, 'up', 'D1') + sch.wire('380,38 380,30') + sch.dot(380, 30)
   + sch.txt(394, 76, 'flyback', 'start', 'font-size="10"')
-  + sch.wire('304,30 500,30', 'stroke="var(--sig3)"') + sch.dot(440, 30) + sch.capV(440, 30, 180, 'C1 220 µF') + sch.dot(440, 210)
-  + sch.wire('500,30 500,112') + sch.wire('488,112 512,112') + sch.wire('494,120 506,120', 'stroke-width="3"') + sch.wire('488,128 512,128') + sch.wire('494,136 506,136', 'stroke-width="3"') + sch.wire('500,136 500,210')
-  + sch.txt(516, 108, '+', 'start') + sch.txt(455, 150, 'BT1', 'start') + sch.txt(455, 163, 'motor supply', 'start', 'font-size="10"')
-  + sch.wire('162,210 500,210') + sch.gnd(304, 210) + sch.txt(170, 226, 'common ground: logic GND and motor supply −', 'start', 'font-size="10"')
+  + sch.wire('304,30 530,30', 'stroke="var(--sig3)"') + sch.dot(430, 30) + sch.capV(430, 30, 180, 'C1 220 µF') + sch.dot(430, 210)
+  + sch.wire('530,30 530,142') + sch.wire('518,142 542,142') + sch.wire('524,150 536,150', 'stroke-width="3"') + sch.wire('518,158 542,158') + sch.wire('524,166 536,166', 'stroke-width="3"') + sch.wire('530,166 530,210')
+  + sch.txt(546, 140, '+', 'start') + sch.txt(512, 152, 'BT1', 'end') + sch.txt(512, 165, 'motor supply', 'end', 'font-size="10"')
+  + sch.wire('162,210 530,210') + sch.gnd(240, 210) + sch.txt(330, 232, 'common ground: logic GND and motor supply −', 'start', 'font-size="10"')
   + sch.close;
 
 const p3 = {
@@ -1540,8 +1540,8 @@ static double ntc_celsius(int mv)
     return 1.0 / inv - 273.15;
 }`;
 
-const P4_FIG = sch.open(560, 250, 'Schematic: TMP36 output to GPIO34 with a supply decoupling capacitor, and the alternative thermistor voltage divider')
-  + sch.box(20, 30, 130, 190, 'ESP32 DevKit', [[55, '3V3'], [120, 'GPIO34'], [200, 'GND']])
+const P4_FIG = sch.open(610, 250, 'Schematic: TMP36 output to GPIO34 with a supply decoupling capacitor, and the alternative thermistor voltage divider')
+  + sch.box(20, 14, 130, 206, 'ESP32 DevKit', [[55, '3V3'], [120, 'GPIO34'], [200, 'GND']])
   + sch.wire('162,55 350,55', 'stroke="var(--sig3)"') + sch.wire('162,200 350,200')
   + `<rect x="225" y="95" width="80" height="50" rx="4" fill="var(--surface)"/>` + sch.txt(265, 124, 'U1 TMP36', 'middle', 'font-weight="600"')
   + sch.wire('265,55 265,95') + sch.dot(265, 55) + sch.txt(270, 88, '+Vs', 'start', 'font-size="10"')
@@ -1551,7 +1551,7 @@ const P4_FIG = sch.open(560, 250, 'Schematic: TMP36 output to GPIO34 with a supp
   + sch.wire('425,25 425,235', 'stroke-dasharray="3 5" opacity=".5"')
   + sch.txt(495, 22, 'Variant B: thermistor', 'middle', 'font-weight="600"')
   + sch.rail(480, 50, '3V3') + sch.resV(480, 50, 'R1 10 kΩ') + sch.wire('480,100 480,130') + sch.dot(480, 115)
-  + sch.wire('480,115 440,115', 'stroke="var(--sig1)"') + sch.txt(438, 106, 'to GPIO34', 'start', 'font-size="10"')
+  + sch.wire('480,115 445,115', 'stroke="var(--sig1)"') + sch.txt(474, 129, 'to GPIO34', 'end', 'font-size="10"')
   + sch.resV(480, 130, 'RT1 NTC 10 kΩ') + sch.wire('468,172 492,138', 'stroke-width="1.2"') + sch.wire('492,138 499,138', 'stroke-width="1.2"')
   + sch.wire('480,180 480,200') + sch.gnd(480, 200)
   + sch.close;
@@ -2021,14 +2021,14 @@ void app_main(void)
 }`;
 
 const P5_FIG = sch.open(520, 250, 'Schematic: ESP32 connected to a BME280 over I2C with pull-up resistors on SDA and SCL')
-  + sch.box(20, 30, 130, 190, 'ESP32 DevKit', [[55, '3V3'], [115, 'GPIO21 SDA'], [150, 'GPIO22 SCL'], [200, 'GND']])
-  + sch.box(382, 30, 110, 190, 'BME280 board', [[55, 'VIN'], [115, 'SDA'], [150, 'SCL'], [200, 'GND']], 'l')
+  + sch.box(20, 14, 130, 206, 'ESP32 DevKit', [[55, '3V3'], [115, 'GPIO21 SDA'], [150, 'GPIO22 SCL'], [200, 'GND']])
+  + sch.box(382, 14, 110, 206, 'BME280 board', [[55, 'VIN'], [115, 'SDA'], [150, 'SCL'], [200, 'GND']], 'l')
   + sch.wire('162,55 370,55', 'stroke="var(--sig3)"') + sch.wire('162,200 370,200')
   + sch.wire('162,115 370,115', 'stroke="var(--sig1)"') + sch.wire('162,150 370,150', 'stroke="var(--sig2)"')
   + sch.dot(225, 55) + sch.resV(225, 55, 'Rp', -12) + sch.wire('225,105 225,115') + sch.dot(225, 115)
   + sch.dot(295, 55) + sch.resV(295, 55, 'Rp', -12) + sch.wire('295,105 295,150') + sch.dot(295, 150)
-  + sch.txt(266, 44, 'Rp = 4.7 kΩ each (omit if the board has them)', 'middle', 'font-size="10"')
-  + sch.gnd(266, 200) + sch.dot(266, 200)
+  + sch.txt(266, 242, 'Rp = 4.7 kΩ each (omit if the board already has pull-ups)', 'middle', 'font-size="10"')
+  + sch.gnd(340, 200) + sch.dot(340, 200)
   + sch.close;
 
 const p5 = {

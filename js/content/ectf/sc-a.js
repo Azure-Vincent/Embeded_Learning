@@ -137,7 +137,7 @@ Rewrite \`try_unlock()\` so that S2 holds. Required output:
 \`honest: 1 1 fails=0\`
 \`after power cuts: 0 fails=3\`
 
-Do not change \`main\`, \`ct_equal\` or the position of \`POWER_POINT()\` relative to the comparison's result being used.`,
+Do not change \`main\` or \`ct_equal\`, and keep one \`POWER_POINT()\` call inside \`try_unlock()\`.`,
             starter: LIMITER_START,
             solution: LIMITER_SOL,
             tests: [{ name: 'honest user unaffected; power cuts do not give free guesses', stdout: 'honest: 1 1 fails=0\nafter power cuts: 0 fails=3\n' }],
@@ -428,9 +428,9 @@ T-S5-1 needs a test build in which the nonce can be forced, because two readers 
       { t: 'Because a credential can only produce a valid response for readers whose derived key it was given at provisioning.', ok: true, why: 'Permission is expressed as possession of a key. There is nothing the holder can edit to gain a key they were not issued.' },
       { t: 'Because the credential ID encodes the permissions.', why: 'An ID is a public value that anyone can claim; it cannot carry authority by itself.' },
     ] },
-    { q: 'The reader ID is omitted from the MAC input. Which requirement fails?', kind: 'security', choices: [
+    { q: 'The reader ID is omitted from the MAC input. Which requirement loses its explicit protection?', kind: 'security', choices: [
       { t: 'S2, freshness.', why: 'The nonce still prevents reuse over time at the same reader. Think about a second reader.' },
-      { t: 'S5: a response is not tied to the reader that issued the challenge.', ok: true, why: 'Without the reader ID, if two readers use related keys or a relay supplies one reader\'s nonce to a credential facing another, nothing in the tag distinguishes them.' },
+      { t: 'S5: a response is not tied to the reader that issued the challenge.', ok: true, why: 'The tag would then depend entirely on every reader having an unrelated key. Binding the reader ID keeps S5 true even if key separation is ever wrong, and makes the argument checkable from the message format alone.' },
       { t: 'F3, the timing requirement.', why: 'One fewer field in the MAC input has no measurable effect on timing.' },
     ] },
     { q: 'The reader\'s random number generator returns an error. What should the reader do?', kind: 'security', choices: [

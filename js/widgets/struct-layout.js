@@ -86,15 +86,16 @@ export default function mount(el, props = {}, ctx = {}) {
     out.append(h('div', { class: 'tag' }, 'Memory layout, 4 bytes per row, lowest address first'), grid);
     const canMove = reorderable(s);
     out.append(h('div', { class: 'table-wrap' }, h('table', { class: 'struct-layout-table' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'field'), h('th', {}, 'offset'), h('th', {}, 'size'), h('th', {}, 'align'), h('th', {}, 'padding after'), canMove ? h('th', {}, 'move') : null)),
+      h('thead', {}, h('tr', {}, canMove ? h('th', {}, 'move') : null, h('th', {}, 'field'), h('th', {}, 'offset'), h('th', {}, 'size'), h('th', {}, 'align'), h('th', {}, 'padding after'))),
       h('tbody', {}, s.fields.map((f, i) => {
         const end = f.offset + f.size, next = s.kind === 'union' ? s.size : i + 1 < s.fields.length ? s.fields[i + 1].offset : s.size, gap = s.kind === 'union' ? 0 : next - end;
         return h('tr', {},
+          canMove ? h('td', { class: 'struct-layout-move' },
+            h('button', { type: 'button', class: 'btn small ghost', disabled: i === 0, 'aria-label': `Move ${f.name} up`, onclick: () => move(s, i, -1) }, '↑'), ' ',
+            h('button', { type: 'button', class: 'btn small ghost', disabled: i === s.fields.length - 1, 'aria-label': `Move ${f.name} down`, onclick: () => move(s, i, 1) }, '↓')) : null,
           h('td', {}, h('span', { class: 'struct-layout-swatch', style: { background: `var(${COLORS[i % COLORS.length]})` } }), f.decl), h('td', {}, f.offset), h('td', {}, f.size), h('td', {}, f.align),
           h('td', { class: gap ? 'struct-layout-gap' : '' }, gap ? `${gap} byte${gap === 1 ? '' : 's'}${i + 1 === s.fields.length ? ' (tail)' : ''}` : '—'),
-          canMove ? h('td', {},
-            h('button', { type: 'button', class: 'btn small ghost', disabled: i === 0, 'aria-label': `Move ${f.name} up`, onclick: () => move(s, i, -1) }, '↑'), ' ',
-            h('button', { type: 'button', class: 'btn small ghost', disabled: i === s.fields.length - 1, 'aria-label': `Move ${f.name} down`, onclick: () => move(s, i, 1) }, '↓')) : null);
+          null);
       })))));
     if (s.kind === 'struct' && !canMove && s.fields.length > 1) out.append(h('p', { class: 'w-note' }, 'To reorder with the arrow buttons, put each field on its own line.'));
     // feedback on the reorder challenge

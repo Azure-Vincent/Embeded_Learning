@@ -252,8 +252,8 @@ export default function mount(el, props = {}, ctx = {}) {
       }
       svg.append(s('path', { d, class: 'state-machine-edge' + (on ? ' on' : ''), 'marker-end': `url(#${uid}${on ? 'b' : 'a'})` }));
       const short = e.labels.map((l) => l.split(' / ')[0]);
-      const text = s('text', { x: lx, y: ly - (short.length - 1) * 6, 'text-anchor': 'middle', class: 'state-machine-elabel' + (on ? ' on' : '') });
-      short.forEach((l, i) => text.append(s('tspan', { x: lx, dy: i ? 12 : 0 }, l)));
+      const text = s('text', { x: lx, y: ly - (short.length - 1) * 7.5, 'text-anchor': 'middle', class: 'state-machine-elabel' + (on ? ' on' : '') });
+      short.forEach((l, i) => text.append(s('tspan', { x: lx, dy: i ? 15 : 0 }, l)));
       svg.append(text);
     }
     for (const [name, [x, y]] of Object.entries(m.states)) {
@@ -269,7 +269,7 @@ export default function mount(el, props = {}, ctx = {}) {
     clear(body);
     const range = caseRange(m.code, inst.state);
     const code = h('pre', { class: 'code state-machine-code', tabindex: '0', 'aria-label': `C implementation; the case for ${inst.state} is highlighted` },
-      m.code.split('\n').map((line, i) => h('span', { class: 'state-machine-line' + (range && i >= range[0] && i <= range[1] ? ' on' : ''), html: (highlight(line, 'c') || ' ') + '\n' })));
+      m.code.split('\n').map((line, i) => h('span', { class: 'state-machine-line' + (range && i >= range[0] && i <= range[1] ? ' on' : ''), html: highlight(line, 'c') || ' ' })));
     const byteIn = m.freeByte ? h('input', { type: 'text', class: 'mono', size: 6, placeholder: '0x41', 'aria-label': 'Any byte value' }) : null;
     const sendByte = () => { const n = Number(byteIn.value.trim()); if (Number.isInteger(n) && n >= 0 && n <= 255) fire(n, `byte ${hx(n)}`); else byteIn.focus(); };
     if (byteIn) byteIn.onkeydown = (e) => { if (e.key === 'Enter') sendByte(); };

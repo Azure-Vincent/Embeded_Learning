@@ -1,7 +1,9 @@
 import a from './rtos/part-a.js';
 import b from './rtos/part-b.js';
+import c from './rtos/part-c.js';
+import d from './rtos/part-d.js';
 
-const parts = [a, b];
+const parts = [a, b, c, d];
 const cat = (k) => parts.flatMap((p) => p[k] || []);
 
 export default {

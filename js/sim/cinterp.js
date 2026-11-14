@@ -13,6 +13,7 @@ export const REGISTERS = {
   ADC_CTRL: 0x40003000, ADC_STATUS: 0x40003004, ADC_DATA: 0x40003008,
 };
 const REG_NAME = new Map(Object.entries(REGISTERS).map(([k, v]) => [v, k]));
+export const MAX_CALL_DEPTH = 1000;
 export const UART_TX_BUSY_TICKS = 4, UART_RX_INTERVAL = 16, UART_RX_FIFO = 16, ADC_CONVERSION_TICKS = 3;
 const START_RET = FLASH_BASE + 4, IRQ_RET = FLASH_BASE + 8, CODE_BASE = FLASH_BASE + 0x100, LIB_BASE = FLASH_BASE + 0xF000;
 
@@ -705,6 +706,7 @@ function compile(source, opts = {}) {
   function callUser(f, vals, ra) {
     if (!f.body) fault(`function '${f.name}' is declared but has no body`);
     const sp0 = sp, savedFp = fp;
+    if (frames.length >= MAX_CALL_DEPTH) fault(`stack overflow: more than ${MAX_CALL_DEPTH} nested calls, the last ones to '${f.name}' — runaway recursion (is the base case ever reached?). This depth limit belongs to the simulator; the 64 KiB stack would run out a little later`);
     sp -= f.argSize;
     if (sp - 8 - f.frameSize < heapTop + 32) fault(`stack overflow: calling '${f.name}' would push the stack (which grows down from ${hex8(STACK_TOP)}) below ${hex8(heapTop + 32)}, into the heap and globals — runaway recursion, or a local array that is too large?`);
     const ps = f.params;
@@ -2004,7 +2006,7 @@ function compile(source, opts = {}) {
         if (e.kind === 'exit') exit = e.code | 0;
         else if (e.kind === 'fault') error = { line: curLine, msg: e.msg };
         else if (e.kind === 'limit') error = { line: curLine, msg: `stopped after ${maxSteps.toLocaleString('en-US')} steps — probably an infinite loop (it was at line ${curLine}). Firmware that is meant to run forever needs a tick budget ('ticks') instead` };
-      } else if (e instanceof RangeError) { stopped = 'fault'; error = { line: curLine, msg: 'stack overflow: the recursion is too deep (does it have a base case?)' }; }
+      } else if (e instanceof RangeError) { stopped = 'fault'; error = { line: curLine, msg: 'stack overflow: the calls are nested too deeply for this simulator (runaway recursion?)' }; }
       else throw e;
     }
     if (stats.txDropped) warn(0, `UART: ${stats.txDropped} byte(s) were written while the UART was disabled and were dropped`);

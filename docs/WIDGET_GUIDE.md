@@ -59,7 +59,7 @@ an object keyed by id with at least `{ title }`, so content can be validated.
 | `timer-lab` | `{mode:'timer'|'watchdog'}` | clock → prescaler → counter → compare/overflow; compute a period; watchdog feed/timeout timeline |
 | `register-bits` | `{challenge}` | 32-bit register with clickable bits and C expression input (`reg |= 1 << 5`); challenges: `set-bit`, `clear-bit`, `toggle`, `field-write`, `field-read` |
 
-### Real-time (`css/w-architecture.css`)
+### Real-time (`css/w-realtime.css`)
 | name | props | behaviour |
 |---|---|---|
 | `rtos-scheduler` | `{scenario}` | Gantt-style scheduler simulation. Scenarios: `preemptive`, `cooperative`, `round-robin`, `priority-inversion`, `priority-inheritance`, `deadlock`, `isr-defer`, `starvation`; editable priorities/periods |
@@ -95,14 +95,14 @@ Supported C is listed there too. No floating point is required by the course exe
 | `logic-analyzer` | `{capture}` | multi-channel capture with cursors and decoders; learner decodes it. Captures: `uart-9600-hello`, `uart-unknown-baud`, `i2c-read`, `spi-mode0`, `spi-mode3`, `mystery` |
 | `protocol-debug` | `{scenario}` | diagnose a broken link from symptoms and captures. Scenarios: `tx-rx-swapped`, `baud-mismatch`, `no-pullups`, `wrong-address`, `spi-mode`, `no-common-ground`, `level-mismatch` |
 
-### Debugging (`css/w-security.css`)
+### Debugging (`css/w-debugging.css`)
 | name | props | behaviour |
 |---|---|---|
 | `debug-session` | `{scenario:'hardfault'|'stuck-loop'|'bad-pointer'|'tour'}` | scripted GDB+OpenOCD console against a simulated Cortex-M target: break, step, info registers, x/, bt; find the bug |
 | `firmware-inspector` | `{image:'demo'|'lockbox'|'updater'}` | hex view, strings, section/vector-table decode of bundled synthetic firmware images; find-the-secret tasks |
 | `disasm-lab` | `{arch:'thumb'|'riscv', challenge}` | annotated disassembly of small functions; identify what the function does, find the compare, the loop, the call |
 
-### Security (`css/w-security.css`)
+### Security (`css/w-security.css`, `css/w-vuln.css`)
 | name | props | behaviour |
 |---|---|---|
 | `stack-smash` | `{mitigation:'none'|'canary'|'bounds'}` | type input into a fixed buffer; watch saved registers and return address get overwritten; redirect to `unlock()` |

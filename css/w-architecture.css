@@ -5,7 +5,8 @@
 .mcu-block-diagram h4, .memory-map h4, .boot-sequence h4, .interrupt-flow h4, .endianness h4, .platform-compare h4 { margin: .6em 0 .3em; font-size: 1rem; }
 
 /* ---------- mcu-block-diagram ---------- */
-.mcu-block-diagram-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 10px; }
+.mcu-block-diagram { min-width: 0; } .widget-body:has(> .mcu-block-diagram) { min-width: 0; overflow: hidden; }
+.mcu-block-diagram-scroll { overflow-x: auto; max-width: 100%; border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 10px; }
 .mcu-block-diagram-svg { min-width: 640px; }
 .mcu-block-diagram-b { cursor: pointer; }
 .mcu-block-diagram-b rect { fill: var(--sunk); stroke: var(--muted); stroke-width: 1.2; }
@@ -48,7 +49,7 @@
 .cpu-stepper-errs { margin: 4px 0 0; padding-left: 1.2em; }
 .cpu-stepper-phases { display: flex; gap: 4px; margin: 8px 0 0; }
 .cpu-stepper-ph { flex: 1; text-align: center; padding: 3px 0; border: 1px solid var(--line); border-radius: var(--r); font: .8rem var(--mono); color: var(--muted); }
-.cpu-stepper-ph.done { background: var(--copper-soft); border-color: var(--copper); color: var(--ink); } .cpu-stepper-ph.next { border-style: dashed; border-color: var(--mask); color: var(--ink); }
+.cpu-stepper-ph.done { background: var(--copper-soft); border-color: var(--copper); color: var(--ink); } .cpu-stepper-ph.upnext { border-style: dashed; border-color: var(--mask); color: var(--ink); }
 .cpu-stepper-say { min-height: 4.2em; } .cpu-stepper-nextph { color: var(--muted); }
 .cpu-stepper-dp { max-width: 560px; margin: 8px auto; }
 .cpu-stepper-blk rect { fill: var(--sunk); stroke: var(--muted); } .cpu-stepper-blk.lit rect { fill: var(--copper-soft); stroke: var(--copper); stroke-width: 2.5; }
@@ -79,7 +80,7 @@
 
 /* ---------- stack-heap ---------- */
 .stack-heap-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-@media (max-width: 760px) { .stack-heap-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .stack-heap-grid { grid-template-columns: minmax(0, 1fr); } }
 .stack-heap-src { background: var(--code-bg); color: var(--code-ink); padding: 8px 0; border-radius: var(--r); font-size: .78rem; line-height: 1.45; overflow-x: auto; margin: 0; }
 .stack-heap-ln { padding: 0 10px; white-space: pre; min-width: max-content; } .stack-heap-ln .n { opacity: .5; }
 .stack-heap-ln.cur { background: var(--mask); color: var(--mask-ink); } .stack-heap-ln.cur .n { opacity: .9; }

@@ -30,7 +30,6 @@ export const QUIZ_ITEMS = [
     wrong: { ram: 'RAM loses its contents without power, so code cannot be stored there. (Code can be copied to RAM to run, but it still has to live in flash.)' } },
 ];
 
-const LIVES_IN = { rodata: '.rodata', bss: '.bss', data: '.data', stack: 'stack', heap: 'heap', periph: 'a peripheral register', vector: 'the vector table', code: '.text' };
 
 /** Quiz items a platform can pose: C objects whose role some region holds, plus one raw address per sized region. */
 export function quizFor(platformId) {
@@ -92,7 +91,7 @@ export default function mount(el, props = {}, ctx) {
     root.append(h('div', { class: 'w-tabs', role: 'group', 'aria-label': 'Mode' },
       [['explore', 'Explore'], ['quiz', 'Quiz: where does this live?']].map(([m, t]) =>
         h('button', { type: 'button', class: 'w-tab' + (m === mode ? ' on' : ''), 'aria-pressed': String(m === mode), onclick: () => { mode = m; sel = null; last = null; draw(); } }, t))));
-    if (p.illustrative) root.append(h('p', { class: 'w-msg warn' }, 'Illustrative layout, not a real chip. ' + p.summary));
+    if (p.illustrative) root.append(h('p', { class: 'w-msg warn' }, 'Illustrative layout. ' + p.summary));
 
     const item = queue[qi];
     if (mode === 'quiz') {
@@ -154,4 +153,3 @@ export default function mount(el, props = {}, ctx) {
   }
   draw();
 }
-export { LIVES_IN };

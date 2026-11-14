@@ -535,6 +535,7 @@ function compile(source, opts = {}) {
   const flash = new Uint8Array(MEM_SIZE).fill(0xFF), sram = new Uint8Array(MEM_SIZE);
   let fp = STACK_TOP, sp = STACK_TOP, steps = 0, curLine = 0, retVal, loading = false;
   let heapBase = SRAM_BASE, heapTop = SRAM_BASE, heapLim = SRAM_BASE, irqOn = true, inIsr = false;
+  let irqWait = -1, irqSeed = 0x2F6E2B1;
   let maxSteps = 2000000, stopAt = -1, breakLine = -1;
   const frames = [], blocks = [], fnByAddr = new Map(), handlers = [null, null], irqCounts = [0, 0];
   const out = [], uartTx = [], gpioTrace = [];
@@ -691,7 +692,12 @@ function compile(source, opts = {}) {
     if (rxNext < rxSched.length && rxSched[rxNext].t <= steps) rxArrive();
     if (P.abusy && --P.abusy === 0) adcDone();
     if (steps === stopAt) throw new Halt('ticks');
-    if (irqOn && !inIsr && (((P.tstatus & 1) && (P.tctrl & 4)) || (rxFifo.length && (P.uctrl & 2)))) dispatchIrq();
+    if (irqOn && !inIsr && (((P.tstatus & 1) && (P.tctrl & 4)) || (rxFifo.length && (P.uctrl & 2)))) {
+      // Interrupt latency: 0-3 ticks, from a fixed pseudo-random sequence. Without it a timer period that is a
+      // multiple of the main loop length would always interrupt at the same statement and hide every race.
+      if (irqWait < 0) { irqSeed = (Math.imul(irqSeed, 1664525) + 1013904223) >>> 0; irqWait = irqSeed >>> 30; }
+      if (irqWait === 0) { irqWait = -1; dispatchIrq(); } else irqWait--;
+    }
     if (line === breakLine) { breakLine = -1; throw new Halt('break'); }
   }
 

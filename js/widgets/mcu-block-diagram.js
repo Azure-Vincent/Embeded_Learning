@@ -84,7 +84,7 @@ export default function mount(el, props = {}, ctx) {
     const lit = new Set(trace ? TRACES[trace].steps[ti].on : []);
     root.append(h('div', { class: 'w-tabs', role: 'group', 'aria-label': 'Platform' }, PLATFORM_IDS.map((id) =>
       h('button', { type: 'button', class: 'w-tab' + (id === pid ? ' on' : ''), 'aria-pressed': String(id === pid), onclick: () => { pid = id; draw(); } }, PLATFORMS[id].short))));
-    if (p.illustrative) root.append(h('p', { class: 'w-msg warn' }, 'Illustrative layout, not a real chip. ' + p.summary));
+    if (p.illustrative) root.append(h('p', { class: 'w-msg warn' }, 'Illustrative layout. ' + p.summary));
     else root.append(h('p', { class: 'w-note' }, p.summary));
 
     const svg = s('svg', { viewBox: '0 0 760 440', class: 'w-svg mcu-block-diagram-svg', role: 'group', 'aria-label': 'Block diagram of ' + p.name });
@@ -95,7 +95,7 @@ export default function mount(el, props = {}, ctx) {
       const g = s('g', { class: cls, tabindex: 0, role: 'button', 'data-b': id, 'aria-label': (label || BLOCKS[id].label) + (absent ? ' (not present in this layout)' : ''), 'aria-pressed': String(sel === id),
         onclick: pick, onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } } },
         s('rect', { x, y, width: w, height: hgt, rx: 4 }),
-        s('text', { x: x + w / 2, y: y + hgt / 2 + 5, 'text-anchor': 'middle', 'font-size': 14 }, label || BLOCKS[id].label));
+        s('text', { x: x + w / 2, y: y + hgt / 2 + 5, 'text-anchor': 'middle', 'font-size': w < 80 ? 12 : 14 }, label || BLOCKS[id].label));
       svg.append(g);
     };
     // wires first so blocks paint over them
@@ -113,8 +113,8 @@ export default function mount(el, props = {}, ctx) {
     wire(60, 236, 20 + 81 + 20, 236, 'irq' + (lit.has('intc') && lit.has('cpu') ? ' lit' : ''));
     wire(20 + 81 + 20, 236, 20 + 81 + 20, 260, 'irq' + (lit.has('intc') && lit.has('cpu') ? ' lit' : ''));
     svg.append(s('text', { x: 300, y: 216, 'font-size': 11, class: 'mcu-block-diagram-lbl' }, 'interrupt request lines (dashed)'));
-    wire(678, 55, 740, 55, lit.has('debug') ? 'lit' : '');
-    svg.append(s('text', { x: 742, y: 44, 'font-size': 11, 'text-anchor': 'end', class: 'mcu-block-diagram-lbl' }, 'debug pins'));
+    wire(678, 55, 742, 55, lit.has('debug') ? 'lit' : '');
+    svg.append(s('text', { x: 742, y: 34, 'font-size': 11, 'text-anchor': 'end', class: 'mcu-block-diagram-lbl' }, 'debug pins'));
 
     for (const [id, x, w] of TOP) block(id, x, 20, w, 70, id === 'cpu' ? (p.cores.length > 1 && pid !== 'mspm0l2228' ? 'CPU cores' : 'CPU core') : null);
     block('bus', 20, 150, 720, 30, 'System bus — address · data · control');

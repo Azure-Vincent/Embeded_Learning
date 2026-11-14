@@ -91,7 +91,8 @@ export class GdbSession {
     ];
     const p = this.prog;
     this.rows = p.lines.map(([addr, file, line, fl]) => ({ addr, file, line, stmt: fl & 1, pe: fl & 2, end: fl & 4 }));
-    const st = this.rows.filter((r) => r.stmt || r.end || r.line === 0);
+    // Statement boundaries. Rows with line 0 (compiler-generated code) are folded into the line before them.
+    const st = this.rows.filter((r) => (r.stmt && r.line > 0) || r.end);
     this.stmtRows = st.filter((r, i) => !(st[i + 1] && st[i + 1].addr === r.addr));
     this.src = Object.fromEntries(Object.entries(p.sources).map(([f, t]) => [f, t.split('\n')]));
     this.mainFile = p.file;
@@ -630,8 +631,16 @@ export class GdbSession {
     return lines.join('\n');
   }
   cmdList(arg) {
-    let file, centre;
     arg = arg.trim();
+    const span = arg.match(/^(\d+)\s*,\s*(\d+)$/);
+    if (span) {
+      const f = this.listPos ? this.listPos.file : this.mainFile, src = this.src[f];
+      if (+span[1] > src.length) throw new GdbError(`Line number ${span[1]} out of range; "src/${f}" has ${src.length} lines.`);
+      const out = [];
+      for (let l = Math.max(1, +span[1]); l <= Math.min(src.length, +span[2]); l++) out.push(`${l}\t${src[l - 1]}`);
+      this.listPos = { file: f, line: Math.min(src.length, +span[2]) + 1, centre: false };
+      return out.join('\n');
+    }
     if (arg) {
       const loc = arg.startsWith('*') ? (() => { const a = this.addrOf(arg.slice(1)) & ~1; const ln = this.stmtAt(a); if (!ln) throw new GdbError(`No line number information available for address ${hx(a)}${this.symTag(a)}`); return { file: ln.file, line: ln.line, addr: a, star: true }; })() : this.resolve(arg);
       if (!loc.file) throw new GdbError('No line number information for that location.');
@@ -641,7 +650,6 @@ export class GdbSession {
       return head + this.listMore();
     }
     if (!this.listPos) { const f = this.func('main'); this.listPos = { file: f.file, line: f.line, centre: true }; }
-    void file; void centre;
     return this.listMore();
   }
   listMore() {

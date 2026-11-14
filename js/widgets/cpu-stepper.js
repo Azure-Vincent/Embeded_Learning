@@ -15,7 +15,7 @@ const DP = {
 const WIRES = [ // [from, to, x1,y1,x2,y2]
   ['pc', 'mar', 84, 31, 112, 31], ['sp', 'mar', 84, 93, 149, 48], ['mar', 'mem', 186, 31, 224, 31], ['mem', 'led', 328, 31, 366, 31],
   ['mem', 'ir', 276, 110, 276, 142], ['ir', 'dec', 224, 159, 186, 159], ['mem', 'regs', 328, 93, 366, 93], ['regs', 'alu', 418, 110, 418, 142],
-  ['alu', 'flags', 366, 170, 300, 196], ['dec', 'flags', 112, 159, 84, 159], ['ir', 'pc', 240, 176, 47, 196],
+  ['dec', 'flags', 112, 159, 84, 159],
 ];
 
 export default function mount(el, props = {}, ctx) {
@@ -73,13 +73,13 @@ export default function mount(el, props = {}, ctx) {
 
     const next = cpu.halted ? 'halted' : cpu.phase;
     stateBox.append(h('div', { class: 'cpu-stepper-phases', 'aria-hidden': 'true' }, ['fetch', 'decode', 'execute'].map((p) =>
-      h('span', { class: 'cpu-stepper-ph' + (info && info.phase === p ? ' done' : '') + (next === p ? ' next' : '') }, p))));
+      h('span', { class: 'cpu-stepper-ph' + (info && info.phase === p ? ' done' : '') + (next === p ? ' upnext' : '') }, p))));
     stateBox.append(h('p', { class: 'w-msg cpu-stepper-say', 'aria-live': 'polite' },
       info ? info.text : 'Ready. PC = 00. The first phase will fetch the word at address 00.', runNote ? ' ' + runNote : '',
       cpu.halted ? '' : h('span', { class: 'cpu-stepper-nextph' }, ` Next phase: ${next}.`)));
 
     // datapath
-    const svg = s('svg', { viewBox: '0 0 480 204', class: 'w-svg cpu-stepper-dp', role: 'img', 'aria-label': 'Datapath. Active this phase: ' + ([...lit].join(', ') || 'nothing') });
+    const svg = s('svg', { viewBox: '0 0 480 190', class: 'w-svg cpu-stepper-dp', role: 'img', 'aria-label': 'Datapath. Active this phase: ' + ([...lit].join(', ') || 'nothing') });
     for (const [a, b, x1, y1, x2, y2] of WIRES) svg.append(s('line', { x1, y1, x2, y2, class: 'cpu-stepper-wire' + (lit.has(a) && lit.has(b) ? ' lit' : '') }));
     const val = { pc: h2(cpu.pc), sp: h2(cpu.sp), mar: h2(cpu.mar), ir: h4(cpu.ir), flags: `${cpu.flags.N}${cpu.flags.Z}${cpu.flags.C}${cpu.flags.V}`, led: h2(cpu.mem[LED_ADDR]) };
     for (const [id, [x, y, w, hh, label]] of Object.entries(DP)) {

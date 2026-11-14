@@ -69,7 +69,7 @@ Read this before trusting any number in the app.
 ```bash
 node tests/validate.mjs            # schema, quiz rules, widget names; runs every C-lab solution against its tests
 node tests/validate.mjs esp32      # one section
-node --test tests/                 # unit tests for the simulation models
+node --test tests/*.test.mjs       # unit tests for the simulation models
 ```
 
 - Adding or editing lessons: `docs/CONTENT_GUIDE.md`.

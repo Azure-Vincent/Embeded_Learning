@@ -25,8 +25,13 @@ or https (WebCrypto is unavailable on plain http from another host).
 | Interactive tools | `js/widgets/`, models in `js/sim/` | Circuit simulator, virtual breadboard, bus visualisers, logic analyser, CPU and memory visualisers, RTOS scheduler, C interpreter, debugger and firmware-inspection simulations, security simulations |
 | App shell | `js/app.js`, `js/core/` | Routing, rendering, mastery tracking, prerequisites, skills matrix, notebook, glossary, search |
 | Host-buildable example code | `examples/` | Plain C that was compiled and run with GCC, with Makefiles and tests |
+| Synthetic firmware images | `tools/fwimages/` | C sources and build script (clang, lld) for the images used by the debugger, inspector and disassembly tools |
 | Author documentation | `docs/` | Content schema, widget contract, the simulated MCU, and the sourced fact sheet |
 | Tests | `tests/` | Content validator and unit tests for the simulation models |
+
+Current size: 135 lessons, 35 laboratories and projects (including ten ESP32 build projects, five practice
+scenarios and six capstones), 956 assessment questions, 73 C exercises that execute in the built-in interpreter,
+46 interactive tools, and 339 unit tests over the simulation models.
 
 Sections, in prerequisite order: Foundations, Electronics, Microcontroller Architecture, ESP32 Development,
 Embedded C, Communication Protocols, Real-Time Systems, Hardware Debugging, Firmware Engineering,

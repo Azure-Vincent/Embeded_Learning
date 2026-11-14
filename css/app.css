@@ -156,3 +156,12 @@ a.gloss { color: inherit; text-decoration: underline dotted var(--mask); }
 @media print { .top, #nav, .toolbar, .pager, .copy { display: none !important; } .shell { display: block; } }
 
 [hidden] { display: none !important; }
+
+/* narrow screens: long identifiers wrap, wide figures scroll inside their own box */
+:not(pre) > code { overflow-wrap: anywhere; }
+.predict, .exercise, .callout, .quiz, .q, .qtext > div { min-width: 0; overflow-wrap: break-word; }
+.svgwrap, .widget-body { overflow-x: auto; }
+
+/* dark theme: a quiet header instead of a bright bar */
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top { background: #0f3a30; color: #e2e9ec; } :root:not([data-theme="light"]) #search input { background: #0a2620; color: #e2e9ec; } :root:not([data-theme="light"]) #search input::placeholder { color: #8fb3a8; } }
+:root[data-theme="dark"] .top { background: #0f3a30; color: #e2e9ec; } :root[data-theme="dark"] #search input { background: #0a2620; color: #e2e9ec; } :root[data-theme="dark"] #search input::placeholder { color: #8fb3a8; }

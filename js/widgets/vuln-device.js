@@ -1,6 +1,7 @@
 import { h, clear } from '../core/dom.js';
 import { md } from '../core/md.js';
 import { create, DEVICES } from '../sim/vulndevices.js';
+import { store } from '../core/store.js';
 export { DEVICES };
 
 // Console to a fictional, intentionally weak device simulated in the page. The point of each device is
@@ -66,11 +67,25 @@ export default function mount(el, props = {}, ctx = {}) {
     h('div', { class: 'w-msg warn' }, 'A fictional device simulated in your browser. Only ever test real equipment that you own or have written permission to assess.'),
     h('div', { class: 'w-task' }, h('p', {}, h('strong', {}, `${meta.product} — ${meta.difficulty}. `), meta.briefing || `Review this device's service console as its own design team would before release. Weakness class to look for: ${CLASS[props.device].toLowerCase()}.`),
       h('p', {}, meta.goal || 'Objective: show whether the protected value (of the form BENCH{...}) can be reached without proper authorisation, then write up the fix.'),
-      meta.briefing ? null : h('p', { class: 'w-note' }, 'Guided analysis notes for this device are not included in this build; the console itself is fully live.')),
+      meta.briefing ? null : h('p', { class: 'w-note' }, 'This device has no guided walkthrough: explore the console, then complete the written review below.')),
     h('div', { class: 'w-grid' }, h('div', {}, term, input),
       meta.panels?.length ? h('div', {}, meta.panels.map((p) => [h('div', { class: 'tag' }, p.title), h('pre', { class: 'ascii' }, p.text)])) : null),
     h('div', { class: 'row' }, hintBtn, h('button', { type: 'button', class: 'btn small ghost', onclick: () => { dev = create(props.device); term.textContent = dev.banner + '\n'; } }, 'Power-cycle the device')),
-    hints, after);
+    hints, after, meta.briefing ? null : reviewForm());
+
+  // Devices without guided notes are completed by a written design review, which is the skill being practised.
+  function reviewForm() {
+    const ta = h('textarea', { rows: 7, 'aria-label': 'Your design review', placeholder: 'What the weakness is and how it arises · what it would let someone do · how a design team would detect it · the fix · the test that proves the fix' });
+    const fb = h('div', { class: 'w-msg' });
+    const save = h('button', { type: 'button', class: 'btn small', onclick: () => {
+      if (ta.value.trim().length < 200) { fb.className = 'w-msg warn'; fb.textContent = 'Cover all five points: the weakness, its consequence, detection, the fix, and the verifying test.'; return; }
+      store.addNote({ title: `Design review: ${meta.product}`, body: ta.value.trim() });
+      fb.className = 'w-msg ok'; fb.textContent = 'Recorded and saved to your lab notebook. Compare it with the lesson’s discussion of this weakness class.';
+      ctx.complete?.();
+    } }, 'Record my review');
+    return h('div', { class: 'exercise', style: { marginTop: '14px' } }, h('div', { class: 'tag' }, 'Your review'),
+      h('p', {}, 'Explore the console, then write the review a design team should have written before release. Recording it completes this exercise.'), ta, h('div', { class: 'row' }, save), fb);
+  }
 }
 function picker(el) {
   const out = h('div');

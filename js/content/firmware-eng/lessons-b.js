@@ -143,7 +143,11 @@ Avoid the third way, \`#ifdef TARGET_ESP32\` scattered through application code.
 
 Here is the heart of the fake, the one you will use most:`,
     { t: 'code', lang: 'c', status: 'host-tested', caption: 'examples/firmware-eng/port/hal_fake.c (excerpt): inputs are scripted, outputs recorded, time is a variable.',
-      code: C`    if (s_rx_pos == s_rx_len) return false;
+      code: C`void hal_init(void) { }
+
+bool hal_uart_read(uint8_t *byte)
+{
+    if (s_rx_pos == s_rx_len) return false;
     *byte = s_rx[s_rx_pos++];
     return true;
 }

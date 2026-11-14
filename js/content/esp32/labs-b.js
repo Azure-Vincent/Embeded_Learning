@@ -283,10 +283,10 @@ int main(void)
     printf("sr595 model: all checks passed\n");
     return 0;
 }`, explain: [
-        { lines: '8-11', md: 'The whole chip is 16 flip-flops. Keeping the shift and storage registers separate in the model is what lets you see why outputs do not flicker while bits move.' },
-        { lines: '16-21', md: 'One rising edge on SRCLK. The value returned is what QH\' presented *before* the edge, because a second chip clocked by the same edge samples the old value.' },
-        { lines: '27-35', md: 'An SPI master sending one byte is eight of those edges with a chosen bit order.' },
-        { lines: '58-64', md: 'In a chain, the first byte you send is pushed through into the far chip. Send the far chip\'s data first.' },
+        { lines: '7-10', md: 'The whole chip is 16 flip-flops. Keeping the shift and storage registers separate in the model is what lets you see why outputs do not flicker while bits move.' },
+        { lines: '15-20', md: 'One rising edge on SRCLK. The value returned is what QH\' presented *before* the edge, because a second chip clocked by the same edge samples the old value.' },
+        { lines: '26-33', md: 'An SPI master sending one byte is eight of those edges with a chosen bit order.' },
+        { lines: '57-63', md: 'In a chain, the first byte you send is pushed through into the far chip. Send the far chip\'s data first.' },
       ] },
     ] },
     { title: 'Send bytes from the ESP32', blocks: [
@@ -411,9 +411,9 @@ static void flash_read_jedec_id(uint8_t id[3])
     id[2] = t.rx_data[3];   /* capacity     */
     /* rx_data[0] was clocked in while the command went out: ignore it. */
 }`, explain: [
-        { lines: '10-16', md: 'A second device on the same host: same three bus wires, its own CS pin, its own clock speed. The driver reprograms the clock divider and asserts the right CS for each transaction.' },
-        { lines: '21-25', md: 'SPI is always full duplex: 32 clocks send four bytes and receive four bytes. The three zero bytes are only there to generate clocks for the reply.' },
-        { lines: '27-30', md: 'While the command byte was going out, the flash was not yet driving a reply. The byte received in that slot is meaningless and must be skipped.' },
+        { lines: '7-16', md: 'A second device on the same host: same three bus wires, its own CS pin, its own clock speed. The driver reprograms the clock divider and asserts the right CS for each transaction.' },
+        { lines: '20-25', md: 'SPI is always full duplex: 32 clocks send four bytes and receive four bytes. The three zero bytes are only there to generate clocks for the reply.' },
+        { lines: '26-29', md: 'While the command byte was going out, the flash was not yet driving a reply. The byte received in that slot is meaningless and must be skipped.' },
       ] },
       { t: 'predict', q: 'While the ESP32 talks to the flash chip, SCLK and MOSI are also connected to the 74HC595. Do the LEDs change?', choices: [
         { t: 'No. The shift register fills with flash traffic, but the outputs keep their old values', ok: true, why: 'SRCLK toggles, so the 595\'s shift register does take in those bits. But RCLK is the 595\'s own CS line, which stays high during a flash transaction, so there is no rising edge and the storage register keeps driving the LEDs with the last latched byte. The next sr_write() shifts in a full new byte before latching, so the garbage never becomes visible.' },
@@ -820,10 +820,10 @@ fp_result_t frame_parser_feed(frame_parser_t *p, uint8_t byte)
         { lines: '9-21', md: 'Bitwise CRC: XOR the byte into the top of the 16-bit register, then for each of its 8 bits shift left and, if a 1 fell out of the top, XOR in the polynomial 0x1021. It is long division in base 2 where subtraction is XOR. Slow but tiny; a table-driven version trades 512 bytes of flash for speed.' },
         { lines: '24-39', md: 'The encoder refuses anything that does not fit rather than truncating. The CRC is computed over the bytes already placed in the output buffer, so what is checked is exactly what is sent.' },
         { lines: '49-55', md: 'The escape hatch. If the line goes quiet in the middle of a frame, the rest is not coming; abandon it so the next SOF is recognised.' },
-        { lines: '64-73', md: 'The security-relevant lines. The length is compared with the buffer size *before* it is stored or used. Every later write to `payload` is safe because of this check.' },
-        { lines: '81-85', md: '`idx` can never reach `FRAME_MAX_PAYLOAD` because `len` was bounded above and the state changes when `idx == len`.' },
-        { lines: '92-100', md: 'Only now, with the CRC matching, is the frame reported to the caller. A bad frame is counted, not silently dropped: counters are how you find a flaky link.' },
-        { lines: '102-103', md: 'An unreachable default path for a valid enum, but RAM can be corrupted. Falling back to a known state costs two lines.' },
+        { lines: '64-74', md: 'The security-relevant lines. The length is compared with the buffer size *before* it is stored or used. Every later write to `payload` is safe because of this check.' },
+        { lines: '82-86', md: '`idx` can never reach `FRAME_MAX_PAYLOAD` because `len` was bounded above and the state changes when `idx == len`.' },
+        { lines: '93-101', md: 'Only now, with the CRC matching, is the frame reported to the caller. A bad frame is counted, not silently dropped: counters are how you find a flaky link.' },
+        { lines: '103-104', md: 'An unreachable default path for a valid enum, but RAM can be corrupted. Falling back to a known state costs two lines.' },
       ] },
       { t: 'code', lang: 'c', status: 'host-tested', caption: 'frame_test.c — gcc -Wall -Wextra -std=c11 frame.c frame_test.c -o frame_test && ./frame_test', code: String.raw`/* frame_test.c - PC test for frame.c.
  * Build: gcc -Wall -Wextra -std=c11 frame.c frame_test.c -o frame_test */
@@ -1175,4 +1175,1073 @@ No solution is given.`,
   ],
 };
 
-export default { skills, lessons: [], labs: [p6, p7], glossary: [], troubleshooting: [], refs: [] };
+
+// ───────────────────────────── Project 8: Wi-Fi device ─────────────────────────────
+const p8States = (() => {
+  let b = state(15, 40, 110, 42, 'STARTING', '', 0) + state(200, 40, 130, 42, 'CONNECTING', 'bit clear', 2) + state(440, 40, 135, 42, 'CONNECTED', 'has IP, bit set', 4) + state(200, 170, 130, 42, 'BACKOFF', 'timer armed', 3);
+  b += arr(125, 61, 200, 61) + T(162, 34, 'STA_START', 'middle', 'font-size="10"') + T(162, 80, 'connect()', 'middle', 'font-size="10" opacity=".7"');
+  b += arr(330, 61, 440, 61, 4) + T(385, 34, 'GOT_IP', 'middle', 'font-size="10"') + T(385, 80, 'attempt = 0', 'middle', 'font-size="10" opacity=".7"');
+  b += arr(240, 82, 240, 170, 3) + T(234, 122, 'DISCONNECTED', 'end', 'font-size="10"') + T(234, 135, '(join failed)', 'end', 'font-size="10" opacity=".7"');
+  b += arr(290, 170, 290, 82, 2) + T(297, 122, 'timer fires', 'start', 'font-size="10"') + T(297, 135, 'connect()', 'start', 'font-size="10" opacity=".7"');
+  b += wire('508,82 508,191 337,191', 3) + arr(345, 191, 330, 191, 3) + T(514, 130, 'DISCONNECTED', 'start', 'font-size="10"') + T(514, 143, '(link lost)', 'start', 'font-size="10" opacity=".7"');
+  b += T(265, 232, 'wait = 1 s, 2 s, 4 s ... capped at 30 s', 'middle', 'font-size="10" opacity=".8"');
+  return svg(620, 245, b);
+})();
+
+const p8Arch = (() => {
+  let b = box(15, 30, 140, 46, 'Wi-Fi driver task', 'radio, association')
+    + box(215, 30, 180, 46, 'Event loop task', 'runs on_event()')
+    + box(455, 22, 170, 30, 'CONNECTED_BIT')
+    + box(455, 86, 170, 46, 'app_main, report task', 'block on the bit')
+    + box(215, 116, 180, 46, 'esp_timer one-shot', 'retry_cb()')
+    + box(215, 206, 180, 46, 'HTTP server task', 'root_get, status_get')
+    + box(15, 206, 140, 46, 'Browser on your LAN', '');
+  b += arr(155, 53, 215, 53, 1) + T(185, 46, 'events', 'middle', `font-size="10" fill="${col(1)}"`);
+  b += arr(395, 42, 455, 38, 4) + T(425, 30, 'set / clear', 'middle', `font-size="10" fill="${col(4)}"`);
+  b += arr(540, 52, 540, 86, 4);
+  b += arr(305, 76, 305, 116, 3) + T(311, 100, 'start_once(wait)', 'start', `font-size="10" fill="${col(3)}"`);
+  b += wire('215,139 85,139 85,84', 2) + arr(85, 90, 85, 76, 2) + T(150, 133, 'esp_wifi_connect()', 'middle', `font-size="10" fill="${col(2)}"`);
+  b += arr(155, 222, 215, 222, 5) + T(185, 216, 'GET', 'middle', `font-size="10" fill="${col(5)}"`) + arr(215, 240, 155, 240, 5) + T(185, 256, 'JSON', 'middle', `font-size="10" fill="${col(5)}"`);
+  b += T(410, 226, 'handlers run in the server’s task,', 'start', 'font-size="10" opacity=".75"') + T(410, 239, 'never in the event loop', 'start', 'font-size="10" opacity=".75"');
+  return svg(640, 268, b);
+})();
+
+const p8 = {
+  id: 'esp-p8', title: 'Project 8: Wi-Fi-connected embedded device', kind: 'Project', minutes: 180,
+  summary: 'Join a Wi-Fi network in station mode with event handlers and backoff reconnect, serve a status page from the device, and report over HTTPS with certificate verification — with no credentials in the source code.',
+  skills: ['esp-pb-wifi-sta', 'esp-pb-net-sec', 'esp-pb-debug-link'],
+  objectives: [
+    'Describe the ESP-IDF network start-up sequence and which task runs each piece of your code.',
+    'Write Wi-Fi and IP event handlers that never block, and reconnect with exponential backoff.',
+    'Serve a JSON endpoint and a small page with `esp_http_server`.',
+    'Keep credentials out of the repository with Kconfig, and explain what that does and does not protect.',
+    'Make an HTTPS request that verifies the server certificate, and explain what is lost if verification is turned off.',
+    'Build bounded strings safely and treat every length that reaches a send call as a security boundary.',
+  ],
+  hardware: [
+    'ESP32 DevKit and a USB cable (no external parts are needed)',
+    'A 2.4 GHz Wi-Fi network you control, with WPA2 or WPA3 (the original ESP32 has no 5 GHz radio)',
+    'A phone or PC on the same network, to open the status page',
+    'A USB port or supply that can deliver the current peaks of Wi-Fi transmission (see troubleshooting)',
+  ],
+  software: [
+    'ESP-IDF v6.1',
+    'A web browser and `curl`',
+    'gcc on your PC for the helper tests',
+    'For the HTTPS step: an HTTPS endpoint you own or are permitted to post to',
+  ],
+  background: [
+    `### The problem
+
+A device that works on your desk meets a different world when it is deployed: the access point reboots at 3 a.m., the signal fades when a door closes, the password gets changed. A connected device is judged by what it does *then*. And the moment it has a radio, everything in its firmware — including any password you typed into the source — is exposed to people you have never met. This project is about both halves: staying connected, and not being the weak point of the network you joined.
+
+### What "connecting" consists of
+
+Wi-Fi station mode means the ESP32 acts as a client of an access point. Getting from reset to a usable IP address is a chain of steps, each of which can fail on its own:
+
+1. The driver starts the radio (\`esp_wifi_start\`).
+2. The station scans for the configured SSID and **associates** with the access point.
+3. The WPA2/WPA3 **handshake** proves both sides know the passphrase and derives session keys.
+4. A **DHCP** client asks the network for an IP address.
+
+Only after step 4 can you open a socket. That is why the application waits for the *got IP* event and not for the *connected* event.
+
+### Events, not return values
+
+None of those steps completes inside the function call that starts it. \`esp_wifi_connect()\` returns immediately; the outcome arrives later as an **event** posted to the default event loop, a task that calls the handlers you registered. Three events carry the whole life cycle:
+
+| Event | Meaning | What your handler does |
+|---|---|---|
+| \`WIFI_EVENT_STA_START\` | radio is up | call \`esp_wifi_connect()\` |
+| \`IP_EVENT_STA_GOT_IP\` | DHCP finished | mark the network usable |
+| \`WIFI_EVENT_STA_DISCONNECTED\` | join failed, or the link was lost | mark it unusable, schedule a retry |
+
+The disconnected event covers both "wrong password" and "access point went away", and carries a reason code. The driver does **not** reconnect by itself; if your handler does nothing, the device stays offline for ever.`,
+    { t: 'figure', svg: p8States, caption: 'Connection life cycle as a state machine. Every arrow is an event or a timer, never a delay inside a handler.' },
+    { t: 'callout', kind: 'decision', title: 'Why backoff, and why a timer instead of a delay', md: `Retrying at once is right for a momentary drop and wrong for an outage: a thousand devices hammering an access point that is trying to boot keep it from recovering, and each failed attempt costs transmit power. Exponential backoff — 1 s, 2 s, 4 s, up to a cap — gives fast recovery from short faults and low load during long ones.
+
+The wait must not happen inside the handler. All handlers share the one event loop task; a handler that sleeps for 30 s stops every other event in the system from being delivered for 30 s, including the got-IP event of a connection that succeeded. So the handler arms a one-shot timer and returns, and the timer's callback makes the next attempt.` },
+    `### Credentials do not belong in source code
+
+A passphrase in \`main.c\` ends up in version control, in every clone, in backups and in screenshots. Kconfig moves it out: you declare configuration items, set them with \`idf.py menuconfig\`, and the build generates a header with \`CONFIG_…\` macros. The values live in the file \`sdkconfig\`, which you keep out of the repository.
+
+Be precise about what this achieves. It keeps the secret out of your *repository*. The secret is still compiled into the firmware image and sits in the flash chip as readable text; anyone who holds the device and can read its flash can recover it unless flash encryption is enabled. And a single passphrase built into every unit is a fleet-wide secret: extracting it from one device exposes the network for all. Real products provision each device individually at first use, and store what they are given in encrypted storage.`,
+    { t: 'callout', kind: 'security', title: 'The rules for a device on a network', md: `- **Never ship default or shared credentials.** No \`admin/admin\`, no password printed in the manual, no key that is the same in every unit. Networks of compromised cameras and routers were built almost entirely from default passwords.
+- **Use TLS and verify the peer.** Encryption without certificate verification stops passive eavesdropping only. Anyone who can redirect the connection can present their own certificate, and the device will hand over its data and accept whatever comes back.
+- **Treat everything from the network as hostile input**: lengths, URLs, JSON, headers. Bound every buffer.
+- **Expose as little as possible.** The status page in this project is plain HTTP with no login, which is acceptable only for read-only, non-sensitive data on a network you control. Anything that changes the device's behaviour needs authentication and TLS.
+- **Do not log secrets.** A serial log is read by whoever has a USB cable.` },
+    `### Two ways to move data
+
+- **The device is a server** (\`esp_http_server\`): a browser on the same network fetches a page from it. Good for local configuration and diagnostics. It only works while the client can reach the device's address.
+- **The device is a client** (\`esp_http_client\`): it makes outgoing requests to a server you run. This passes through home routers without any set-up and is how nearly all deployed devices report data.
+
+You will build the first, then add the second with TLS.`,
+  ],
+  diagram: [
+    { t: 'ascii', caption: 'Connections. This project is about architecture; the only wire is USB.', text: `
+ESP32 DevKit        Connects to            Notes
+------------        -------------------    ----------------------------------------------
+USB                 PC                     power, flashing, serial monitor (UART0)
+On-board antenna    2.4 GHz access point   keep metal, hands and the breadboard's power
+                                           rails away from the antenna end of the module
+(none)              GPIOs                  nothing required
+
+If you add a sensor to report:
+GPIO32-GPIO39       analog source          ADC1 only. ADC2 pins cannot be used while Wi-Fi
+                                           is in use on the original ESP32.
+` },
+    { t: 'figure', svg: p8Arch, caption: 'Which task runs what. The event handler only sets a flag or arms a timer; anything that waits happens in a task of its own.' },
+    { t: 'callout', kind: 'note', title: 'Adapting to other chips', md: `The code is the same on the ESP32-S3, ESP32-C3 and ESP32-C6; set the target with \`idf.py set-target\`. All of them are 2.4 GHz for Wi-Fi in the variants covered by this course's fact sheet. The ADC2-with-Wi-Fi restriction is chip-specific: check the ADC page for your chip before picking an analog pin.` },
+  ],
+  steps: [
+    { title: 'Test the helpers on your PC', blocks: [
+      `Two pieces of this project are plain arithmetic and string formatting. Test them where it is easy.`,
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'net_util.h', code: String.raw`/* net_util.h - pure helpers for the Wi-Fi project. No ESP-IDF includes. */
+#ifndef NET_UTIL_H
+#define NET_UTIL_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define BACKOFF_FIRST_MS   1000u
+#define BACKOFF_MAX_MS    30000u
+
+/* Delay before reconnect attempt number attempt (0 = first retry). */
+uint32_t backoff_ms(unsigned attempt);
+
+/* Write the status JSON into out. Returns its length, or -1 if it did
+ * not fit (out is then an empty string, never a truncated document). */
+int status_json(char *out, size_t out_size,
+                uint32_t uptime_s, uint32_t free_heap, int rssi_dbm);
+
+#endif` },
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'net_util.c', code: String.raw`#include "net_util.h"
+#include <inttypes.h>
+#include <stdio.h>
+
+uint32_t backoff_ms(unsigned attempt)
+{
+    uint32_t d = BACKOFF_FIRST_MS;
+    while (attempt-- > 0 && d < BACKOFF_MAX_MS) d *= 2u;   /* 1 s, 2 s, 4 s ... */
+    return d > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : d;
+}
+
+int status_json(char *out, size_t out_size,
+                uint32_t uptime_s, uint32_t free_heap, int rssi_dbm)
+{
+    if (out == NULL || out_size == 0) return -1;
+    int n = snprintf(out, out_size,
+                     "{\"uptime_s\":%" PRIu32 ",\"free_heap\":%" PRIu32 ",\"rssi_dbm\":%d}",
+                     uptime_s, free_heap, rssi_dbm);
+    if (n < 0 || (size_t)n >= out_size) {   /* snprintf reports the length it WANTED */
+        out[0] = '\0';
+        return -1;
+    }
+    return n;
+}`, explain: [
+        { lines: '5-10', md: 'Doubling stops as soon as the cap is reached, so a huge attempt count cannot overflow the 32-bit delay.' },
+        { lines: '16-23', md: '`snprintf` never writes past `out_size`, but it returns the length the full text *would* have had. Comparing that return value with the buffer size is the only way to know the output is complete. A truncated JSON document is worse than none, so the function reports failure and leaves an empty string.' },
+      ] },
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'net_util_test.c — gcc -Wall -Wextra -std=c11 net_util.c net_util_test.c -o net_util_test && ./net_util_test', code: String.raw`/* Build: gcc -Wall -Wextra -std=c11 net_util.c net_util_test.c -o net_util_test */
+#include "net_util.h"
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    assert(backoff_ms(0) == 1000 && backoff_ms(1) == 2000 && backoff_ms(4) == 16000);
+    assert(backoff_ms(5) == 30000 && backoff_ms(1000000) == 30000);
+
+    char buf[96];
+    int n = status_json(buf, sizeof buf, 75, 201344, -61);
+    assert(n == (int)strlen(buf));
+    assert(strcmp(buf, "{\"uptime_s\":75,\"free_heap\":201344,\"rssi_dbm\":-61}") == 0);
+    printf("%s\n", buf);
+
+    char tiny[16];
+    assert(status_json(tiny, sizeof tiny, 75, 201344, -61) == -1 && tiny[0] == '\0');
+    assert(status_json(NULL, 0, 0, 0, 0) == -1);
+
+    printf("net_util: all checks passed\n");
+    return 0;
+}` },
+      `You should see the JSON line \`{"uptime_s":75,"free_heap":201344,"rssi_dbm":-61}\` and \`net_util: all checks passed\`.`,
+    ] },
+    { title: 'Declare the configuration and keep it out of the repository', blocks: [
+      `Create \`main/Kconfig.projbuild\` (the file name matters; the build system looks for it):`,
+      { t: 'code', lang: 'text', status: 'reviewed', caption: 'main/Kconfig.projbuild', code: String.raw`menu "Bench project 8"
+
+    config BENCH_WIFI_SSID
+        string "Wi-Fi SSID"
+        default ""
+        help
+            Network name the device joins. Leave empty in the repository.
+
+    config BENCH_WIFI_PASSWORD
+        string "Wi-Fi password"
+        default ""
+        help
+            WPA2/WPA3 passphrase. Stored in sdkconfig, which must not be committed.
+
+    config BENCH_REPORT_URL
+        string "HTTPS URL to POST readings to (optional)"
+        default ""
+        help
+            Must start with https://. Leave empty to disable reporting.
+
+endmenu` },
+      `Add \`sdkconfig\` and \`sdkconfig.old\` to \`.gitignore\` **before** the next step. Then run \`idf.py menuconfig\`, open *Bench project 8*, and enter the SSID and passphrase of a network you control. Leave the report URL empty for now.
+
+Check your work: \`grep BENCH sdkconfig\` should show your values, and \`git status\` should not list \`sdkconfig\`. Search the source tree for your passphrase; you should find it nowhere except \`sdkconfig\`.`,
+      { t: 'predict', q: 'After building, is the passphrase present in the firmware binary in `build/`?', choices: [
+        { t: 'Yes, as a plain string', ok: true, why: 'Kconfig values become C string literals in a generated header and are compiled into the image. Run `strings build/*.bin` and search for it after your first build. Keeping a secret out of git and keeping it out of the product are different problems.' },
+        { t: 'No, Kconfig values are stored separately from the firmware', why: 'They are turned into `#define` lines in a generated header and compiled in like any other constant. Nothing stores them apart from the image.' },
+        { t: 'Yes, but encrypted by the build system', why: 'The build does not encrypt anything by default. Flash encryption is a separate feature that must be enabled deliberately and protects the flash contents as a whole.' },
+      ], reveal: 'You will verify this with `strings` in the testing section. It is the reason the background says a build-time passphrase is acceptable for a bench exercise and not for a product.' },
+    ] },
+    { title: 'Connect, with reconnect, and print the address', blocks: [
+      CMAKE_NOTE({ srcs: '"main.c" "net_util.c"', req: 'esp_wifi esp_netif esp_event nvs_flash esp_http_server esp_timer' }),
+      `This is the complete program for steps 3 to 5. Read \`on_event\` before flashing.`,
+      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c', code: String.raw`/* Project 8: Wi-Fi station with reconnect and a small status server. */
+#include <stdint.h>
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "esp_err.h"
+#include "esp_event.h"
+#include "esp_http_server.h"
+#include "esp_log.h"
+#include "esp_netif.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_wifi.h"
+#include "nvs_flash.h"
+#include "sdkconfig.h"
+#include "net_util.h"
+
+#define CONNECTED_BIT (1 << 0)
+
+static const char *TAG = "p8";
+static EventGroupHandle_t s_net_events;
+static esp_timer_handle_t s_retry_timer;
+static unsigned s_attempt;
+
+static void retry_cb(void *arg)
+{
+    (void)arg;
+    esp_wifi_connect();              /* returns at once; result arrives as an event */
+}
+
+static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    (void)arg;
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        const wifi_event_sta_disconnected_t *d = data;
+        uint32_t wait = backoff_ms(s_attempt++);
+        xEventGroupClearBits(s_net_events, CONNECTED_BIT);
+        ESP_LOGW(TAG, "disconnected, reason %d, retry in %u ms",
+                 (int)d->reason, (unsigned)wait);
+        /* Do NOT delay here: this runs in the event loop task. Arm a timer. */
+        esp_timer_start_once(s_retry_timer, (uint64_t)wait * 1000u);
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        const ip_event_got_ip_t *e = data;
+        ESP_LOGI(TAG, "got ip " IPSTR, IP2STR(&e->ip_info.ip));
+        s_attempt = 0;
+        xEventGroupSetBits(s_net_events, CONNECTED_BIT);
+    }
+}
+
+static void wifi_start(void)
+{
+    s_net_events = xEventGroupCreate();
+
+    const esp_timer_create_args_t targs = { .callback = retry_cb, .name = "wifi_retry" };
+    ESP_ERROR_CHECK(esp_timer_create(&targs, &s_retry_timer));
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&init));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, on_event, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, on_event, NULL, NULL));
+
+    wifi_config_t wc = { 0 };
+    strlcpy((char *)wc.sta.ssid, CONFIG_BENCH_WIFI_SSID, sizeof wc.sta.ssid);
+    strlcpy((char *)wc.sta.password, CONFIG_BENCH_WIFI_PASSWORD, sizeof wc.sta.password);
+    wc.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;   /* refuse open, WEP and WPA1 */
+
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
+    ESP_ERROR_CHECK(esp_wifi_start());                /* -> WIFI_EVENT_STA_START */
+}
+
+static esp_err_t status_get(httpd_req_t *req)
+{
+    char body[96];
+    int rssi = 0;
+    wifi_ap_record_t ap;
+    if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK) rssi = ap.rssi;
+
+    int n = status_json(body, sizeof body,
+                        (uint32_t)(esp_timer_get_time() / 1000000),
+                        esp_get_free_heap_size(), rssi);
+    if (n < 0) return httpd_resp_send_500(req);
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_send(req, body, n);
+}
+
+static esp_err_t root_get(httpd_req_t *req)
+{
+    static const char page[] =
+        "<!doctype html><meta charset=utf-8><title>Bench device</title>"
+        "<h1>Bench device</h1><pre id=o>loading</pre>"
+        "<script>setInterval(()=>fetch('/api/status').then(r=>r.text())"
+        ".then(t=>o.textContent=t),2000)</script>";
+    httpd_resp_set_type(req, "text/html");
+    return httpd_resp_send(req, page, HTTPD_RESP_USE_STRLEN);
+}
+
+static void http_start(void)
+{
+    httpd_handle_t server = NULL;
+    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
+    ESP_ERROR_CHECK(httpd_start(&server, &cfg));
+
+    static const httpd_uri_t root   = { .uri = "/",           .method = HTTP_GET, .handler = root_get };
+    static const httpd_uri_t status = { .uri = "/api/status", .method = HTTP_GET, .handler = status_get };
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &root));
+    ESP_ERROR_CHECK(httpd_register_uri_handler(server, &status));
+}
+
+void app_main(void)
+{
+    if (strlen(CONFIG_BENCH_WIFI_SSID) == 0) {
+        ESP_LOGE(TAG, "no SSID configured: run idf.py menuconfig -> Bench project 8");
+        return;
+    }
+
+    /* The Wi-Fi driver keeps calibration data in NVS. */
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+
+    wifi_start();
+    xEventGroupWaitBits(s_net_events, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+    http_start();
+    ESP_LOGI(TAG, "status page is up");
+}` },
+      { t: 'predict', q: 'You flash with a deliberately wrong passphrase. Which events will the handler see, and what will the log show?', reveal: 'You should see `WIFI_EVENT_STA_START` handled silently, then a repeating `disconnected, reason N, retry in 1000 ms`, then 2000, 4000 … up to 30000 ms, and never `got ip`. The handshake fails, and that is reported as a disconnect with a reason code; there is no separate "wrong password" event. The reason codes are listed in the Wi-Fi driver documentation. Try it now, then correct the passphrase with `idf.py menuconfig`.' },
+      `With the right passphrase you should see \`got ip 192.168.x.y\` (your network's range) within a few seconds, followed by \`status page is up\`.`,
+    ] },
+    { title: 'Open the status page', blocks: [
+      `From a phone or PC on the same network, open \`http://<the address from the log>/\`. You should see a page titled *Bench device* whose text updates every two seconds.
+
+From a terminal:
+
+\`\`\`
+curl -i http://<address>/api/status
+\`\`\`
+
+You should see \`HTTP/1.1 200 OK\`, a \`Content-Type: application/json\` header and a body like \`{"uptime_s":42,"free_heap":…,"rssi_dbm":-55}\`. Walk away from the access point with the board on a USB battery, or cup your hand around the antenna, and watch \`rssi_dbm\` fall: more negative means weaker.`,
+      { t: 'callout', kind: 'security', title: 'What you have just exposed', md: `Any device on that network can now read this page: there is no login and no encryption. For uptime and signal strength that is tolerable on a network you control. It would not be for a door lock's state or a camera image, and it would never be acceptable for an endpoint that *changes* something. Before adding any control to this page, decide who is allowed to use it and how the device will know it is them.` },
+    ] },
+    { title: 'Break the connection and watch it recover', blocks: [
+      `With the monitor open, switch the access point off (or disable its 2.4 GHz radio, or block the device in its admin page).`,
+      { t: 'predict', q: 'The access point stays off for five minutes. Roughly how many reconnect attempts does the device make with this backoff, compared with retrying once a second?', choices: [
+        { t: 'About 13 instead of about 300', ok: true, why: 'The waits are 1, 2, 4, 8 and 16 s (five attempts in the first 31 s), then 30 s each: the remaining 269 s hold eight more. Each attempt powers the transmitter and occupies air time, so this is a real saving in energy and in load on a recovering access point.' },
+        { t: 'About 300 in both cases; backoff only changes the log', why: 'The delay is real time during which the radio is not attempting to join. Add up the waits for the first few attempts and see how quickly they pass a minute.' },
+        { t: 'About 5, because it stops at the 30 s cap', why: 'The cap limits how long each wait can grow, it does not stop the retries. The device keeps trying every 30 s for as long as the outage lasts.' },
+      ], reveal: 'You should see the retry interval double up to 30000 ms and stay there. Switch the access point back on: within one retry interval you should see `got ip` again, and the status page should respond. Note that `uptime_s` kept counting: the device did not reset to recover, and the HTTP server was never stopped.' },
+    ] },
+    { title: 'Report over HTTPS with certificate verification', blocks: [
+      `Now the device becomes a client. Set *HTTPS URL to POST readings to* in menuconfig to an endpoint **you own or are permitted to use**, starting with \`https://\`. Add \`esp_http_client\` and \`mbedtls\` to \`PRIV_REQUIRES\` (the certificate bundle is part of the mbedtls component), then add this code.`,
+      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Additions to main.c', code: String.raw`/* Step 6: push a reading to your own HTTPS endpoint.
+ * Extra includes: "esp_http_client.h" and "esp_crt_bundle.h". */
+static esp_err_t report_post(const char *json, int len)
+{
+    esp_http_client_config_t cfg = {
+        .url               = CONFIG_BENCH_REPORT_URL,     /* https://... */
+        .method            = HTTP_METHOD_POST,
+        .timeout_ms        = 8000,
+        .crt_bundle_attach = esp_crt_bundle_attach,       /* verify the server's certificate */
+    };
+    esp_http_client_handle_t c = esp_http_client_init(&cfg);
+    if (c == NULL) return ESP_FAIL;
+
+    esp_http_client_set_header(c, "Content-Type", "application/json");
+    esp_http_client_set_post_field(c, json, len);
+
+    esp_err_t err = esp_http_client_perform(c);           /* blocks: call from a task */
+    if (err == ESP_OK)
+        ESP_LOGI(TAG, "POST -> HTTP %d", esp_http_client_get_status_code(c));
+    else
+        ESP_LOGW(TAG, "POST failed: %s", esp_err_to_name(err));
+
+    esp_http_client_cleanup(c);
+    return err;
+}
+
+static void report_task(void *arg)
+{
+    (void)arg;
+    char body[96];
+    while (1) {
+        xEventGroupWaitBits(s_net_events, CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+        int n = status_json(body, sizeof body,
+                            (uint32_t)(esp_timer_get_time() / 1000000),
+                            esp_get_free_heap_size(), 0);
+        if (n > 0) report_post(body, n);
+        vTaskDelay(pdMS_TO_TICKS(60 * 1000));
+    }
+}
+/* In app_main, after http_start():
+ *     if (strlen(CONFIG_BENCH_REPORT_URL) > 0)
+ *         xTaskCreate(report_task, "report", 8192, NULL, 4, NULL);          */`, explain: [
+        { lines: '5-10', md: '`crt_bundle_attach` gives the TLS layer a bundle of root certificates compiled into the firmware. During the handshake the server\'s certificate chain is checked against them and the host name in the URL is checked against the certificate. If either check fails, the connection is refused before any of your data is sent.' },
+        { lines: '17', md: 'This call does everything: DNS lookup, TCP connect, TLS handshake, request, response. It can take seconds. It must run in a task that is allowed to wait, never in an event handler.' },
+        { lines: '31-32', md: 'The task waits for the connected bit before each report, so an outage costs nothing: it simply sleeps until the network is back.' },
+      ] },
+      `You should see \`POST -> HTTP 200\` (or whatever status your endpoint returns) once a minute, and the request arriving at your server.
+
+Then test that verification is real. Change the URL to an HTTPS host with a known-bad certificate that you control, such as a local server with a self-signed certificate, and rebuild. You should see \`POST failed\` with a TLS or connection error and **no** request arriving at that server. A device that still posts in this test is not verifying anything.`,
+      { t: 'callout', kind: 'mistake', title: '"It only works if I turn verification off"', md: `When a TLS connection fails, the quick fix found in forum posts is to skip the certificate check. The connection then succeeds — with anyone. The actual causes are usually: the server uses a private or self-signed certificate (embed that certificate, or its root, in the firmware and point the client configuration at it), the root is not in the bundle, or certificate dates are being checked and the device does not know the time (run SNTP first). Check the ESP-TLS documentation for how validity dates are handled in your configuration. Fix the cause; verification is the property you were using TLS for.` },
+    ] },
+    { title: 'Debugging exercises', blocks: [
+      { t: 'exercise', prompt: `**Exercise A.** A device takes over a minute to notice it is back online after a short Wi-Fi drop, and during that time other parts of the firmware that use the default event loop also stop responding. The handler is below. What is wrong, and what should it do instead?`, code: String.raw`static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGW(TAG, "lost Wi-Fi, waiting before retry");
+        vTaskDelay(pdMS_TO_TICKS(30000));
+        esp_wifi_connect();
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        xEventGroupSetBits(s_net_events, CONNECTED_BIT);
+    }
+}`, hints: ['Which task is executing this function?', 'How many handlers can that task run at the same time?', 'What can wait for 30 s without holding a task hostage?'], answer: { type: 'text', accept: ['block', 'delay', 'event loop', 'timer', 'sleep'], nudge: 'Think about which task runs handlers and what it cannot do while this one is sleeping.' }, solution: `The handler sleeps for 30 s **in the event loop task**. That task delivers every event posted to the default loop, one at a time; while it sleeps, nothing is delivered. Events queue up, and if the queue fills, posts start to fail. A handler must return quickly: record the fact, then hand the waiting to something else. Here that is a one-shot \`esp_timer\` armed with the backoff delay whose callback calls \`esp_wifi_connect()\`, as in the project code; a dedicated task waiting on a queue would also do.` },
+      { t: 'exercise', prompt: `**Exercise B.** A security review flags this status handler as an information leak, although the developer points out that \`snprintf\` "can't overflow". The device name is set by the user and can be up to 64 characters. Explain the leak.`, code: String.raw`static esp_err_t status_get(httpd_req_t *req)
+{
+    char body[48];
+    int n = snprintf(body, sizeof body,
+                     "{\"name\":\"%s\",\"uptime_s\":%u}", device_name, uptime_s());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, n);
+}`, hints: ['What does `snprintf` return when the text does not fit?', 'How many bytes does `httpd_resp_send` transmit, and from where?'], answer: { type: 'text', accept: ['return', 'truncat', 'over-?read', 'past', 'beyond', 'length', 'stack'], nudge: 'Compare the number `snprintf` returns with the number of bytes it actually wrote.' }, solution: `\`snprintf\` writes at most 48 bytes but **returns the length the full text would have had**. With a long name \`n\` is, say, 90. \`httpd_resp_send(req, body, 90)\` then transmits 90 bytes starting at \`body\`: the 48 bytes of the buffer and 42 bytes of whatever lies above it on the stack — saved registers, return addresses, pieces of other variables. This is an over-read, the same class of bug as Heartbleed, and return addresses leaked this way help an attacker defeat other protections. The fix is in \`status_json\`: check \`n < 0 || n >= sizeof body\` and send an error instead. The developer was right that nothing was overwritten, and wrong that this makes the code safe.` },
+      { t: 'exercise', prompt: `**Exercise C.** A soil-moisture probe on GPIO25 worked in project 4. After Wi-Fi was added, \`adc_oneshot_read\` returns an error or a timeout on most calls, and works again whenever Wi-Fi is not started. Nothing is wrong with the probe. What is the cause and the fix?`, hints: ['Which ADC unit does GPIO25 belong to on the original ESP32?', 'What else uses that unit?'], answer: { type: 'text', accept: ['adc\\s*2', 'adc1', 'gpio\\s*3[2-9]'], nudge: 'Look up which ADC unit the pin is on.' }, solution: `On the original ESP32, GPIO25 is an **ADC2** input, and ADC2 is also used by the Wi-Fi driver; the pins cannot be used for conversions while Wi-Fi is in use. Move the probe to an **ADC1** pin (GPIO32 to GPIO39) and change the unit and channel in the code. Since several of those pins are input-only, that suits a sensor. This is a pin-budget error: the conflict is visible on paper before any wire is placed, which is why project 10 starts with a pin table.` },
+    ] },
+  ],
+  walkthrough: [
+    `### Start-up order, and what each call creates
+
+**\`nvs_flash_init()\`** mounts the non-volatile storage partition. The Wi-Fi driver keeps radio calibration data there; without it, \`esp_wifi_init\` fails. The erase-and-retry branch handles a partition that is full or was written by an incompatible version.
+
+**\`esp_netif_init()\`** starts the TCP/IP stack, which runs in its own task. **\`esp_event_loop_create_default()\`** creates the default event loop: a queue and a task that takes events off it and calls the registered handlers. **\`esp_netif_create_default_wifi_sta()\`** creates the network interface object that glues the Wi-Fi driver to the IP stack and owns the DHCP client.
+
+**\`esp_wifi_init(&init)\`** allocates the driver's buffers and starts the Wi-Fi task. The radio is still off. **\`esp_wifi_set_config\`** stores the SSID, passphrase and the minimum security level; \`threshold.authmode = WIFI_AUTH_WPA2_PSK\` makes the station ignore any access point offering only open, WEP or WPA1 security, so someone who sets up a fake open network with the same name does not get your device to join it. **\`esp_wifi_start()\`** powers the radio and causes \`WIFI_EVENT_STA_START\`.
+
+### Three tasks, one flag
+
+After start-up your code runs in four places, and it matters which is which:
+
+- **The event loop task** runs \`on_event\`. It may set flags, post to queues, arm timers. It must not wait.
+- **The esp_timer task** runs \`retry_cb\`. Same rule: short, non-blocking. \`esp_wifi_connect()\` only asks the Wi-Fi task to start and returns.
+- **The HTTP server task** runs \`root_get\` and \`status_get\`. These may take a little time, but while one runs no other request is served.
+- **Your own tasks** (\`app_main\`, \`report_task\`) are the only places where long waits belong.
+
+They are coordinated by a single bit in an **event group**. \`xEventGroupWaitBits\` blocks a task, using no CPU, until the bit is set. The handler sets the bit on got-IP and clears it on disconnect. \`s_attempt\` is touched only by the event loop task, so it needs no lock.
+
+### An HTTP request, end to end
+
+\`httpd_start\` opens a listening TCP socket on port 80 and starts the server task. When a browser connects, the server parses the request line, finds the handler whose URI and method match, and calls it. \`status_get\` gathers three numbers — \`esp_timer_get_time()\` is a 64-bit microsecond counter driven by a hardware timer; \`esp_get_free_heap_size()\` asks the allocator; \`esp_wifi_sta_get_ap_info\` reads the signal strength the radio measured — formats them into a buffer on the server task's stack, and \`httpd_resp_send\` writes the status line, the headers and the body to the socket. The \`Cache-Control: no-store\` header stops a browser from showing a stale reading.
+
+### What TLS adds to the POST
+
+Before the HTTP request, the client and server perform a handshake. The server sends a certificate chain; the client checks that the chain leads to a root it already trusts (the bundle), that the certificate names the host it meant to reach, and that the server holds the private key matching the certificate. Only then are session keys agreed and the request sent, encrypted and integrity-protected. The handshake needs tens of kilobytes of heap and a deep stack, which is why \`report_task\` is given 8192 bytes; measure the real requirement with the stack high-water mark from project 9.`,
+  ],
+  testing: [
+    `| Test | How | You should see |
+|---|---|---|
+| Helpers | \`./net_util_test\` on the PC | \`net_util: all checks passed\` |
+| No credentials in source | Search the repository for your passphrase; \`git status\` | Found only in \`sdkconfig\`, which git ignores |
+| Secret is in the binary | \`strings build/*.bin\` piped to a search for your SSID | It is there. Write down what an attacker with the device could do with it |
+| Empty SSID | Clear the SSID in menuconfig, rebuild | \`no SSID configured\` and no crash |
+| Wrong passphrase | Set a wrong one | Repeating \`disconnected, reason …\` with intervals 1000, 2000, 4000 … 30000 ms |
+| Join | Correct passphrase | \`got ip a.b.c.d\` then \`status page is up\` |
+| JSON endpoint | \`curl -i http://a.b.c.d/api/status\` | \`200 OK\`, \`application/json\`, well-formed JSON |
+| Unknown path | \`curl -i http://a.b.c.d/nope\` | \`404\` |
+| Outage | Access point off for 2 minutes, then on | Backoff in the log; \`got ip\` again; page answers; \`uptime_s\` did not restart |
+| Many requests | \`for i in $(seq 200); do curl -s http://a.b.c.d/api/status > /dev/null; done\` then read \`free_heap\` | \`free_heap\` returns to about the value it had before: no leak per request |
+| TLS accepts a good server | POST to your endpoint | \`POST -> HTTP 2xx\` and the request in your server's log |
+| TLS rejects a bad server | Point the URL at a host with an untrusted certificate | \`POST failed\` and nothing in that server's log |`,
+    { t: 'callout', kind: 'note', title: 'Measuring instead of believing', md: `Two of these tests measure something that cannot be seen by "it works": the heap test catches a leak that would take a deployed device down after days, and the bad-certificate test is the only evidence that verification is on. If you have a second computer, capture the device's traffic on your own network with Wireshark: you should be able to read the status page's HTTP in clear text, and see only a TLS handshake and encrypted records for the POST.` },
+  ],
+  troubleshooting: [
+    { symptom: 'Resets or `Brownout detector was triggered` when Wi-Fi starts', cause: 'The supply cannot deliver the transmit current peaks: weak USB port, long thin cable, or a hub', fix: 'Use a short cable on a port that can supply the current; power the board from a proper 5 V supply. Check the peak figure in the module datasheet\'s power consumption table.' },
+    { symptom: 'Endless `disconnected` with the same reason code', cause: 'Wrong passphrase, SSID misspelt (it is case-sensitive), a 5 GHz-only network, or the access point offers only security below the configured threshold', fix: 'Look the reason code up in the Wi-Fi documentation. Confirm the network is 2.4 GHz and WPA2 or WPA3.' },
+    { symptom: 'Connects, but never logs `got ip`', cause: 'DHCP is not answering: address pool exhausted, MAC filtering, or a guest network that isolates clients', fix: 'Check the access point\'s client list and DHCP settings.' },
+    { symptom: 'Device has an IP but the page does not open', cause: 'Client isolation on the access point, the phone is on mobile data or another network, or the browser forced `https://`', fix: 'Ping the address from a PC on the same network. Type `http://` explicitly.' },
+    { symptom: 'ADC readings fail once Wi-Fi is started', cause: 'The pin is on ADC2, which the Wi-Fi driver uses on the original ESP32', fix: 'Move the signal to an ADC1 pin (GPIO32–39).' },
+    { symptom: 'HTTPS POST fails with a certificate or handshake error', cause: 'Root not in the bundle, private or self-signed server certificate, wrong host name in the URL, or date checks without a valid clock', fix: 'Embed the right root certificate, fix the URL, or set the time by SNTP first. Do not disable verification.' },
+    { symptom: 'Stack overflow panic in the task that does the POST', cause: 'TLS handshakes need far more stack than ordinary code', fix: 'Raise the task\'s stack size, then measure the high-water mark and trim.' },
+    { symptom: 'Device goes offline after hours and never returns', cause: 'A blocking call inside an event handler, a handler that ignores the disconnected event, or a retry timer that is not re-armed', fix: 'Review every handler for calls that wait. Test with a deliberate five-minute access point outage.' },
+  ],
+  challenge: `Remove the build-time passphrase altogether by adding **provisioning**.
+
+- On first boot, or when a button is held during reset, the device has no credentials. Design how it receives them. One common approach is to start a temporary access point with a setup page; ESP-IDF also provides a provisioning component. Read the options and pick one.
+- Store the credentials in NVS, not in the image. Add a factory-reset action that erases them.
+- The setup mode itself must not be a hole. Write down: who can reach the setup page, for how long, what stops a neighbour from configuring your device before you do, and whether the passphrase crosses the air unencrypted during setup.
+- Each device's setup secret must differ from every other device's. Decide where it comes from.
+- Use the threat-model worksheet in the Workbench to list assets, adversaries and entry points for this device, and state which threats you accept and why.
+
+No solution is given. A good answer includes the threat model, the state machine of the provisioning flow, and a test for each way the flow can be interrupted.`,
+  quiz: [
+    { kind: 'arch', q: 'Why does the application wait for `IP_EVENT_STA_GOT_IP` before starting its network work, and not for the Wi-Fi connected event?', choices: [
+      { t: 'Association and the WPA handshake give a link, but sockets need an IP address, which arrives only when DHCP completes', ok: true, why: 'They are different layers. A station can be associated for a long time with no address if DHCP fails, and any socket call in that window fails.' },
+      { t: 'The connected event is never delivered in station mode', why: 'It is delivered. It simply marks an earlier stage than the one the application needs.' },
+      { t: 'Because the got-IP event carries the passphrase check result', why: 'The passphrase is checked during the WPA handshake, before DHCP starts. A failure there shows up as a disconnect with a reason code.' },
+    ] },
+    { kind: 'code', q: 'A handler for `WIFI_EVENT_STA_DISCONNECTED` calls `vTaskDelay(pdMS_TO_TICKS(10000))` and then `esp_wifi_connect()`. What is the system-level effect?', choices: [
+      { t: 'No event of any kind is delivered from the default loop for 10 s, because all handlers share one task', ok: true, why: 'The handler runs in the event loop task. Sleeping there stalls the delivery of every queued event, not just Wi-Fi ones.' },
+      { t: 'Only this handler is delayed; other handlers run in parallel', why: 'Handlers on one event loop are called one after another by a single task. There is no parallelism to fall back on.' },
+      { t: 'The delay is ignored inside handlers', why: '`vTaskDelay` works in any task context, including the event loop task. That is exactly why it is harmful here.' },
+    ] },
+    { kind: 'security', q: 'A team stores the Wi-Fi passphrase with Kconfig and excludes `sdkconfig` from git. Which statement about the shipped product is true?', choices: [
+      { t: 'The passphrase is in every device\'s flash as plain text unless flash encryption is enabled, and it is the same in every unit', ok: true, why: 'Kconfig solved the repository problem only. Physical access to one device reveals a secret shared by the fleet.' },
+      { t: 'The passphrase cannot be recovered from a device because it is not in the source code', why: 'The compiled image contains the string. Where the value was typed has no effect on where it ends up.' },
+      { t: 'The passphrase is protected because firmware binaries are not human-readable', why: 'A tool such as `strings` lists every text literal in a binary in seconds. Unreadable to a person is not the same as protected.' },
+    ] },
+    { kind: 'security', q: 'An HTTPS client is configured to skip server certificate verification because "the data is encrypted anyway". What can an attacker who controls the local network do?', choices: [
+      { t: 'Answer the connection themselves with any certificate, then read and alter everything in both directions', ok: true, why: 'Encryption protects the channel to whoever is at the other end. Without verification the device cannot tell the real server from an impostor, so the attacker simply becomes the other end.' },
+      { t: 'Nothing, because the traffic is still encrypted with TLS', why: 'It is encrypted — to the attacker, if the attacker is who the device completed the handshake with. Think about who chose the key.' },
+      { t: 'Only see the size and timing of messages', why: 'That is what a passive observer of a properly verified connection learns. An active attacker facing no verification gets far more.' },
+    ] },
+    { kind: 'code', q: '`char b[32]; int n = snprintf(b, sizeof b, "%s", s);` and `s` is 50 characters long. What are the contents of `b` and the value of `n`?', choices: [
+      { t: '`b` holds the first 31 characters and a terminator; `n` is 50', ok: true, why: '`snprintf` truncates safely but reports the untruncated length, so that the caller can detect truncation. Using `n` as a byte count for sending reads past the buffer.' },
+      { t: '`b` holds the first 31 characters and a terminator; `n` is 31', why: 'That would make truncation undetectable. The return value is defined as the length that was needed, and it must be compared with the buffer size.' },
+      { t: '`b` overflows by 18 bytes; `n` is 50', why: 'The size argument is the whole point of the `n` variant: it never writes past it. The hazard lies in how the return value is used afterwards.' },
+    ] },
+    { kind: 'concept', q: 'Why is exponential backoff with a cap better than a fixed 1 s retry for a fleet of devices?', choices: [
+      { t: 'Short outages still recover quickly, while long outages cause few attempts, saving energy and letting the access point recover', ok: true, why: 'The first retries are fast; later ones are spaced out. The cap keeps the worst-case recovery delay bounded.' },
+      { t: 'It guarantees that a device reconnects within one second', why: 'After several failures the wait is up to the cap, 30 s here. Backoff trades worst-case recovery time for lower load.' },
+      { t: 'It makes the Wi-Fi handshake itself faster', why: 'The handshake takes the time it takes. Backoff only decides how long to wait between attempts.' },
+    ] },
+  ],
+};
+
+
+// ───────────────────────────── Project 9: FreeRTOS application ─────────────────────────────
+const p9Figure = (() => {
+  let b = box(10, 40, 100, 44, 'ADC1 ch 6', 'GPIO34, pot')
+    + box(150, 34, 130, 56, 'sensor_task', 'prio 6, every 100 ms')
+    + box(460, 34, 130, 56, 'process_task', 'prio 5, filter')
+    + box(460, 150, 130, 50, 's_stats', 'guarded by mutex')
+    + box(150, 147, 130, 56, 'report_task', 'prio 4')
+    + box(10, 153, 100, 44, 'UART0 log', '')
+    + box(10, 250, 100, 40, 'Button', 'GPIO27')
+    + box(150, 250, 130, 40, 'button_isr', 'GPIO interrupt');
+  // queue cells
+  for (let i = 0; i < 6; i++) b += `<rect x="${316 + i * 18}" y="50" width="18" height="24" fill="var(--surface)" stroke="${col(1)}" stroke-width="1.5"/>`;
+  b += T(370, 42, 's_samples (queue, 8)', 'middle', `font-size="10" fill="${col(1)}"`) + T(370, 90, 'sample_t by value', 'middle', 'font-size="10" opacity=".7"');
+  b += arr(110, 62, 150, 62) + arr(280, 62, 316, 62, 1) + arr(424, 62, 460, 62, 1);
+  b += arr(525, 90, 525, 150, 3) + T(531, 124, 'take, update, give', 'start', `font-size="10" fill="${col(3)}"`);
+  b += arr(460, 175, 280, 175, 3) + T(370, 168, 'take, copy, give', 'middle', `font-size="10" fill="${col(3)}"`);
+  b += arr(150, 175, 110, 175);
+  b += arr(110, 270, 150, 270) + arr(215, 250, 215, 203, 4);
+  b += `<circle cx="215" cy="226" r="9" fill="var(--surface)" stroke="${col(4)}" stroke-width="1.8"/>` + T(230, 230, 's_button (binary semaphore)', 'start', `font-size="10" fill="${col(4)}"`);
+  b += T(215, 20, 'feeds task watchdog', 'middle', 'font-size="10" opacity=".75"') + T(525, 20, 'feeds task watchdog', 'middle', 'font-size="10" opacity=".75"');
+  b += T(330, 286, 'Data moves by copy through the queue; only s_stats is shared, and only under the mutex.', 'start', 'font-size="10" opacity=".75"');
+  return svg(760, 300, b);
+})();
+
+const p9 = {
+  id: 'esp-p9', title: 'Project 9: FreeRTOS multitasking application', kind: 'Project', minutes: 210,
+  summary: 'Split a measurement application into three tasks joined by a queue, wake a task from a button interrupt with a semaphore, protect shared data with a mutex, and instrument it with stack high-water marks and the task watchdog.',
+  skills: ['esp-pb-rtos-pipeline', 'esp-pb-rtos-health', 'esp-pb-debug-link'],
+  objectives: [
+    'Decide how to divide work into tasks and assign priorities from deadlines, not from importance.',
+    'Pass data between tasks by value through a queue and explain why that removes most sharing problems.',
+    'Signal a task from an interrupt with the `FromISR` API and explain why the ordinary API must not be used there.',
+    'Protect a shared structure with a mutex, keep the locked region short, and say what priority inheritance does.',
+    'Measure each task\'s stack headroom and size stacks from measurements.',
+    'Use the task watchdog to turn a silent hang into a diagnosable reset.',
+  ],
+  hardware: [
+    'ESP32 DevKit and a USB cable',
+    '10 kΩ potentiometer (any value from 1 kΩ to 100 kΩ works) as the "sensor"',
+    'Push button',
+    'Breadboard and jumper wires',
+    'Optional: logic analyser, to time the button-to-response latency',
+  ],
+  software: [
+    'ESP-IDF v6.1',
+    'gcc on your PC for the filter test',
+  ],
+  background: [
+    `### The problem
+
+A device samples a sensor ten times a second, filters the data, prints a report every two seconds and must react to a button at once. Written as one loop, each job waits for the others: while the report is being printed, samples are late; while the loop sleeps until the next sample, the button is ignored. You can patch this with flags and timestamps, and for three jobs it is manageable. For ten it is the main source of bugs.
+
+An RTOS lets you write each job as its own loop — a **task** — that blocks when it has nothing to do. The scheduler always runs the highest-priority task that is ready. The cost is that tasks now interleave, and anything they share needs a rule.
+
+### Four tools and what each is for
+
+| Tool | Carries | Use it when |
+|---|---|---|
+| **Queue** | copies of data, in order | one task produces values another consumes |
+| **Binary semaphore** | "something happened", no data | an interrupt or task must wake another task |
+| **Mutex** | ownership of a resource | two tasks must not use a thing at the same moment |
+| **Task notification** | a wake-up or a small value to one specific task | a lighter replacement for a semaphore when there is one known receiver |
+
+A semaphore and a mutex look alike in code and are not interchangeable. A mutex has an **owner**: only the task that took it may give it, and while a low-priority task holds it, the kernel temporarily raises that task to the priority of the highest task waiting (**priority inheritance**), so a medium-priority task cannot keep a high-priority one waiting indefinitely. A binary semaphore has no owner, which is why an interrupt can give it — and why it must not be used to guard data.
+
+### Priorities are about deadlines
+
+The sampler has the tightest timing requirement: 100 ms periods with little jitter. Printing a report can be a few hundred milliseconds late and nobody notices. So the sampler gets the highest priority and the reporter the lowest of the three, even though the report is what the user sees. A high-priority task must block most of the time; if it never blocks, nothing below it ever runs.`,
+    { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'preemptive' }, caption: 'Change priorities and periods and watch who runs. Give the busiest task the highest priority and see what happens to the others.' },
+    `### Interrupts are not tasks
+
+An interrupt service routine (ISR) runs outside the scheduler, above every task. It cannot block, because there is no task to put to sleep. That gives two rules:
+
+1. An ISR does the minimum — capture the event — and **defers** the real work to a task.
+2. An ISR may only call the kernel functions whose names end in \`FromISR\`. They never block, and they report through a flag whether they made a higher-priority task ready, so that the scheduler can switch to it as the ISR returns.`,
+    { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'isr-defer' }, caption: 'An interrupt gives a semaphore; the waiting task runs as soon as the ISR returns.' },
+    `### Stacks are finite, and you choose their size
+
+Every task has its own stack, allocated when it is created, for its local variables, call chain and saved registers. Too small and the task writes beyond it, corrupting whatever lies next in memory; the symptoms appear somewhere else, later. Too large and you waste RAM that ten tasks multiply. The kernel records the lowest amount of free stack each task has ever had — the **high-water mark** — so you can size stacks from measurements instead of guesses.
+
+### A watchdog for tasks
+
+A hung task is silent: the rest of the system carries on and the device looks alive. The ESP-IDF **task watchdog** (TWDT) is a timer that each subscribed task must reset regularly. If one does not within the timeout, the watchdog prints which task failed and, if configured, resets the chip. A reset that names the culprit is far better than a device that quietly stops measuring.`,
+    { t: 'callout', kind: 'decision', title: 'Why a queue between sensor and processing instead of a shared variable', md: `A shared "latest sample" variable with a mutex would work for one value. A queue is better here for three reasons. It **decouples timing**: the sampler never waits for the filter, and short bursts are absorbed. It **keeps order and count**: every sample is processed once, or its loss is detected because the send fails. And it **copies**: after the send, the sampler and the processor hold separate copies, so there is nothing to lock. The mutex is kept for the one thing that really is shared state read by a different task at its own pace: the statistics.` },
+  ],
+  diagram: [
+    { t: 'ascii', caption: 'Pin-by-pin wiring.', text: `
+ESP32 DevKit        Part                    Notes
+------------        --------------------    ----------------------------------------------
+3V3                 Potentiometer end 1     never 5 V: the ADC input must stay within 0..3.3 V
+GND                 Potentiometer end 2
+GPIO34 (ADC1 ch 6)  Potentiometer wiper     input-only pin, on ADC1 so it also works with Wi-Fi
+GPIO27              Button, one side        internal pull-up enabled in firmware
+GND                 Button, other side      pressed = low, falling edge triggers the interrupt
+
+Optional logic analyser
+CH0                 GPIO27 (button)
+CH1                 a spare GPIO you toggle at the top of report_task, to time the response
+GND                 GND
+` },
+    { t: 'figure', svg: p9Figure, caption: 'Tasks, the queue between them, the mutex-guarded statistics and the interrupt path. Arrows show the direction data or a signal travels.' },
+    { t: 'callout', kind: 'note', title: 'Adapting to other chips', md: `ADC channel numbers map to different GPIOs on each chip: on the ESP32-C3, ADC1 is on GPIO0 to GPIO4. Use \`adc_oneshot_io_to_channel()\` to look up the unit and channel for a GPIO, and change \`PIN_BUTTON\` to a free non-strapping pin. The original ESP32 and the S3 have two cores and the C3 and C6 one; with two cores, two tasks really can run at the same instant, which makes every sharing rule in this project matter more, not less.` },
+  ],
+  steps: [
+    { title: 'Test the filter on your PC', blocks: [
+      `The moving average is the only arithmetic in the project, so it is separated out and tested first.`,
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'movavg.h', code: String.raw`/* movavg.h - fixed-size moving average over the last MOVAVG_N samples.
+ * Integer only, O(1) per sample, no ESP-IDF includes. */
+#ifndef MOVAVG_H
+#define MOVAVG_H
+
+#include <stdint.h>
+
+#define MOVAVG_N 8u
+
+typedef struct {
+    int32_t  buf[MOVAVG_N];
+    int32_t  sum;
+    uint32_t head;    /* index of the oldest sample = next slot to overwrite */
+    uint32_t count;   /* how many slots hold real data (<= MOVAVG_N)         */
+} movavg_t;
+
+void    movavg_init(movavg_t *m);
+int32_t movavg_push(movavg_t *m, int32_t sample);   /* returns the new average */
+
+#endif` },
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'movavg.c', code: String.raw`#include "movavg.h"
+#include <string.h>
+
+void movavg_init(movavg_t *m) { memset(m, 0, sizeof *m); }
+
+int32_t movavg_push(movavg_t *m, int32_t sample)
+{
+    if (m->count == MOVAVG_N)
+        m->sum -= m->buf[m->head];      /* the oldest sample leaves the window */
+    else
+        m->count++;
+    m->buf[m->head] = sample;
+    m->sum += sample;
+    m->head = (m->head + 1u) % MOVAVG_N;
+    return m->sum / (int32_t)m->count;  /* average of what we have so far */
+}`, explain: [
+        { lines: '8-11', md: 'A running sum makes each update O(1): subtract the sample that leaves the window, add the one that enters. Until the window is full there is nothing to subtract, and the divisor is the number of real samples so start-up values are not dragged toward zero.' },
+        { lines: '14', md: '`head` wraps around the fixed array: a ring buffer. No memory moves and no allocation happens, so the function takes the same time on every call.' },
+      ] },
+      { t: 'code', lang: 'c', status: 'host-tested', caption: 'movavg_test.c — gcc -Wall -Wextra -std=c11 movavg.c movavg_test.c -o movavg_test && ./movavg_test', code: String.raw`/* Build: gcc -Wall -Wextra -std=c11 movavg.c movavg_test.c -o movavg_test */
+#include "movavg.h"
+#include <assert.h>
+#include <stdio.h>
+
+int main(void)
+{
+    movavg_t m;
+    movavg_init(&m);
+    assert(movavg_push(&m, 100) == 100);          /* one sample: no dilution by zeros */
+    assert(movavg_push(&m, 200) == 150);
+    for (int i = 0; i < 6; i++) movavg_push(&m, 200);
+    assert(m.count == MOVAVG_N && m.sum == 100 + 7 * 200);
+    assert(movavg_push(&m, 200) == 200);          /* the 100 has left the window */
+
+    /* A step from 0 to 4095 takes exactly MOVAVG_N samples to settle. */
+    movavg_init(&m);
+    for (unsigned i = 0; i < MOVAVG_N; i++) movavg_push(&m, 0);
+    int steps = 0;
+    while (movavg_push(&m, 4095) != 4095) steps++;
+    assert(steps == (int)MOVAVG_N - 1);
+
+    /* Long run: the running sum never drifts from a recomputed sum. */
+    uint32_t x = 12345;
+    for (int i = 0; i < 100000; i++) {
+        x = x * 1664525u + 1013904223u;
+        movavg_push(&m, (int32_t)(x >> 20));      /* 0..4095 like a 12-bit ADC */
+    }
+    int32_t check = 0;
+    for (unsigned i = 0; i < MOVAVG_N; i++) check += m.buf[i];
+    assert(check == m.sum);
+
+    printf("movavg: all checks passed\n");
+    return 0;
+}` },
+      `You should see \`movavg: all checks passed\`. The last test pushes 100 000 pseudo-random samples and then recomputes the sum from the buffer: a running sum is exactly where an off-by-one would accumulate, so it is checked against a recomputed sum.`,
+    ] },
+    { title: 'Wire the potentiometer and the button', md: `Wire the circuit from the table. Before flashing anything, measure the wiper with a multimeter against ground while turning the knob. You should see the voltage sweep smoothly between 0 V and about 3.3 V. If it reaches 5 V, an end of the potentiometer is on the wrong rail; fix that before connecting it to GPIO34.` },
+    { title: 'Build and run the three tasks', blocks: [
+      CMAKE_NOTE({ srcs: '"main.c" "movavg.c"', req: 'esp_adc esp_driver_gpio esp_system' }),
+      `If the build cannot find \`esp_task_wdt.h\`, look up that header's component in the watchdog documentation and add it to \`PRIV_REQUIRES\`.`,
+      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c', code: String.raw`/* Project 9: three tasks, a queue, a mutex, an ISR-given semaphore,
+ * stack monitoring and the task watchdog. */
+#include <limits.h>
+#include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "driver/gpio.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_attr.h"
+#include "esp_err.h"
+#include "esp_log.h"
+#include "esp_task_wdt.h"
+#include "movavg.h"
+
+#define PIN_BUTTON   27               /* to GND when pressed; internal pull-up */
+#define ADC_CH       ADC_CHANNEL_6    /* ADC1 channel 6 = GPIO34 on the original ESP32 */
+#define SAMPLE_MS    100
+
+typedef struct {
+    uint32_t t_ms;
+    int      raw;
+} sample_t;
+
+typedef struct {
+    int      last, avg, min, max;
+    uint32_t count;
+    uint32_t dropped;
+} stats_t;
+
+static const char *TAG = "p9";
+static QueueHandle_t     s_samples;       /* sensor -> process, holds sample_t by value */
+static SemaphoreHandle_t s_button;        /* binary: given by the ISR */
+static SemaphoreHandle_t s_stats_lock;    /* mutex: guards s_stats */
+static stats_t           s_stats = { .min = INT_MAX, .max = INT_MIN };
+static TaskHandle_t      s_h_sensor, s_h_process, s_h_report;
+static adc_oneshot_unit_handle_t s_adc;
+
+static void IRAM_ATTR button_isr(void *arg)
+{
+    (void)arg;
+    BaseType_t woke = pdFALSE;
+    xSemaphoreGiveFromISR(s_button, &woke);
+    if (woke) portYIELD_FROM_ISR();       /* run the waiting task right after the ISR */
+}
+
+static void sensor_task(void *arg)
+{
+    (void)arg;
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    TickType_t next = xTaskGetTickCount();
+    while (1) {
+        sample_t s = { .t_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) };
+        if (adc_oneshot_read(s_adc, ADC_CH, &s.raw) == ESP_OK) {
+            if (xQueueSend(s_samples, &s, 0) != pdTRUE) {      /* full: drop, do not wait */
+                xSemaphoreTake(s_stats_lock, portMAX_DELAY);
+                s_stats.dropped++;
+                xSemaphoreGive(s_stats_lock);
+            }
+        }
+        esp_task_wdt_reset();
+        vTaskDelayUntil(&next, pdMS_TO_TICKS(SAMPLE_MS));      /* fixed period, no drift */
+    }
+}
+
+static void process_task(void *arg)
+{
+    (void)arg;
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    movavg_t filter;
+    movavg_init(&filter);
+    sample_t s;
+    while (1) {
+        if (xQueueReceive(s_samples, &s, pdMS_TO_TICKS(1000)) == pdTRUE) {
+            int avg = (int)movavg_push(&filter, s.raw);        /* work OUTSIDE the lock */
+            xSemaphoreTake(s_stats_lock, portMAX_DELAY);
+            s_stats.last = s.raw;
+            s_stats.avg  = avg;
+            if (s.raw < s_stats.min) s_stats.min = s.raw;
+            if (s.raw > s_stats.max) s_stats.max = s.raw;
+            s_stats.count++;
+            xSemaphoreGive(s_stats_lock);
+        } else {
+            ESP_LOGW(TAG, "no samples for 1 s");
+        }
+        esp_task_wdt_reset();
+    }
+}
+
+static void report_task(void *arg)
+{
+    (void)arg;
+    TickType_t last_press = 0;
+    while (1) {
+        /* Wake on a button press, or every 2 s to print anyway. */
+        BaseType_t pressed = xSemaphoreTake(s_button, pdMS_TO_TICKS(2000));
+        TickType_t now = xTaskGetTickCount();
+        if (pressed == pdTRUE && (now - last_press) < pdMS_TO_TICKS(200))
+            continue;                                          /* contact bounce */
+
+        stats_t snap;
+        xSemaphoreTake(s_stats_lock, portMAX_DELAY);
+        if (pressed == pdTRUE) {
+            last_press = now;
+            s_stats.min = INT_MAX;
+            s_stats.max = INT_MIN;
+        }
+        snap = s_stats;                                        /* copy, then release */
+        xSemaphoreGive(s_stats_lock);
+
+        ESP_LOGI(TAG, "%s last=%d avg=%d min=%d max=%d n=%u dropped=%u",
+                 pressed == pdTRUE ? "[reset]" : "[tick] ",
+                 snap.last, snap.avg, snap.min, snap.max,
+                 (unsigned)snap.count, (unsigned)snap.dropped);
+        ESP_LOGI(TAG, "stack free (bytes): sensor=%u process=%u report=%u",
+                 (unsigned)uxTaskGetStackHighWaterMark(s_h_sensor),
+                 (unsigned)uxTaskGetStackHighWaterMark(s_h_process),
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    }
+}
+
+void app_main(void)
+{
+    s_samples    = xQueueCreate(8, sizeof(sample_t));
+    s_button     = xSemaphoreCreateBinary();
+    s_stats_lock = xSemaphoreCreateMutex();
+    configASSERT(s_samples && s_button && s_stats_lock);
+
+    adc_oneshot_unit_init_cfg_t unit = { .unit_id = ADC_UNIT_1 };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit, &s_adc));
+    adc_oneshot_chan_cfg_t chan = { .atten = ADC_ATTEN_DB_12, .bitwidth = ADC_BITWIDTH_DEFAULT };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, ADC_CH, &chan));
+
+    const gpio_config_t btn = {
+        .pin_bit_mask = 1ULL << PIN_BUTTON,
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .intr_type    = GPIO_INTR_NEGEDGE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&btn));
+    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+    ESP_ERROR_CHECK(gpio_isr_handler_add(PIN_BUTTON, button_isr, NULL));
+
+    /* Stack sizes are in bytes in ESP-IDF. Higher number = higher priority. */
+    xTaskCreate(sensor_task,  "sensor",  3072, NULL, 6, &s_h_sensor);
+    xTaskCreate(process_task, "process", 3072, NULL, 5, &s_h_process);
+    xTaskCreate(report_task,  "report",  4096, NULL, 4, &s_h_report);
+}` },
+      { t: 'predict', q: 'The sensor task has the highest priority of the three and loops forever. Why do the other two tasks get to run at all?', choices: [
+        { t: 'Because it blocks in `vTaskDelayUntil` for nearly all of each 100 ms period', ok: true, why: 'A blocked task is not ready, so the scheduler picks the next highest ready task. The sampler needs the CPU for microseconds every 100 ms. Priority only decides who wins when several tasks are ready at once.' },
+        { t: 'Because FreeRTOS gives every task an equal time slice regardless of priority', why: 'Time slicing happens only among ready tasks of the *same* priority. A ready higher-priority task always runs before a lower one.' },
+        { t: 'Because the ESP32 has two cores, one for each remaining task', why: 'A second core helps, but the design must not depend on it: the same code has to behave on a single-core chip. Look for what the task does between samples.' },
+      ], reveal: 'Remove the `vTaskDelayUntil` line as an experiment only if you are ready to see the task watchdog fire for the tasks that no longer run. Put it back afterwards.' },
+      `You should see a \`[tick]\` line every 2 s with \`last\`, \`avg\`, \`min\`, \`max\`, a count rising by about 20 per line (ten samples per second) and \`dropped=0\`, followed by a line of free stack bytes for each task. Turn the potentiometer: \`last\` should follow at once and \`avg\` should catch up over the next eight samples.`,
+    ] },
+    { title: 'React to the button from an interrupt', blocks: [
+      `Press the button. You should see a \`[reset]\` line immediately, without waiting for the 2 s tick, and \`min\` and \`max\` restarting from the current reading.`,
+      { t: 'predict', q: 'A mechanical button bounces: one press produces several falling edges within a few milliseconds, so the ISR runs several times. How many times is the report task woken?', reveal: 'The semaphore is binary: giving it when it is already available changes nothing. Edges that arrive before the task has taken it collapse into one. Edges that arrive after the task has taken it and gone back to wait cause another wake-up, and the 200 ms check in the task discards those. So you should see one `[reset]` line per press. Notice where the debounce lives: the ISR stays three lines long and all timing logic is in the task.' },
+      `If you have an analyser, toggle a spare GPIO at the point where \`report_task\` returns from \`xSemaphoreTake\`, and measure from the falling edge on GPIO27 to that toggle. You should see a delay far below a millisecond: that is the interrupt latency plus one context switch, and it does not depend on the 2 s report period or the 100 ms sample period.`,
+    ] },
+    { title: 'Read the stack numbers and size the stacks', blocks: [
+      `Let the program run for a few minutes, press the button several times and turn the knob. Write down the smallest \`stack free\` value you see for each task. That value is the least headroom the task has ever had since it started.`,
+      { t: 'predict', q: 'In ESP-IDF, `xTaskCreate(..., 3072, ...)` and a reported high-water mark of 1900. What do those numbers mean?', choices: [
+        { t: 'The stack is 3072 bytes and at its deepest the task still had 1900 bytes unused, so it has used about 1170', ok: true, why: 'ESP-IDF measures task stacks in bytes (standard FreeRTOS ports use words). The high-water mark is minimum free space, so used = size − mark.' },
+        { t: 'The task has used 1900 bytes of 3072', why: 'The mark counts what was never touched, not what was used. Reading it the wrong way round leads to shrinking a stack that is nearly full.' },
+        { t: 'The stack is 3072 words, 12 288 bytes', why: 'That is the unit in upstream FreeRTOS on a 32-bit port. ESP-IDF\'s port takes the size in bytes; check the FreeRTOS page of its documentation.' },
+      ], reveal: 'A common sizing rule: run every code path, including error paths and the longest log line, take the peak usage, and add a margin of a quarter to a half. Then enable stack overflow checking in menuconfig for development builds. Logging with long format strings is often the deepest call chain in a task, which is why `report_task` was given more.' },
+    ] },
+    { title: 'Make the watchdog fire on purpose', blocks: [
+      `The sensor and process tasks are subscribed to the task watchdog and reset it every loop. Simulate a hang: in \`process_task\`, add a counter and, after 50 samples, enter \`while (1) { }\`.`,
+      { t: 'predict', q: 'After `process_task` enters the infinite loop, what do you expect to see, and what happens to `report_task`, which has lower priority?', reveal: 'About one watchdog timeout later (the period is set in menuconfig under the ESP System Settings; look up the default there) you should see a task-watchdog message naming `process` as the task that did not reset in time, with a backtrace of where it is stuck. Whether the chip then resets depends on the watchdog\'s panic option. Meanwhile the busy loop never blocks, so on the core it occupies nothing of lower priority runs: `report_task` may stop printing if it shares that core. On a two-core chip it may carry on from the other core, which is a reminder that "it still prints" does not mean "it still works". `dropped` starts rising as the queue fills. Remove the loop afterwards.' },
+      `Decode the backtrace addresses: the IDF monitor does it for you if it was started with \`idf.py monitor\` from the project directory. You should see the file and line of your \`while (1)\`.`,
+    ] },
+    { title: 'Debugging exercises', blocks: [
+      { t: 'exercise', prompt: `**Exercise A.** This ISR works most of the time. Occasionally the device crashes or asserts inside the kernel when the button is pressed during heavy activity. What is wrong? Give the corrected two lines.`, code: String.raw`static void IRAM_ATTR button_isr(void *arg)
+{
+    button_evt_t e = { .pin = PIN_BUTTON };
+    xQueueSend(s_button_events, &e, portMAX_DELAY);
+}`, hints: ['Which API family is allowed in an interrupt?', 'What would "wait for ever" mean inside an ISR?'], answer: { type: 'text', accept: ['fromisr', 'from.?isr'], nudge: 'Look at the name of the kernel call and at its last argument.' }, solution: `\`xQueueSend\` is the task-level API. It may try to block the caller (here with \`portMAX_DELAY\`) and it manipulates scheduler state assuming it runs in a task. In an ISR there is no task to block, so when the queue is full, or when the call interrupts the kernel at a bad moment, the kernel's data structures are corrupted or an assertion fires. It works "most of the time" because the queue is usually not full. Correct version:
+
+\`\`\`c
+BaseType_t woke = pdFALSE;
+xQueueSendFromISR(s_button_events, &e, &woke);
+if (woke) portYIELD_FROM_ISR();
+\`\`\`
+
+The \`FromISR\` call never blocks; if the queue is full it returns failure, which you may count.` },
+      { t: 'exercise', prompt: `**Exercise B.** Two tasks each need both the display and the SD card. After hours of running, the device freezes; the watchdog names both tasks. Explain the freeze and give a rule that prevents it.`, code: String.raw`void logger_task(void *arg) {
+    for (;;) {
+        xSemaphoreTake(sd_lock, portMAX_DELAY);
+        xSemaphoreTake(display_lock, portMAX_DELAY);
+        write_log_and_show_icon();
+        xSemaphoreGive(display_lock);
+        xSemaphoreGive(sd_lock);
+    }
+}
+
+void ui_task(void *arg) {
+    for (;;) {
+        xSemaphoreTake(display_lock, portMAX_DELAY);
+        xSemaphoreTake(sd_lock, portMAX_DELAY);
+        draw_file_list();
+        xSemaphoreGive(sd_lock);
+        xSemaphoreGive(display_lock);
+    }
+}`, hints: ['Stop each task right after its first take. Who holds what?', 'What is each task waiting for at that point?'], answer: { type: 'text', accept: ['deadlock', 'order', 'same order', 'circular'], nudge: 'Interleave the two tasks by hand, one line at a time.' }, solution: `A **deadlock**. If \`logger_task\` takes \`sd_lock\` and is then pre-empted, and \`ui_task\` takes \`display_lock\`, each now waits for ever for the mutex the other holds. It takes hours to appear because the pre-emption must land in a window a few instructions wide. Rule: **every task takes multiple locks in the same global order** (say, always \`sd_lock\` before \`display_lock\`), which makes a circular wait impossible. Better still, avoid holding two locks: give each resource one owner task with a queue. Using a timeout instead of \`portMAX_DELAY\` turns the freeze into an error you can log, which helps find it but does not remove it.` },
+      { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'deadlock' }, caption: 'Watch the two-lock deadlock happen, then change the lock order.' },
+      { t: 'exercise', prompt: `**Exercise C.** After adding a "dump the last readings" feature, the device panics at random, sometimes in the Wi-Fi code, sometimes in a task that was not changed. The new code is below; the task was created with \`xTaskCreate(report_task, "report", 3072, NULL, 4, NULL)\`. What is the bug, why do the crashes appear elsewhere, and name two different fixes.`, code: String.raw`static void dump_readings(void)
+{
+    char line[4096];                    /* room for a long CSV line */
+    int n = 0;
+    for (int i = 0; i < HISTORY_LEN; i++)
+        n += snprintf(line + n, sizeof line - n, "%d,", history[i]);
+    ESP_LOGI(TAG, "%s", line);
+}`, hints: ['Where does `line` live?', 'Compare its size with the stack the task was given.', 'What lies below a task\'s stack in memory?'], answer: { type: 'text', accept: ['stack', 'overflow', '4096', '3072'], nudge: 'Add up what this function needs and compare with what the task has.' }, solution: `\`line\` is a 4096-byte local variable, so it is allocated **on the task's stack**, which is 3072 bytes in total. Entering the function moves the stack pointer below the bottom of the stack; writing the text then overwrites whatever the heap placed there: another task's stack, a control block, a driver's buffer. The victim crashes later, which is why the panics look unrelated. Fixes: make the buffer \`static\` (it moves to .bss; the function is then not re-entrant), allocate it from the heap and free it, format and log the readings in small chunks so that no large buffer is needed, or raise the task's stack size. Chunking is usually best. Enable stack overflow detection in menuconfig and watch the high-water mark: both would have pointed at \`report\` straight away. Note also that the \`snprintf\` loop trusts its return value: once \`n\` exceeds the buffer size, \`sizeof line - n\` wraps to a huge unsigned number.` },
+      { t: 'widget', name: 'race-condition', props: { scenario: 'counter' }, caption: 'Why s_stats needs the mutex: interleave two tasks\' load, add and store steps by hand until an update disappears.' },
+    ] },
+  ],
+  walkthrough: [
+    `### Creation: what exists after \`app_main\`
+
+\`xQueueCreate(8, sizeof(sample_t))\` allocates one block from the heap holding the queue's control structure and room for eight \`sample_t\` copies. \`xSemaphoreCreateBinary()\` creates a semaphore that starts empty, so the first \`xSemaphoreTake\` blocks until the ISR gives it. \`xSemaphoreCreateMutex()\` creates a mutex that starts available. \`configASSERT\` stops at once if any allocation failed, instead of crashing later on a null handle.
+
+\`xTaskCreate\` allocates a stack of the given number of bytes and a task control block, builds an initial stack frame so that the first context switch "returns" into the task function, and puts the task on the ready list. \`app_main\` itself is a task; when it returns, ESP-IDF deletes it and the three tasks carry on.
+
+### The sampling loop and the hardware timer behind it
+
+The tick interrupt fires at the configured tick rate and advances the kernel's tick count. \`vTaskDelayUntil(&next, period)\` puts the task on the delayed list until tick \`next + period\` and updates \`next\`. Because the wake-up time is computed from the previous wake-up time and not from "now", the time spent reading the ADC does not accumulate as drift, as it would with plain \`vTaskDelay\`.
+
+\`adc_oneshot_read\` selects the channel in the ADC's multiplexer, starts one conversion, waits for the done flag and returns the raw code. With 12 dB attenuation the input range covers most of 0 to 3.3 V; the exact usable range and the ADC's non-linearity are described in the ADC documentation, and calibrated millivolts need the calibration driver.
+
+\`xQueueSend(s_samples, &s, 0)\` enters a critical section, copies the 8 bytes of \`s\` into the next free slot, and, if \`process_task\` is blocked waiting on the queue, moves it to the ready list. The timeout of 0 means that a full queue returns failure at once. A sampler that waited for space would lose its timing; dropping and counting keeps the timing and makes the overload visible.
+
+### The interrupt path, instruction by instruction
+
+The falling edge on GPIO27 sets a bit in the GPIO interrupt status register. The CPU finishes its current instruction, saves its context and enters the GPIO driver's common handler, which finds the pin and calls \`button_isr\`. \`xSemaphoreGiveFromISR\` marks the semaphore available and, because \`report_task\` is blocked on it, moves that task to the ready list and sets \`woke\`. \`portYIELD_FROM_ISR()\` requests a context switch so that, as the interrupt returns, execution resumes in \`report_task\` and not in whatever was interrupted. Without the yield the task would still run, but only at the next tick.
+
+### The mutex and the copy
+
+\`process_task\` computes the average **before** taking the mutex and holds it only for five assignments. \`report_task\` copies the whole structure to a local \`snap\` and releases the mutex before formatting and printing, which take milliseconds at 115200 baud. Had it logged while holding the lock, \`process_task\` — a higher-priority task — would have been stuck behind a UART for that time, and the queue would have filled. Keep the locked region to memory operations.
+
+### The watchdog
+
+\`esp_task_wdt_add(NULL)\` subscribes the calling task. From then on, if the task does not call \`esp_task_wdt_reset()\` within the timeout, the watchdog's handler reports it. \`process_task\` waits on the queue with a 1 s timeout rather than for ever so that it keeps feeding the watchdog even when no samples arrive, and logs that condition itself; the sampler's own subscription covers the case where sampling stops.`,
+  ],
+  testing: [
+    `| Test | How | You should see |
+|---|---|---|
+| Filter | \`./movavg_test\` on the PC | \`movavg: all checks passed\` |
+| Sample rate | Difference in \`n\` between two \`[tick]\` lines 2 s apart | 20, give or take one |
+| Range | Turn the knob end to end | \`last\` from near 0 to near 4095; no jumps with the knob still |
+| Filter response | Turn the knob quickly and stop | \`avg\` reaches \`last\` within 8 samples (under a second) |
+| No loss | Run for 5 minutes | \`dropped=0\` |
+| Button | Press once | Exactly one \`[reset]\` line, at once; \`min\` and \`max\` restart |
+| Bounce | Press 20 times at normal speed | 20 \`[reset]\` lines, not more |
+| Latency (optional) | Analyser: GPIO27 falling edge to a toggled spare pin in \`report_task\` | Well under 1 ms, independent of the report period |
+| Stack headroom | Lowest \`stack free\` per task after exercising everything | Every task keeps at least a quarter of its stack free |
+| Overload | Temporarily add \`vTaskDelay(pdMS_TO_TICKS(300))\` in \`process_task\`'s loop | \`dropped\` rises; samples continue at 100 ms; nothing crashes |
+| Watchdog | Infinite loop in \`process_task\` | A task-watchdog report naming \`process\`, with a backtrace into your loop |`,
+    { t: 'callout', kind: 'note', title: 'Concurrency bugs do not show up on demand', md: `A test that passes once proves little about a race, because the fault needs a particular interleaving. Raise the odds: run for a long time, add load (the overload test above), and make windows wider on purpose — for example, temporarily add a \`vTaskDelay(1)\` between two steps you believe are safe to separate and see whether anything breaks. And reason about it: for every variable touched by more than one task or ISR, write down the rule that protects it.` },
+  ],
+  troubleshooting: [
+    { symptom: 'Task watchdog reports the idle task did not reset', cause: 'A task at a higher priority never blocks (a loop with no delay, queue wait or semaphore wait), so the idle task is starved', fix: 'Find the busy loop from the backtrace; make the task block for its event instead of polling.' },
+    { symptom: 'Panic mentioning a stack overflow or stack canary in a task', cause: 'Stack too small for the deepest call chain, often formatted logging or a large local array', fix: 'Raise the stack, read the high-water mark, move big buffers off the stack.' },
+    { symptom: 'Random crashes in unrelated code', cause: 'An undetected stack overflow, or a kernel call from an ISR without `FromISR`', fix: 'Enable stack overflow checking; audit every ISR for task-level API calls and for anything that can block.' },
+    { symptom: 'ADC reading is noisy or stuck at 0 or 4095', cause: 'Wiper not connected, pot ends both on the same rail, or a pin that is not on ADC1', fix: 'Measure the wiper voltage with a multimeter. Confirm the channel-to-GPIO mapping for your chip.' },
+    { symptom: 'Several `[reset]` lines per button press', cause: 'Contact bounce longer than the 200 ms window, or the debounce comparison uses the wrong time base', fix: 'Capture the button on an analyser and measure the bounce; adjust the window; add 100 nF across the button if needed.' },
+    { symptom: 'Button does nothing', cause: 'ISR service not installed, wrong pin, wrong edge, or the button is wired to 3V3 with a pull-up so the level never changes', fix: 'Probe GPIO27: it must rest high and go low when pressed.' },
+    { symptom: '`dropped` keeps rising', cause: 'The consumer is slower than the producer: logging or other slow work inside `process_task`, or its priority is too low', fix: 'Move slow work out of the consumer or lower the sample rate; a longer queue only delays the overflow.' },
+    { symptom: 'System freezes, watchdog names two tasks', cause: 'Deadlock: two mutexes taken in opposite orders, or a task taking a mutex it already holds', fix: 'Fix one global lock order; use timeouts on takes during development so the failure is logged.' },
+    { symptom: 'Values in the report are inconsistent with each other (max below min)', cause: 'The structure was read while it was being updated, without the mutex', fix: 'Copy the whole structure under the mutex, then use the copy.' },
+  ],
+  challenge: `Turn the logger into a controller with a deadline.
+
+- Add an output: an LED or buzzer on an LEDC PWM channel whose duty cycle follows the filtered reading, updated by a new task.
+- Requirement: the output must respond to a change at the input within 150 ms, always. Design the task set and priorities to meet it. Decide whether the output task reads from a queue, a length-1 "latest value" queue written with \`xQueueOverwrite\`, or a task notification, and justify the choice.
+- Prove the deadline with a measurement: toggle a GPIO when a sample is taken and another when the output is updated, capture both for at least a minute while pressing the button repeatedly and with the overload delay active, and report the worst case, not the average.
+- Then break it deliberately: have the report task hold the statistics mutex across its logging, and show on the same measurement how far the worst case moves. Explain the result using priority inheritance.
+- Replace the binary semaphore with a direct-to-task notification and state what was gained and what was lost.
+
+No solution is given. The deliverable is the task table (name, priority, period, stack, what it blocks on), the worst-case measurements, and the explanation.`,
+  quiz: [
+    { kind: 'code', q: 'Why does the button ISR call `xSemaphoreGiveFromISR` and not `xSemaphoreGive`?', choices: [
+      { t: 'The task-level call assumes it runs in a task that may be blocked and rescheduled; in an ISR there is no such task, so only the non-blocking `FromISR` variant is safe', ok: true, why: 'The `FromISR` functions never block and hand back a flag instead of switching context themselves; the port then switches as the interrupt exits.' },
+      { t: 'The `FromISR` variant is faster, which matters in interrupts', why: 'Speed is a side effect. The reason is correctness: the ordinary call can corrupt scheduler state when used outside a task.' },
+      { t: 'A binary semaphore can only ever be given from an interrupt', why: 'Tasks give semaphores too. The rule is about which *function* is legal in which context.' },
+    ] },
+    { kind: 'arch', q: 'A task that drives a motor every 5 ms and a task that updates a display every 500 ms. Which gets the higher priority, and why?', choices: [
+      { t: 'The motor task: its deadline is tighter, and it runs briefly then blocks, so the display task still gets the CPU', ok: true, why: 'Priority follows urgency. A short, frequent, well-behaved high-priority task costs the lower ones very little.' },
+      { t: 'The display task, because it does more work per run and needs more CPU', why: 'Giving the heavier task priority means the 5 ms deadline is missed whenever a redraw is in progress. Amount of work is not urgency.' },
+      { t: 'Equal priorities, so the scheduler shares time fairly', why: 'Round-robin among equals switches at tick boundaries. A 5 ms deadline cannot rely on waiting for a redraw to use up its time slice.' },
+    ] },
+    { kind: 'concept', q: 'What does a mutex give you that a binary semaphore does not?', choices: [
+      { t: 'Ownership and priority inheritance: the holder is temporarily raised to the priority of the highest waiter', ok: true, why: 'That bounds how long a high-priority task can be kept waiting by a low-priority holder that is being pre-empted by medium-priority work.' },
+      { t: 'It can be given from an interrupt', why: 'That is the property of the semaphore. A mutex has an owner task, and an ISR is not a task, so mutexes must not be used from interrupts.' },
+      { t: 'It carries a data value to the receiver', why: 'Neither carries data. A queue does.' },
+    ] },
+    { kind: 'code', q: 'A task created with a 4096-byte stack reports a high-water mark of 180. What should you conclude?', choices: [
+      { t: 'At its deepest it had only 180 bytes left; one deeper call path or a longer log line could overflow it, so the stack should be enlarged', ok: true, why: 'The mark is the minimum free space ever observed. 180 bytes of margin is less than a single formatted-print call can need.' },
+      { t: 'It uses only 180 bytes, so the stack can be reduced to about 512', why: 'That reads the number as usage. It is the opposite: the amount never used.' },
+      { t: 'The stack has already overflowed by 180 bytes', why: 'An overflow would show as a mark of zero and, with checking enabled, a panic. A positive mark means there was still room — just very little.' },
+    ] },
+    { kind: 'arch', q: 'Why does `report_task` copy `s_stats` into a local variable and release the mutex before calling `ESP_LOGI`?', choices: [
+      { t: 'Logging is slow; holding the mutex across it would block the higher-priority processing task for milliseconds and let the queue fill', ok: true, why: 'The locked region should contain memory operations only. The copy gives the reporter a consistent snapshot to print at leisure.' },
+      { t: '`ESP_LOGI` cannot be called while any mutex is held', why: 'It can; nothing forbids it. The problem is how long the lock would be held and who would be waiting.' },
+      { t: 'To save stack space in the report task', why: 'The copy costs stack space. It is paid for the sake of a short critical section.' },
+    ] },
+    { kind: 'concept', q: 'The sensor task sends to a full queue with a timeout of 0 and counts the failure. What is the reasoning behind not waiting for space?', choices: [
+      { t: 'Waiting would make the sampling period depend on the consumer; dropping keeps the timing and makes the overload measurable', ok: true, why: 'A periodic producer that blocks on its consumer inherits the consumer\'s delays. A drop counter turns a hidden timing fault into a visible number.' },
+      { t: 'A timeout of 0 makes the queue lossless', why: 'It does the opposite: it allows loss, deliberately, and reports it through the return value.' },
+      { t: 'FreeRTOS does not allow a high-priority task to block on a queue', why: 'Any task may block on a queue. The choice here is a design decision about what should give way under overload.' },
+    ] },
+  ],
+};
+
+export default { skills, lessons: [], labs: [p6, p7, p8, p9], glossary: [], troubleshooting: [], refs: [] };

@@ -292,10 +292,10 @@ A MAC tag, a PIN or a password hash must be compared without revealing *where* t
 
     { t: 'code', lang: 'c', status: 'host-tested', caption: 'Constant-time equality with its host test. Compiled with gcc -Wall -Wextra -std=c11 and run in this repository\'s environment; all cases passed.', code: CT_EQUAL,
       explain: [
-        { lines: '7-13', md: 'The loop always executes `n` times. `diff` collects the XOR of every byte pair with OR, so it ends as zero only if every pair was equal. There is no `if` on data inside the loop, so the instruction sequence the CPU runs is the same for every input.' },
+        { lines: '9-12', md: 'The loop always executes `n` times. `diff` collects the XOR of every byte pair with OR, so it ends as zero only if every pair was equal. There is no `if` on data inside the loop, so the instruction sequence the CPU runs is the same for every input.' },
         { lines: '9', md: '`volatile` discourages the compiler from recognising the pattern and replacing it with an early-exit `memcmp`. It is a mitigation, not a guarantee: inspect the generated assembly for your compiler and optimisation level.' },
-        { lines: '14-16', md: 'Converting "is zero" to 1 or 0 without a comparison. If `diff` is 0, `diff - 1` wraps to `0xFFFFFFFF` and bit 8 is 1. For any `diff` from 1 to 255, `diff - 1` is at most 254 and bit 8 is 0.' },
-        { lines: '41-47', md: 'A test that tries every possible single-byte difference. Security routines deserve exhaustive tests where the input space allows it.' },
+        { lines: '13-15', md: 'Converting "is zero" to 1 or 0 without a comparison. If `diff` is 0, `diff - 1` wraps to `0xFFFFFFFF` and bit 8 is 1. For any `diff` from 1 to 255, `diff - 1` is at most 254 and bit 8 is 0.' },
+        { lines: '39-45', md: 'A test that tries every possible single-byte difference. Security routines deserve exhaustive tests where the input space allows it.' },
       ] },
 
     { t: 'callout', kind: 'hw', md: 'A host test proves the *result* is right. It does not prove the *timing* is constant on your target, because that depends on the compiler output and the CPU. To check on hardware you own: read the disassembly for the function and confirm there is no branch that depends on `a[i]` or `b[i]`; then toggle a GPIO around the call and measure many runs with matching and mismatching inputs on an oscilloscope or logic analyser. The distributions should be indistinguishable. Prefer the comparison function shipped with your crypto library, which its authors have already checked for your architecture.' },

@@ -288,8 +288,10 @@ test('tour: every guided step can be completed and the answers come out of the s
   assert.equal(q.ret.check(all.match(/Value returned is \$\d+ = (\d+)/)[1]).ok, true);
   assert.equal(q.line.check(all.match(/in main \(\) at src\/dbg_tour\.c:(\d+)/)[1]).ok, true);
   assert.equal(q.pc.check('0x08000040').ok, true);
-  assert.equal(s.exec('p total'), '$2 = 84');
-  assert.equal(s.exec('p/x total'), '$3 = 0x54');
+  assert.equal(s.exec('p total'), '$2 = 0', 'finish stops before the caller stores the result');
+  s.exec('next');
+  assert.equal(s.exec('p total'), '$3 = 84');
+  assert.equal(s.exec('p/x total'), '$4 = 0x54');
   assert.match(s.exec('p &total'), /= \(uint32_t \*\) 0x20000000 <total>/);
   assert.match(s.exec('info registers pc'), /^pc\s+0x[0-9a-f]+\s+0x[0-9a-f]+ <main\+\d+>$/);
 });

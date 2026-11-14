@@ -49,7 +49,7 @@ static void test_wraparound_many_times(void)
 {
     uint8_t b;
     rb_init(&rb, storage, 8);
-    for (int i = 0; i < 1000; i++) {         /* indices wrap 125 times */
+    for (int i = 0; i < 1000; i++) {         /* indices wrap 250 times */
         CHECK(rb_put(&rb, (uint8_t)i));
         CHECK(rb_put(&rb, (uint8_t)(i + 1)));
         CHECK(rb_get(&rb, &b) && b == (uint8_t)i);

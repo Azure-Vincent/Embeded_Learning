@@ -1548,7 +1548,7 @@ const P4_FIG = sch.open(610, 250, 'Schematic: TMP36 output to GPIO34 with a supp
   + sch.wire('265,145 265,200') + sch.dot(265, 200) + sch.txt(270, 160, 'GND', 'start', 'font-size="10"')
   + sch.wire('162,120 225,120', 'stroke="var(--sig1)"') + sch.txt(194, 113, 'Vout', 'middle', 'font-size="10"')
   + sch.capV(350, 55, 145, 'C1 100 nF') + sch.gnd(265, 200)
-  + sch.wire('425,25 425,235', 'stroke-dasharray="3 5" opacity=".5"')
+  + sch.wire('405,25 405,235', 'stroke-dasharray="3 5" opacity=".5"')
   + sch.txt(495, 22, 'Variant B: thermistor', 'middle', 'font-weight="600"')
   + sch.rail(480, 50, '3V3') + sch.resV(480, 50, 'R1 10 kΩ') + sch.wire('480,100 480,130') + sch.dot(480, 115)
   + sch.wire('480,115 445,115', 'stroke="var(--sig1)"') + sch.txt(474, 129, 'to GPIO34', 'end', 'font-size="10"')

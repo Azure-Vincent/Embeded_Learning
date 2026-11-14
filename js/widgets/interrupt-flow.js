@@ -200,11 +200,11 @@ export default function mount(el, props = {}, ctx) {
         .filter(Boolean).map(([k, v]) => h('tr', { class: prev && JSON.stringify(prev[k === 'SP' ? 'sp' : k]) !== JSON.stringify(cur[k === 'SP' ? 'sp' : k]) && ['running', 'mode', 'SP', 'pending', 'active'].includes(k) ? 'chg' : '' }, h('th', {}, k), h('td', {}, v))))));
 
     const prevAddrs = new Set((prev ? prev.stack : []).map((w) => w.addr));
-    const stack = h('div', {}, h('div', { class: 'tag' }, 'Stack (lowest address first; SP points at the top row)'),
+    const stack = h('div', {}, h('div', { class: 'tag' }, 'Stack (lowest address first; last column: whose register was saved)'),
       cur.stack.length === 0 ? h('p', { class: 'w-note' }, `Nothing pushed since main(). SP = ${hex(cur.sp)}.`)
         : h('table', { class: 'interrupt-flow-t interrupt-flow-stack w-mono' }, h('tbody', {}, cur.stack.map((w, k) =>
           h('tr', { class: (prevAddrs.has(w.addr) ? '' : 'chg') + (k > 0 && cur.stack[k - 1].owner !== w.owner ? ' sep' : '') },
-            h('th', {}, (k === 0 ? 'SP→ ' : '') + hex(w.addr)), h('td', {}, w.label), h('td', {}, hex(w.val)), h('td', { class: 'own' }, 'from ' + w.owner))))));
+            h('th', {}, (k === 0 ? 'SP→ ' : '') + hex(w.addr)), h('td', {}, w.label), h('td', {}, hex(w.val)), h('td', { class: 'own' }, w.owner))))));
 
     root.append(h('div', { class: 'interrupt-flow-grid' }, status, kv('regs', 'Registers'), arch === 'riscv' ? kv('csr', 'CSRs') : null, stack));
     root.append(h('p', { class: 'w-note' }, arch === 'cortex-m'

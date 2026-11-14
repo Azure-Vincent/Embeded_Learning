@@ -540,7 +540,7 @@ export default [
         { title: 'ESP-IDF: ADC calibration driver', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/api-reference/peripherals/adc/adc_calibration.rst', note: 'eFuse calibration schemes and raw-to-millivolt conversion' },
         { title: 'Analog Devices MT-001: Taking the Mystery out of the Infamous Formula "SNR = 6.02N + 1.76 dB"', url: 'https://www.analog.com/media/en/training-seminars/tutorials/MT-001.pdf', note: 'quantisation noise' },
         { title: 'Analog Devices MT-002: What the Nyquist Criterion Means to Your Sampled Data System Design', url: 'https://www.analog.com/media/en/training-seminars/tutorials/MT-002.pdf', note: 'sampling and aliasing' },
-        { title: 'Microchip AN693 / STMicroelectronics AN2834: How to get the best ADC accuracy', url: 'https://www.st.com/resource/en/application_note/an2834-how-to-get-the-best-adc-accuracy-in-stm32-microcontrollers-stmicroelectronics.pdf', note: 'source impedance, external capacitor, reference and layout effects (general, not STM32-specific)' },
+        { title: 'STMicroelectronics AN2834: How to get the best ADC accuracy', url: 'https://www.st.com/resource/en/application_note/an2834-how-to-get-the-best-adc-accuracy-in-stm32-microcontrollers-stmicroelectronics.pdf', note: 'source impedance, external capacitor, reference and layout effects (general, not STM32-specific)' },
       ] },
     ],
     quiz: [

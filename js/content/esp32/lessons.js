@@ -1966,6 +1966,522 @@ A 320×240 display (wants 40 MHz, mode 0) and a touch controller (maximum 2 MHz,
   ],
 });
 
+// ───────────────────────────────────────────────────────────── 12. FreeRTOS fundamentals
+lessons.push({
+  id: 'esp-l-freertos', title: 'FreeRTOS fundamentals on ESP-IDF', minutes: 55,
+  summary: 'Tasks, stacks, priorities, blocking, queues and mutexes, and what two cores change.',
+  skills: ['esp-freertos-tasks', 'esp-freertos-sync'],
+  blocks: [
+    `## One loop is not enough
+
+A device must blink a status LED twice a second, read a sensor every 100 ms, and answer commands on a UART whenever they arrive. Written as one loop, each job waits for the others: while the sensor read blocks for 20 ms, command bytes pile up; add a network request that takes two seconds and the LED freezes.
+
+You could write a careful state machine that never blocks. ESP-IDF gives you another tool, and you are already using it whether you asked or not: Wi-Fi, timers and \`app_main\` itself all run as FreeRTOS **tasks**. This lesson covers what you need to use tasks correctly on an ESP32. The theory of scheduling, priority inversion and deadlock is the subject of the RTOS section.`,
+
+    `## Tasks and the scheduler
+
+A task is a function that never returns, with its **own stack** and a **priority**. The scheduler decides which task runs, with one rule: **the highest-priority task that is ready to run, runs.** A task is not ready while it is **blocked**: sleeping in \`vTaskDelay\`, or waiting for a queue, semaphore or notification.
+
+That rule has a sharp consequence. A task that never blocks prevents every lower-priority task on its core from ever running. Well-behaved tasks spend nearly all their time blocked, waiting for something to do.
+
+Tasks of equal priority share the CPU in turns, switching on the **tick** interrupt (100 Hz by default: every 10 ms). When a higher-priority task becomes ready, for example because an ISR posted to its queue, it **preempts** the running task immediately.`,
+
+    { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'preemptive' }, caption: 'Three tasks under a preemptive scheduler. Change priorities and periods and see who runs.' },
+
+    `## What is different on ESP-IDF
+
+ESP-IDF uses its own FreeRTOS port. If you have used FreeRTOS elsewhere, note:
+
+- **Stack sizes are in bytes**, not words. \`xTaskCreate(..., 4096, ...)\` allocates 4096 bytes.
+- Priorities run from 0 (lowest, the idle task) to \`configMAX_PRIORITIES − 1\` (24 with the default configuration). A larger number is a higher priority. The main task has priority 1.
+- On dual-core chips (ESP32, S3) the scheduler is **SMP**: both cores schedule from one set of tasks. A task either has **no affinity** (may run on either core) or is **pinned** to one with \`xTaskCreatePinnedToCore\`.
+- With two cores, two tasks truly run **at the same time**. Disabling interrupts on one core does not stop the other, so critical sections take a spinlock: \`portENTER_CRITICAL(&lock)\`.
+- Each core has its own idle task. The idle tasks free the memory of deleted tasks and feed the task watchdog, so they must get to run.`,
+
+    `## Worked example: producer, consumer and a shared counter`,
+
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Two tasks, a queue and a mutex', code: R`#include <inttypes.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
+#include "esp_log.h"
+
+static const char *TAG = "rtos";
+
+typedef struct {
+    uint32_t seq;
+    int      value;
+} sample_t;
+
+static QueueHandle_t     s_queue;
+static SemaphoreHandle_t s_stats_lock;
+static uint32_t          s_total;            /* shared: protected by s_stats_lock */
+
+static void producer_task(void *arg)
+{
+    sample_t s = { 0 };
+    TickType_t last = xTaskGetTickCount();
+    while (1) {
+        s.seq++;
+        s.value = (int)(s.seq % 50);         /* stand-in for a sensor read */
+        if (xQueueSend(s_queue, &s, pdMS_TO_TICKS(10)) != pdTRUE) {
+            ESP_LOGW(TAG, "queue full, sample %" PRIu32 " dropped", s.seq);
+        }
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(100));
+    }
+}
+
+static void consumer_task(void *arg)
+{
+    sample_t s;
+    while (1) {
+        if (xQueueReceive(s_queue, &s, portMAX_DELAY) == pdTRUE) {
+            xSemaphoreTake(s_stats_lock, portMAX_DELAY);
+            s_total += (uint32_t)s.value;
+            xSemaphoreGive(s_stats_lock);
+        }
+    }
+}
+
+void app_main(void)
+{
+    s_queue = xQueueCreate(8, sizeof(sample_t));
+    s_stats_lock = xSemaphoreCreateMutex();
+    configASSERT(s_queue != NULL && s_stats_lock != NULL);
+
+    xTaskCreate(consumer_task, "consumer", 3072, NULL, 6, NULL);
+    xTaskCreate(producer_task, "producer", 3072, NULL, 5, NULL);
+
+    while (1) {
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        xSemaphoreTake(s_stats_lock, portMAX_DELAY);
+        uint32_t total = s_total;
+        xSemaphoreGive(s_stats_lock);
+        ESP_LOGI(TAG, "total %" PRIu32 ", free stack %u bytes", total,
+                 (unsigned)uxTaskGetStackHighWaterMark(NULL));
+    }
+}`, explain: [
+      { lines: '10-13', md: 'The message type. A queue **copies** items, so each task has its own copy and nothing is shared by accident. Do not queue pointers to stack variables.' },
+      { lines: '26', md: 'Copies the struct into the queue. If the queue is full the task waits up to 10 ms for space, then gives up and reports: a deliberate overload policy.' },
+      { lines: '29', md: '`vTaskDelayUntil` sleeps until an absolute tick, 100 ms after the previous wake-up, so the period does not stretch with the time the work took.' },
+      { lines: '37', md: 'The consumer is blocked here, using no CPU, until an item arrives. This is what a healthy task looks like.' },
+      { lines: '38-40', md: '`s_total += ...` is read, add, write: three steps. A mutex makes them indivisible with respect to other tasks that take the same mutex. The section held under the lock is as short as possible.' },
+      { lines: '47-49', md: 'Create every queue and lock **before** the tasks that use them. `configASSERT` stops immediately if the heap could not supply them.' },
+      { lines: '51-52', md: 'Arguments: function, name (shown in crash dumps), stack size **in bytes**, argument, priority, optional handle. The consumer has the higher priority so it drains the queue as soon as data arrives.' },
+      { lines: '56-58', md: 'Copy the shared value out under the lock, then log outside it. Never hold a mutex across something slow such as logging.' },
+      { lines: '60', md: 'The high-water mark is the smallest amount of stack that has ever been free for this task, in bytes on ESP-IDF. Near zero means the stack is too small.' },
+    ] },
+
+    `## Choosing stack size and priority
+
+**Stack.** Each task's stack holds its local variables, the frames of every function it calls, and the saved context when it is switched out. \`printf\`-style formatting alone uses over a kilobyte. Start at 3072–4096 bytes for a task that logs, measure with \`uxTaskGetStackHighWaterMark\` under the worst case, and keep a margin. Too small is a stack overflow: ESP-IDF detects most of them and panics with a message naming the task.
+
+**Priority.** Assign by urgency of response, not by importance: a task that must react within a millisecond gets a high priority and must do little; long computations get low priority. Stay below the priorities ESP-IDF uses for its own time-critical tasks (the Wi-Fi and timer tasks run high in the range) unless you have measured a reason.
+
+**Queue, semaphore or mutex?**
+
+| Need | Use |
+|---|---|
+| Pass data from one task or ISR to another | Queue |
+| Signal "something happened" with no data | Binary semaphore or task notification |
+| Protect shared data between tasks | Mutex (it has priority inheritance) |
+| Protect data shared with an ISR | Critical section with a spinlock; a mutex cannot be taken in an ISR |`,
+
+    { t: 'callout', kind: 'mistake', md: `**Waiting with a busy loop.** \`while (!flag) { }\` or a counted delay loop keeps the task permanently ready. Lower-priority tasks on that core, including idle, never run; the task watchdog fires after a few seconds. Block instead: \`vTaskDelay\`, or better, wait on the queue or semaphore that the event will signal.` },
+
+    { t: 'callout', kind: 'decision', md: `**Leave tasks unpinned unless there is a reason.** With no affinity the scheduler uses whichever core is free. Pin a task when it must not share a core with something (keeping a timing-sensitive task off the core that runs the Wi-Fi stack, typically core 0), or when it uses a resource tied to one core, such as an interrupt allocated there. On single-core chips (C3, C6) \`xTaskCreatePinnedToCore\` with core 1 fails, so portable code passes \`tskNO_AFFINITY\` or uses \`xTaskCreate\`.` },
+
+    { t: 'predict', q: 'This task is created with `xTaskCreate(report_task, "report", 1024, NULL, 5, NULL)`. What happens?', code: R`static void report_task(void *arg)
+{
+    char line[512];
+    while (1) {
+        snprintf(line, sizeof(line), "uptime %lld us", (long long)esp_timer_get_time());
+        ESP_LOGI("report", "%s", line);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}`,
+      choices: [
+        { t: 'It prints the uptime once a second', why: 'That needs enough stack for the local array plus the formatting and logging call chain. Add up what this task puts on its 1024-byte stack.' },
+        { t: 'It overflows its stack and the system panics', ok: true, why: 'A 512-byte array leaves about 500 bytes for snprintf, the logging machinery and the saved context, which is not enough.' },
+        { t: 'It fails to compile because 512 bytes is too large for a local', why: 'The compiler has no knowledge of the task\'s stack size, which is only a run-time argument to xTaskCreate.' },
+      ],
+      reveal: `1024 bytes total, 512 gone to \`line\`, and formatted output needs more than the remainder. You should see a panic reporting a stack overflow in task \`report\` (or, if the overflow corrupts memory before it is detected, a less obvious crash). Fixes: give the task 4096 bytes, and make large buffers \`static\` or heap-allocated so they are not on the stack at all.` },
+
+    { t: 'exercise', prompt: `In the worked example, add a third task, \`blink_task\`, that toggles an LED every 250 ms. Then make the LED blink **fast (every 50 ms)** whenever the producer has had to drop a sample in the last second. Decide how the producer tells the blink task, and justify your choice of mechanism and of the blink task's priority.`,
+      hints: [
+        `What needs to cross between the tasks: a stream of data items, or one small fact?`,
+        `One fact: "a drop happened at tick T". A single word written by one task and read by another, in one access each, does not need a queue.`,
+        `Store \`xTaskGetTickCount()\` in a \`static volatile TickType_t s_last_drop\` in the producer's failure branch. In the blink task compare \`now - s_last_drop\` with \`pdMS_TO_TICKS(1000)\` to choose the delay. Blinking is the least urgent job: give it a low priority.`,
+      ],
+      solution: `\`\`\`c
+static volatile TickType_t s_last_drop;
+static volatile bool s_dropped_once;
+
+/* in producer_task, where the sample is dropped: */
+s_last_drop = xTaskGetTickCount();
+s_dropped_once = true;
+
+static void blink_task(void *arg)
+{
+    bool on = false;
+    while (1) {
+        on = !on;
+        gpio_set_level(LED_GPIO, on);
+        bool recent = s_dropped_once &&
+                      (xTaskGetTickCount() - s_last_drop) < pdMS_TO_TICKS(1000);
+        vTaskDelay(pdMS_TO_TICKS(recent ? 50 : 250));
+    }
+}
+
+/* in app_main, after configuring the LED pin as an output: */
+xTaskCreate(blink_task, "blink", 2048, NULL, 2, NULL);
+\`\`\`
+
+A single aligned 32-bit value written by one task and read by another is safe without a lock on these CPUs: the reader sees the old value or the new one. A queue would be the wrong tool (the blink task does not want every event, only the latest state) and a mutex would be needless. Priority 2 is below both data tasks, so the indicator can never delay the work it indicates. To test it, shrink the queue to length 1 and add a 300 ms delay in the consumer.` },
+
+    `## Harder: the same bug on one core and two
+
+Remove the mutex from the worked example and let two tasks of **equal** priority each execute \`s_total++\` a million times. On a single-core chip the final total is wrong only when a tick-driven task switch lands between the read and the write, which is rare. On a dual-core chip with the tasks on different cores it is wrong almost every run. Explain why the rate differs so sharply, why "it passed testing on the C3" proves nothing, and why \`volatile\` does not fix it. Then try the idea by hand:`,
+
+    { t: 'widget', name: 'race-condition', props: { scenario: 'counter' }, caption: 'Interleave two tasks\' load, add and store steps to lose an update, then add a critical section.' },
+
+    { t: 'refs', items: [
+      { title: 'ESP-IDF FreeRTOS (IDF) and SMP differences', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/freertos_idf.html' },
+      { title: 'ESP-IDF FreeRTOS overview and API', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/freertos.html' },
+      { title: 'FreeRTOS Kernel (source)', url: 'https://github.com/FreeRTOS/FreeRTOS-Kernel' },
+    ] },
+  ],
+  quiz: [
+    { q: 'On ESP-IDF, `xTaskCreate(fn, "t", 2048, NULL, 5, NULL)` allocates how much stack?', kind: 'code', choices: [
+      { t: '2048 bytes', ok: true, why: 'The ESP-IDF port specifies stack depth in bytes, unlike most other FreeRTOS ports.' },
+      { t: '2048 words, that is 8192 bytes', why: 'That is the convention in upstream FreeRTOS on 32-bit ports. The ESP-IDF port deliberately differs, which catches out ported code.' },
+      { t: '2048 kilobytes', why: 'Task stacks are a few kilobytes; the whole chip has only a few hundred kilobytes of RAM.' },
+    ] },
+    { q: 'A priority-10 task runs `while (1) { poll_sensor(); }` with no blocking call. What happens to a priority-5 task on the same single-core chip?', kind: 'arch', choices: [
+      { t: 'It never runs', ok: true, why: 'The scheduler always runs the highest-priority ready task. A task that is never blocked is always ready.' },
+      { t: 'It gets a time slice every tick', why: 'Time slicing happens only between tasks of equal priority. A lower-priority task waits until all higher ones are blocked.' },
+      { t: 'It runs at half speed', why: 'Priorities are not shares of CPU time. They are a strict ordering.' },
+    ] },
+    { q: 'Why is a queue of `sample_t` values safer than a queue of pointers to a `sample_t` local variable?', kind: 'code', choices: [
+      { t: 'The queue copies the value, so the receiver\'s data cannot change or disappear after sending', ok: true, why: 'A pointer to a local refers to stack memory the sender will overwrite or leave; a copied value is owned by the queue and then by the receiver.' },
+      { t: 'Pointers are larger than the struct', why: 'A pointer is four bytes, smaller than this struct. Size is not the concern; lifetime and sharing are.' },
+      { t: 'Queues cannot hold pointers', why: 'They can hold any fixed-size item, pointers included. Doing so is valid when the pointed-to memory is managed carefully.' },
+    ] },
+    { q: 'Shared data is updated by a task and by a GPIO ISR. Why can a mutex not protect it?', kind: 'arch', choices: [
+      { t: 'An ISR cannot block, and taking a mutex may require waiting for the task that holds it', ok: true, why: 'The holder cannot run until the ISR returns, so the ISR would wait forever. Data shared with an ISR needs a critical section instead.' },
+      { t: 'Mutexes only work between tasks on different cores', why: 'Mutexes work on any number of cores. Their limitation is that the taker must be able to sleep.' },
+      { t: 'Mutexes are slower than interrupts', why: 'Speed is not the obstacle. The operation is simply not permitted from interrupt context.' },
+    ] },
+    { q: 'On a dual-core ESP32, what does disabling interrupts on core 0 guarantee about a task running on core 1?', kind: 'arch', choices: [
+      { t: 'Nothing; it keeps running and can touch the same data', ok: true, why: 'Each core has its own interrupt enable state. This is why ESP-IDF critical sections also take a spinlock.' },
+      { t: 'It is paused until interrupts are re-enabled', why: 'One core has no means of freezing the other merely by masking its own interrupts.' },
+      { t: 'It is migrated to core 0', why: 'Masking interrupts does not move tasks. The scheduler on the other core continues independently.' },
+    ] },
+  ],
+});
+
+// ───────────────────────────────────────────────────────────── 13. Watchdogs
+lessons.push({
+  id: 'esp-l-wdt', title: 'Watchdog configuration', minutes: 35,
+  summary: 'The interrupt and task watchdogs, what their logs look like, and how to feed one honestly.',
+  skills: ['esp-wdt'],
+  blocks: [
+    `## The device that needed a visit
+
+A remote sensor node stops reporting. Someone drives out, finds it powered with its LED frozen, presses reset, and it works for another month. The firmware had hung in a loop waiting for a sensor that never answered, and nothing in the system was able to notice.
+
+A **watchdog** is a timer that resets the system unless the software keeps proving it is alive. The proof is called feeding (or kicking). Stop feeding, and the timer expires. The design question is what counts as proof.`,
+
+    { t: 'widget', name: 'timer-lab', props: { mode: 'watchdog' }, caption: 'Feed the watchdog on time, then miss the deadline and see the reset.' },
+
+    `## The watchdogs in ESP-IDF
+
+| Watchdog | Watches for | Default behaviour |
+|---|---|---|
+| **Interrupt watchdog (IWDT)** | Interrupts disabled, or an ISR running, for too long (a few hundred milliseconds by default) | Panic and reset |
+| **Task watchdog (TWDT)** | Subscribed tasks that have not reset it within the timeout (5 s by default). By default it watches each core's **idle task** | Prints a warning naming the tasks; resets only if configured to panic |
+| **RTC watchdog** | The bootloader and early start-up taking too long | Reset |
+
+Watching the idle task is a neat trick: idle runs only when nothing else wants the CPU, so if idle has not run for five seconds, some task has been hogging a core without blocking.
+
+A triggered TWDT prints something like this (illustrative):`,
+
+    { t: 'ascii', text: `E (10314) task_wdt: Task watchdog got triggered. The following tasks/users did not reset the watchdog in time:
+E (10314) task_wdt:  - IDLE0 (CPU 0)
+E (10314) task_wdt: Tasks currently running:
+E (10314) task_wdt: CPU 0: crunch
+E (10314) task_wdt: CPU 1: IDLE1
+E (10314) task_wdt: Print CPU 0 (current core) backtrace`, caption: 'Read it as: idle on CPU 0 was starved, and the task running there was "crunch".' },
+
+    `The first list names the **victims** (who failed to check in). "Tasks currently running" names the **suspects**. An interrupt watchdog failure appears instead as a panic: \`Guru Meditation Error: Core 0 panic'ed (Interrupt wdt timeout on CPU0)\`.
+
+After a watchdog reset, the ROM's first line and \`esp_reset_reason()\` report why the chip restarted (for example \`ESP_RST_TASK_WDT\`, \`ESP_RST_INT_WDT\`, \`ESP_RST_PANIC\`, \`ESP_RST_BROWNOUT\`, \`ESP_RST_POWERON\`). Log it at every boot.`,
+
+    `## Subscribing your own task`,
+
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'A task that must complete a cycle every few seconds', code: R`#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_task_wdt.h"
+#include "esp_system.h"
+#include "esp_log.h"
+
+static const char *TAG = "wdt";
+
+static bool read_sensor_ok(void)
+{
+    vTaskDelay(pdMS_TO_TICKS(20));   /* stand-in for a real sensor transaction */
+    return true;
+}
+
+static void control_task(void *arg)
+{
+    ESP_ERROR_CHECK(esp_task_wdt_add(NULL));
+    while (1) {
+        if (read_sensor_ok()) {
+            /* compute and drive outputs here */
+            esp_task_wdt_reset();
+        } else {
+            ESP_LOGW(TAG, "sensor read failed; not feeding");
+        }
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+
+void app_main(void)
+{
+    ESP_LOGI(TAG, "reset reason: %d", (int)esp_reset_reason());
+    xTaskCreate(control_task, "control", 4096, NULL, 5, NULL);
+}`, explain: [
+      { lines: '17', md: 'Subscribes the calling task to the task watchdog. From now on this task must call `esp_task_wdt_reset()` within the timeout.' },
+      { lines: '19-21', md: 'The feed sits **after** the work that proves the system is functioning: a successful sensor read and a completed control cycle.' },
+      { lines: '22-24', md: 'If the sensor fails repeatedly the task is still running, yet it stops feeding. After the timeout the watchdog reports it (and resets, if configured to panic). That is the intended behaviour: the device is alive but not doing its job.' },
+      { lines: '31', md: 'Records why the chip last reset. Compare the value with the `esp_reset_reason_t` enumeration. A field device should store or transmit this.' },
+    ] },
+
+    `The timeout and the reaction are set in menuconfig (the \`ESP_TASK_WDT\` options, including "Invoke panic handler on Task Watchdog timeout"), or at run time with \`esp_task_wdt_reconfigure()\`, which takes an \`esp_task_wdt_config_t\` holding \`timeout_ms\`, \`idle_core_mask\` and \`trigger_panic\`.`,
+
+    { t: 'callout', kind: 'note', md: `**Old tutorials.** In ESP-IDF v4, \`esp_task_wdt_init(timeout_seconds, panic)\` took two plain arguments. From v5 it takes a pointer to \`esp_task_wdt_config_t\` with the timeout in milliseconds, and because the watchdog is normally already initialised at start-up, changing it at run time uses \`esp_task_wdt_reconfigure\`.` },
+
+    { t: 'callout', kind: 'mistake', md: `**Feeding the watchdog to make the warning go away.** Sprinkling \`esp_task_wdt_reset()\` inside a long loop, or feeding from a timer callback, keeps the watchdog quiet whether or not the system works. A timer that feeds on its own will happily keep a deadlocked application "alive" for ever. Likewise, disabling the watchdog in menuconfig removes the symptom and keeps the bug. Feed from the task being watched, at a point that is reached only when its real work succeeded.` },
+
+    { t: 'callout', kind: 'decision', md: `**For a product, make the task watchdog reset the chip.** The default TWDT action is a warning only, which is right during development (you can read the report) and wrong in the field, where nobody is reading. Enable the panic option so a hung device restarts, and make sure the restart path is safe: outputs go to a defined state at boot, and the reset reason is recorded.` },
+
+    { t: 'predict', q: 'This is the only task you created, at priority 5 on a single-core chip with default watchdog settings. What do you see on the monitor?', code: R`static void crunch_task(void *arg)
+{
+    uint32_t x = 1;
+    while (1) {
+        x = x * 1664525u + 1013904223u;   /* compute forever */
+    }
+}`,
+      choices: [
+        { t: 'Nothing; the task runs silently', why: 'Something is watching for exactly this: a core whose idle task has not run for several seconds.' },
+        { t: 'An immediate Guru Meditation panic', why: 'The code does nothing illegal, so no CPU exception occurs. The symptom takes several seconds to appear and is a report, not a crash.' },
+        { t: 'A task watchdog message about every five seconds naming IDLE as not having reset the watchdog', ok: true, why: 'The task never blocks, the idle task never runs, and the TWDT reports the starved idle task and the task that was running.' },
+      ],
+      reveal: `The idle task is starved. By default the TWDT prints its report every timeout period and the program continues; with the panic option enabled the chip would reset instead. The repair is not to feed the watchdog inside the loop. It is to let other tasks run: do the computation in chunks with a \`vTaskDelay(1)\` between them, or lower the task's priority to 0 so it shares time with idle.` },
+
+    { t: 'exercise', prompt: `A task downloads a firmware image in a loop that can legitimately take 40 seconds, calling a blocking \`receive_chunk()\` that returns within 2 seconds or fails. The task is subscribed to a TWDT with a 5 s timeout. Where should \`esp_task_wdt_reset()\` go, and what must be true for it to be called? What happens, and should happen, if the server stops sending?`,
+      hints: [
+        `The watchdog timeout bounds the longest gap between proofs of progress, not the length of the whole job.`,
+        `One chunk takes at most 2 s. That is a natural unit of progress.`,
+        `Feed only after a chunk was actually received. Count consecutive failures yourself and abandon the download cleanly before the watchdog has to act.`,
+      ],
+      solution: `Feed once per **successfully received chunk**:
+
+\`\`\`c
+int failures = 0;
+while (!done) {
+    if (receive_chunk(buf, &len) == ESP_OK) {
+        failures = 0;
+        write_chunk(buf, len);
+        esp_task_wdt_reset();          /* progress was made */
+    } else if (++failures >= 2) {
+        ESP_LOGE(TAG, "download stalled, aborting");
+        break;                         /* clean up, report, retry later */
+    }
+}
+\`\`\`
+
+Each iteration takes at most 2 s, so a healthy download feeds well inside 5 s for all 40 s. If the server stalls, the application notices after two failed chunks (4 s) and aborts in an orderly way. The watchdog remains as the backstop for the case the code did not foresee, such as \`receive_chunk\` itself hanging. A watchdog should be the last line of defence, not the error-handling strategy.` },
+
+    `## Harder: who watches the watcher?
+
+Three tasks cooperate: sensor, control and communications. Design a scheme in which a watchdog reset occurs if **any one** of them stops making progress, even though the other two are healthy. Compare two designs: subscribing all three to the TWDT directly, and a supervisor task to which each reports with a heartbeat counter, with only the supervisor feeding. Consider what each design does when the communications task is legitimately blocked for 30 s waiting for a network, and how you would test that the reset really occurs (inject the fault deliberately; a watchdog that has never been seen to fire is unverified).`,
+
+    { t: 'refs', items: [
+      { title: 'ESP-IDF Watchdogs', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/wdts.html' },
+      { title: 'ESP-IDF Miscellaneous System APIs: reset reason', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/misc_system_api.html' },
+    ] },
+  ],
+  quiz: [
+    { q: 'Why does the task watchdog watch the idle tasks by default?', kind: 'arch', choices: [
+      { t: 'Idle runs only when no other task needs the CPU, so a starved idle task reveals a task that never blocks', ok: true, why: 'It turns "is any task hogging a core?" into a simple check that needs no cooperation from application tasks.' },
+      { t: 'The idle task is the most likely to crash', why: 'The idle task is tiny and robust. It is watched as an indicator of what other tasks are doing.' },
+      { t: 'Idle tasks perform the Wi-Fi processing', why: 'Wi-Fi has its own high-priority task. Idle does housekeeping such as freeing deleted tasks\' memory.' },
+    ] },
+    { q: 'A TWDT report lists `IDLE0 (CPU 0)` as not reset, and "Tasks currently running: CPU 0: net_task". Where do you look first?', kind: 'code', choices: [
+      { t: 'In `net_task`, for a loop that does not block', ok: true, why: 'The running task at the moment of the timeout is the prime suspect for having starved idle on that core.' },
+      { t: 'In the idle task\'s source code', why: 'Idle is the victim named in the first list. It could not run because something else held the core.' },
+      { t: 'In the watchdog timeout setting, to increase it', why: 'A longer timeout delays the report without changing the fact that a task is monopolising the CPU.' },
+    ] },
+    { q: 'A periodic `esp_timer` callback calls `esp_task_wdt_reset()` on behalf of the main control task. What is wrong?', kind: 'arch', choices: [
+      { t: 'The feed no longer depends on the control task working, so a hung control task is never detected', ok: true, why: 'A watchdog is only as meaningful as the condition under which it is fed. A feed that happens unconditionally proves nothing.' },
+      { t: 'Timer callbacks run too slowly to feed in time', why: 'A periodic timer can easily meet a multi-second deadline. Timing is not the flaw.' },
+      { t: 'Nothing; this is the recommended pattern', why: 'It defeats the purpose: the application could be deadlocked while the timer keeps reporting that all is well.' },
+    ] },
+    { q: 'What typically triggers the **interrupt** watchdog?', kind: 'concept', choices: [
+      { t: 'A long critical section or an ISR that takes too long to return', ok: true, why: 'It detects interrupts being blocked or monopolised for hundreds of milliseconds, which the task watchdog cannot see.' },
+      { t: 'A task that forgets to call `vTaskDelay`', why: 'A non-blocking task still allows interrupts to run, so the tick keeps firing. That case belongs to the task watchdog.' },
+      { t: 'A GPIO interrupt that never occurs', why: 'The absence of an interrupt is not a fault the system can detect. The watchdog concerns interrupts being prevented from running.' },
+    ] },
+    { q: 'After an unexplained restart in the field, which piece of information is most valuable and cheapest to collect?', kind: 'concept', choices: [
+      { t: 'The value of `esp_reset_reason()` logged or stored at boot', ok: true, why: 'It distinguishes power loss, brownout, panic and watchdog resets, which point to completely different causes.' },
+      { t: 'The size of the application binary', why: 'Image size does not change between restarts and says nothing about why one happened.' },
+      { t: 'The Wi-Fi signal strength', why: 'It may be relevant to connectivity, but it cannot tell a power problem from a software hang.' },
+    ] },
+  ],
+});
+
+// ───────────────────────────────────────────────────────────── 14. Flash storage and NVS
+lessons.push({
+  id: 'esp-l-nvs', title: 'Flash storage and NVS', minutes: 40,
+  summary: 'How flash behaves, what a partition is, and storing settings as keys and values.',
+  skills: ['esp-nvs', 'esp-flash-layout'],
+  blocks: [
+    `## Settings that survive, and a device that wears out
+
+A thermostat must remember its setpoint through a power cut. A first attempt writes the setpoint to flash every time the temperature is sampled, once a second. It works on the bench. Do the arithmetic for the field: 86 400 writes a day. Flash memory wears, and a naive scheme that erases the same sector for each write would reach a typical endurance figure in days.
+
+Storing data in flash is not like assigning to a variable. Flash has physical rules, and the storage library exists to work within them.`,
+
+    `## How NOR flash behaves
+
+- An **erased** flash bit reads 1. Programming can only change bits from 1 to 0.
+- Getting a 0 back to 1 requires an **erase**, which works only on a whole **sector** (4 kB on the usual SPI flash parts) and takes tens of milliseconds.
+- Each sector survives a limited number of erase cycles. The figure is in the flash chip's datasheet; 100 000 is a common order of magnitude.
+- While flash is being programmed or erased, the cache is disabled and code in flash cannot run (the rule from the interrupt lesson).
+
+So you cannot overwrite a value in place. A storage system must append new versions, track which is current, and erase sectors only when they contain nothing but stale data. Spreading erases evenly over many sectors is **wear levelling**.
+
+Flash is divided by the **partition table** into regions with a type and a purpose. The default table gives NVS a 24 kB (\`0x6000\`) partition at \`0x9000\`.`,
+
+    `## NVS: non-volatile storage
+
+NVS is ESP-IDF's key-value store for small items: settings, counters, calibration, credentials. It is a log: each write appends an entry to the current page, the newest entry for a key wins, and full pages of stale entries are erased and reused. That gives wear levelling across the partition for free.
+
+- A **namespace** groups keys so components do not collide (Wi-Fi uses its own). Namespace and key names are limited to 15 characters.
+- Values are **typed**: integers of 8 to 64 bits, strings, and blobs (arbitrary bytes). Reading with the wrong type fails.
+- Changes are guaranteed to be on flash only after **\`nvs_commit\`**.
+- NVS is for small values. For files or large data, use a file-system partition (SPIFFS, LittleFS or FAT with wear levelling).`,
+
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'A boot counter in NVS', code: R`#include <inttypes.h>
+#include "nvs_flash.h"
+#include "nvs.h"
+#include "esp_log.h"
+
+static const char *TAG = "nvs";
+
+void app_main(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+
+    nvs_handle_t h;
+    ESP_ERROR_CHECK(nvs_open("app", NVS_READWRITE, &h));
+
+    uint32_t boots = 0;
+    err = nvs_get_u32(h, "boots", &boots);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGE(TAG, "read failed: %s", esp_err_to_name(err));
+    }
+
+    boots++;
+    ESP_ERROR_CHECK(nvs_set_u32(h, "boots", boots));
+    ESP_ERROR_CHECK(nvs_commit(h));
+    nvs_close(h);
+
+    ESP_LOGI(TAG, "boot number %" PRIu32, boots);
+}`, explain: [
+      { lines: '10', md: 'Mounts the default NVS partition: scans its pages and builds an index in RAM. Must be called once before any other NVS use, and before starting Wi-Fi.' },
+      { lines: '11-14', md: 'Two recoverable failures: the partition is full of an old layout, or was written by a newer NVS format. Erasing and retrying is the standard recovery. It **deletes all stored data**, so a product should consider whether that is acceptable.' },
+      { lines: '18', md: 'Opens (and, in read-write mode, creates) the namespace `app`. A read-only open of a namespace that does not exist yet fails with a not-found error.' },
+      { lines: '20-24', md: 'On the very first boot the key is absent. `ESP_ERR_NVS_NOT_FOUND` is expected, and `boots` keeps its initial 0. Any other error is real.' },
+      { lines: '27', md: 'Appends a new entry for the key. The old entry is marked stale; nothing is erased now.' },
+      { lines: '28', md: 'Ensures the change is written to flash. Without it, a power cut may lose the update.' },
+      { lines: '29', md: 'Releases the handle and its RAM.' },
+    ] },
+
+    `## Wear and write frequency
+
+Each \`nvs_set\` of a small value consumes one 32-byte entry; a page holds on the order of a hundred entries before it must be erased. So NVS divides your write rate by a large factor before it reaches erase cycles, and spreads the erases over all its pages. Still, the right design is to **write when the value changes, not periodically**, and for values that change constantly (an energy counter) to save on a schedule of minutes, or on a power-fail warning, not on every sample.
+
+To examine or reset stored data during development: \`idf.py erase-flash\` wipes everything including NVS; \`esptool read-flash\` can dump the partition.`,
+
+    { t: 'callout', kind: 'security', md: `**NVS is not secret by default.** Anyone with physical access can read the flash chip with esptool and see every value in plain bytes, including Wi-Fi credentials and API keys. ESP-IDF provides **NVS encryption**, normally used together with flash encryption. The security section covers how it works and how to verify it; for now, do not assume a value is private because it is "inside the chip".` },
+
+    { t: 'callout', kind: 'mistake', md: `**Flashing new firmware and expecting old settings to be gone.** \`idf.py flash\` writes the bootloader, partition table and app. It does not touch the NVS partition, so stored values from a previous firmware version persist, including ones your new code interprets differently. When behaviour after an update looks haunted, erase the flash once and retest; in a product, store a schema version key and migrate deliberately.` },
+
+    { t: 'predict', q: 'The boot counter program is changed so that the key is `"number_of_boots_total"`. What happens?',
+      choices: [
+        { t: 'It works exactly as before', why: 'Count the characters in the new key and compare with the limit NVS places on key names.' },
+        { t: '`nvs_set_u32` returns an error because the key name is too long', ok: true, why: 'Keys are limited to 15 characters. This one has 21, so the call is rejected.' },
+        { t: 'The key is silently truncated to 15 characters', why: 'Silent truncation would let two long keys collide. The library rejects the name instead.' },
+      ],
+      reveal: `NVS keys and namespace names may be at most 15 characters. The call fails with a key-too-long error, and because the example wraps it in \`ESP_ERROR_CHECK\`, the device aborts and reboots, fails again, and so on: a boot loop caused by a string length. It shows both the limit and the hazard of aborting on storage errors.` },
+
+    { t: 'exercise', prompt: `An NVS partition is written by a design that updates one small value every 10 seconds, all day. Suppose (illustratively) that one page holds 120 such entries, the partition has 5 usable pages, and each page tolerates 100 000 erases. Roughly how many **years** until the erase budget is exhausted? Give a whole number.`,
+      hints: [
+        `How many writes can be made per page erase, and how many page erases does the whole partition allow?`,
+        `Total writes ≈ 120 entries × 5 pages × 100 000 erases = 60 000 000.`,
+        `Writes per year at one every 10 s: 6 per minute × 60 × 24 × 365 = 3 153 600.`,
+      ],
+      solution: `60 000 000 / 3 153 600 ≈ **19 years**. The same write rate with a naive erase-per-write scheme on one sector would last 100 000 × 10 s ≈ 11.6 days. The log structure and wear levelling are worth a factor of several hundred here. The numbers are illustrative: real page capacity depends on entry types, and endurance on the flash part, so check both before promising a lifetime. A larger NVS partition extends life proportionally.`,
+      answer: { type: 'number', value: 19, tol: 1, unit: 'years' } },
+
+    `## Harder: power fails mid-update
+
+A device stores a two-part setting: \`mode\` and \`limit\`, which must always be consistent with each other. The code writes \`mode\`, then \`limit\`, then commits. Power fails between the two writes. What might the device read at next boot, and does one commit at the end protect you? (The documentation promises that a single entry is either written or not; it does not make a group of keys atomic.) Redesign the storage so that the pair is always consistent: consider storing both in one blob, so the pair is a single entry, and adding a checksum and a version field so that a damaged or old-format blob is detected and replaced by safe defaults.`,
+
+    { t: 'refs', items: [
+      { title: 'ESP-IDF Non-Volatile Storage Library', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_flash.html' },
+      { title: 'ESP-IDF NVS Encryption', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_encryption.html' },
+      { title: 'Partition Tables', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/partition-tables.html' },
+    ] },
+  ],
+  quiz: [
+    { q: 'Why can a flash-based store not simply overwrite an old value with a new one?', kind: 'arch', choices: [
+      { t: 'Programming can only clear bits to 0; restoring 1s needs an erase of a whole sector', ok: true, why: 'That asymmetry is why stores append new entries and reclaim space sector by sector.' },
+      { t: 'Flash is read-only after the firmware is installed', why: 'Flash can be written at run time. The restriction is on how bits can change, not on whether they can.' },
+      { t: 'The CPU cannot address flash for writing', why: 'Writes go through the SPI flash driver. Addressing is not the obstacle.' },
+    ] },
+    { q: 'After `nvs_set_i32(h, "limit", 42)` the device loses power before `nvs_commit`. What can you rely on at next boot?', kind: 'code', choices: [
+      { t: 'Nothing about the new value: only a commit guarantees it reached flash', ok: true, why: 'The API contract is that changes are durable after nvs_commit. Code must not depend on what happens without it.' },
+      { t: 'The new value is certainly stored', why: 'That assumes every set is flushed synchronously, which the API does not promise.' },
+      { t: 'The whole namespace is erased', why: 'An interrupted write does not wipe existing data; the previous value of the key remains valid.' },
+    ] },
+    { q: 'New firmware is flashed with `idf.py flash` and the device still connects to the old Wi-Fi network without being configured. Why?', kind: 'concept', choices: [
+      { t: 'Flashing rewrites the app, bootloader and partition table but leaves the NVS partition, where the credentials are, untouched', ok: true, why: 'Data partitions persist across firmware updates unless explicitly erased.' },
+      { t: 'The credentials are compiled into the bootloader', why: 'The bootloader has no Wi-Fi functionality and was itself rewritten by the flash operation.' },
+      { t: 'Wi-Fi credentials are stored in the router', why: 'A station must present the passphrase itself. It had to come from somewhere on the device.' },
+    ] },
+    { q: '`nvs_get_u16(h, "level", &v)` fails although `nvs_set_u8(h, "level", 3)` succeeded earlier. Why?', kind: 'code', choices: [
+      { t: 'NVS values are typed; the key holds a u8 and must be read as a u8', ok: true, why: 'The stored entry records its type, and a read with a different type does not match.' },
+      { t: 'Values below 256 cannot be stored', why: 'Small values are perfectly valid. The mismatch is between the type written and the type requested.' },
+      { t: 'The key was deleted by the commit', why: 'Committing makes entries durable. It never removes them.' },
+    ] },
+    { q: 'An attacker has the device in hand and a USB cable. With default settings, what protects an API key stored in NVS?', kind: 'security', choices: [
+      { t: 'Nothing: the flash can be read out and the key found in plain bytes', ok: true, why: 'Without flash and NVS encryption, the contents of external flash are readable with standard tools.' },
+      { t: 'The NVS namespace acts as a password', why: 'A namespace is only a label for grouping keys. It is stored in the clear next to the data.' },
+      { t: 'The partition table hides the NVS partition', why: 'The partition table is itself readable and tells the attacker exactly where NVS is.' },
+    ] },
+  ],
+});
+
 // @@NEXT@@
 
 export default { skills, lessons, labs: [], glossary: [], troubleshooting: [], refs: [] };

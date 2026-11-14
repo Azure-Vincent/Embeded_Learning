@@ -143,7 +143,7 @@ export default function mount(el, props = {}, ctx) {
       }
       svg.append(s('path', { d, class: 'timer-lab-saw' }), s('line', { x1: x0, y1: cy, x2: W - 6, y2: cy, class: 'timer-lab-cmp' }), s('path', { d: od, class: 'timer-lab-out' }),
         s('text', { x: 2, y: y0 - yh + 4, 'font-size': 10 }, String(reload)), s('text', { x: 2, y: y0 + 3, 'font-size': 10 }, '0'),
-        s('text', { x: W - 8, y: cy - 4, 'text-anchor': 'end', 'font-size': 10, class: 'timer-lab-cmpt' }, 'compare ' + compare),
+        s('text', { x: x0 + 6, y: cy + 12, 'font-size': 10, class: 'timer-lab-cmpt' }, 'compare ' + compare),
         s('text', { x: 2, y: H - 6, 'font-size': 10 }, 'out'));
       out.append(svg);
 
@@ -196,7 +196,7 @@ export default function mount(el, props = {}, ctx) {
     return h('div', {},
       h('div', { class: 'w-tabs', role: 'group', 'aria-label': 'Case' }, Object.entries(CHALLENGES).map(([id, t]) =>
         h('button', { type: 'button', class: 'w-tab' + (id === wid ? ' on' : ''), 'aria-pressed': String(id === wid), onclick: () => { wid = id; wAnswer = null; wTimeout = null; draw(); } }, t.title))),
-      h('div', { class: 'w-grid' }, h('pre', { class: 'w-mono timer-lab-code' }, c.code), h('div', {}, svg, slider)),
+      h('pre', { class: 'w-mono timer-lab-code' }, c.code), h('div', { class: 'timer-lab-wd' }, svg), slider,
       res.resetAt == null ? h('p', { class: 'w-msg warn' }, `With a ${timeout} ms timeout this trace no longer resets — the fault is still there, the watchdog just no longer sees it within this window.`) : null,
       h('div', { class: 'w-task' }, h('p', {}, h('strong', {}, 'Why did the watchdog reset? '), 'Read the code and the timeline, then choose.'),
         h('div', { class: 'timer-lab-opts' }, c.options.map(([id, text]) => h('button', { type: 'button', class: 'btn small ghost' + (wAnswer === id ? ' picked' : ''), onclick: () => { wAnswer = id; if (id === c.answer) ctx?.complete?.(); draw(); } }, text)))),

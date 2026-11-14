@@ -1,1 +1,59 @@
 /* Styles specific to the firmware tools. Shared widget primitives live in app.css. */
+
+/* ---------- c-lab ---------- */
+.c-lab-title { margin: 0 0 .5em; }
+.c-lab-intro { margin: 0 0 .8em; }
+.c-lab-editor { --rows: 12; display: grid; grid-template-columns: auto minmax(0, 1fr); height: calc(var(--rows) * 1.55 * .84rem + 20px); min-height: 9em; max-height: 70vh; resize: vertical; overflow: hidden;
+  background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line); border-radius: var(--r); font: .84rem/1.55 var(--mono); }
+.c-lab-editor:focus-within { outline: 2px solid var(--link); outline-offset: 1px; }
+.c-lab-gutter { overflow: hidden; padding: 10px 0; background: #0c161d; user-select: none; }
+.c-lab-ln { display: block; width: 100%; min-width: 2.8em; height: calc(1.55 * .84rem); padding: 0 8px 0 10px; border: 0; border-left: 3px solid transparent; background: none; color: #6f838f; font: inherit; line-height: inherit; text-align: right; cursor: pointer; }
+.c-lab-ln:hover { color: #dfe7ea; }
+.c-lab-ln.warn { border-left-color: #e6bd4f; color: #e6bd4f; }
+.c-lab-ln.err { border-left-color: #ff8a80; color: #ff8a80; font-weight: 600; }
+.c-lab-ln.bp { background: #7a2a24; color: #fff; }
+.c-lab-ln.at { background: #e6bd4f; color: #14212b; }
+.c-lab-code { position: relative; min-width: 0; overflow: hidden; }
+.c-lab-hl, .c-lab-ta { position: absolute; inset: 0; margin: 0; padding: 10px 12px; border: 0; font: inherit; line-height: inherit; tab-size: 4; white-space: pre; overflow-wrap: normal; word-break: normal; letter-spacing: 0; }
+.c-lab-hl { overflow: hidden; pointer-events: none; color: var(--code-ink); background: none; }
+.c-lab-hl code { background: none; padding: 0; font: inherit; border-radius: 0; }
+.c-lab .c-lab-ta { width: 100%; height: 100%; resize: none; overflow: auto; background: transparent; color: transparent; caret-color: #fff; outline: none; border-radius: 0; font-size: inherit; }
+.c-lab-ta::selection { background: rgba(120, 170, 255, .35); color: transparent; }
+.c-lab-ta[readonly] { caret-color: transparent; }
+.c-lab-actions { margin-top: .7em; }
+.c-lab-bp:empty { display: none; }
+.c-lab-inputs { margin: .5em 0; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 10px; }
+.c-lab-inputs summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+.c-lab-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 14px; margin: 10px 0 6px; }
+.c-lab-field { display: grid; gap: 2px; font-size: .85rem; } .c-lab-field > span { font-family: var(--mono); } .c-lab-field input { width: 100%; min-width: 0; }
+.c-lab-feedback .w-msg { margin-top: 6px; overflow-wrap: anywhere; }
+.c-lab-lref { background: none; border: 0; padding: 0; font: inherit; font-family: var(--mono); color: inherit; text-decoration: underline; cursor: pointer; }
+.c-lab-hint { border-left: 3px solid var(--mask); background: var(--mask-soft); padding: 8px 12px; margin-top: 8px; border-radius: 0 var(--r) var(--r) 0; } .c-lab-hint p:last-child { margin-bottom: 0; }
+.c-lab-solution .tag { margin-top: 10px; } .c-lab-solcode { max-height: 28em; }
+.c-lab-explain-body { margin-top: 8px; }
+.c-lab .w-tabs { margin: 14px 0 10px; }
+.c-lab-panel .tag { margin-top: 10px; } .c-lab-panel .tag:first-child { margin-top: 0; }
+.c-lab-term { margin: 0; min-height: 3.2em; } .c-lab-uart { min-height: 2em; }
+.c-lab-dim { color: var(--muted); font-weight: 400; } .c-lab-term .c-lab-dim { color: #7f95a1; }
+.c-lab-tests { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.c-lab-tests li { border: 1px solid var(--line); border-left-width: 4px; border-radius: var(--r); padding: 6px 10px; }
+.c-lab-tests li.pass { border-left-color: var(--ok); } .c-lab-tests li.fail { border-left-color: var(--bad); }
+.c-lab-badge { display: inline-block; min-width: 4.2em; font: 600 .78rem var(--mono); color: var(--muted); }
+.c-lab-tests li.pass .c-lab-badge { color: var(--ok); } .c-lab-tests li.fail .c-lab-badge { color: var(--bad); }
+.c-lab-tmsg { margin-top: 4px; font-size: .86rem; color: var(--bad); overflow-wrap: anywhere; white-space: pre-wrap; }
+.c-lab-pins { display: grid; grid-template-columns: repeat(16, minmax(0, 1fr)); gap: 3px; max-width: 560px; margin: 4px 0 12px; }
+.c-lab-pin { display: grid; justify-items: center; gap: 1px; padding: 5px 0 3px; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunk); font: .68rem var(--mono); color: var(--muted); }
+.c-lab-led { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--muted); background: transparent; }
+.c-lab-pin.out .c-lab-led { border-color: var(--copper); } .c-lab-pin.out.on .c-lab-led { background: var(--copper); box-shadow: 0 0 6px var(--copper); }
+.c-lab-pin.in .c-lab-led { border-radius: 2px; } .c-lab-pin.in.on .c-lab-led { background: var(--muted); }
+.c-lab-pinno { color: var(--ink); }
+.c-lab-regs { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 20px; }
+.c-lab-vars { width: 100%; font: .82rem var(--mono); } .c-lab-vars td, .c-lab-vars th { padding: 3px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); } .c-lab-vars th { font: 600 .76rem var(--cond); color: var(--muted); }
+.c-lab-vars td:last-child { overflow-wrap: anywhere; }
+.c-lab-frame { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 10px; margin-bottom: 8px; } .c-lab-frame-h { margin-bottom: 4px; } .c-lab-frame .w-kv { margin-bottom: 6px; }
+.c-lab-dump { margin: 6px 0 0; padding: 10px 12px; background: var(--sunk); border: 1px solid var(--line); border-radius: var(--r); font: .78rem/1.5 var(--mono); overflow-x: auto; }
+@media (max-width: 520px) {
+  .c-lab-pins { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .c-lab-ln { min-width: 2.2em; padding: 0 5px 0 4px; }
+  .c-lab-hl, .c-lab-ta { padding: 10px 8px; }
+}

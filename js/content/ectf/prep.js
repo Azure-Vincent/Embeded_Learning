@@ -1,2 +1,62 @@
-// STUB — replaced by real content.
-export default { skills: [], lessons: [], labs: [], glossary: [], troubleshooting: [], refs: [] };
+// eCTF preparation: the six competition-preparation lessons.
+// Lessons live in prep-a.js (1-3) and prep-b.js (4-6); shared C sources in code.js.
+import a from './prep-a.js';
+import b from './prep-b.js';
+
+export default {
+  skills: [
+    { id: 'ectf-prep-requirements', name: 'Turn a specification into numbered, testable functional and security requirements', track: 'competition' },
+    { id: 'ectf-prep-architecture', name: 'Design an embedded architecture from a threat model, with explicit trust boundaries and fail-closed behaviour', track: 'competition' },
+    { id: 'ectf-prep-building-blocks', name: 'Match authentication, AEAD, freshness, signed-update and provisioning mechanisms to a security requirement', track: 'competition' },
+    { id: 'ectf-prep-negative-tests', name: 'Write negative tests that demonstrate a security requirement holds', track: 'competition' },
+    { id: 'ectf-prep-repro-build', name: 'Set up a pinned, reproducible firmware build and check it by comparing hashes', track: 'competition' },
+    { id: 'ectf-prep-security-argument', name: 'Write a security argument (claim, assumptions, mechanism, evidence, residual risk) for a requirement', track: 'competition' },
+    { id: 'ectf-prep-design-review', name: 'Review a design interface by interface against a catalogue of weakness classes and report findings', track: 'competition' },
+    { id: 'ectf-prep-plan', name: 'Plan the weeks of a design phase and assess readiness against a skills checklist', track: 'competition' },
+  ],
+  lessons: [...a, ...b],
+  labs: [],
+  glossary: [
+    { term: 'Security requirement', def: 'A testable statement of what must hold even when someone is trying to make it fail: what stays secret, what is refused, who may do what. Verified with at least one negative test.' },
+    { term: 'Negative test', def: 'A test that presents input which must be **refused** (a tampered image, a repeated message, an older version) and checks both the refusal and that no state changed.' },
+    { term: 'Trust boundary', def: 'A line in the design across which data stops being something the code produced itself and becomes something another party chose. All validation happens at the boundary, before use.' },
+    { term: 'Attack surface', def: 'Everything an adversary can reach: commands, message types, fields, ports, debug features. Reduced most cheaply by removing what the specification does not require.' },
+    { term: 'Fail closed', def: 'On any error or unexpected condition, end in the more restrictive state: refuse, lock, do not boot the unverified image.' },
+    { term: 'AEAD', def: 'Authenticated encryption with associated data, for example AES-GCM. Provides confidentiality and integrity together; decryption either returns the plaintext or fails. Requires that a key and nonce pair is never used twice.' },
+    { term: 'Freshness', def: 'The property that an authentic message is accepted only once, or only now. Provided by a strictly increasing counter or by a nonce chosen by the verifier, covered by the authentication tag.' },
+    { term: 'Anti-rollback', def: 'Refusing correctly signed firmware whose version is not greater than a stored minimum that can only move forward.' },
+    { term: 'Key derivation function', def: 'A function (HKDF, or the constructions in NIST SP 800-108) that turns one secret plus a context label into independent keys, so each device and each purpose gets its own key.' },
+    { term: 'Provisioning', def: 'The step at which identity and secrets enter a device. In the 2024–2026 eCTF example designs this happens at build time: a deployment-wide secrets step, then a per-device build.' },
+    { term: 'Reproducible build', def: 'A build in which the same source and declared inputs give a byte-identical output on any machine, achieved by pinning tools and removing dependence on the build environment.' },
+    { term: 'Security argument', def: 'A short structured justification for one security requirement: claim, assumptions, mechanism, why it holds, evidence, residual risk.' },
+    { term: 'Residual risk', def: 'What a mechanism does not cover, or an assumption that may not hold, stated explicitly in the design documentation.' },
+    { term: 'Weakness class', def: 'A category of design or implementation error (for example missing authentication, nonce reuse, memory-safety defect) that can be recognised, defended against and tested for in a systematic way.' },
+  ],
+  troubleshooting: [
+    { symptom: 'Two builds of the same commit produce different firmware hashes', area: 'Build',
+      causes: 'A timestamp or absolute path compiled in; an unpinned compiler or SDK that changed; source files linked in file-system order; secrets regenerated between builds.',
+      fix: 'Build twice in fresh containers with the **same** secrets file. Compare map files to find the first differing section. Remove date/time macros, pin tool versions, sort source lists, and generate secrets once.' },
+    { symptom: 'A negative test passes by hand but the weakness reappears later', area: 'Testing',
+      causes: 'The test was never added to the automated suite, or it runs against a debug build and not the delivered image.',
+      fix: 'Put every negative test in CI beside the functional tests and run the suite against the release artefact.' },
+    { symptom: 'After adding a counter for freshness, devices stop talking after a reset', area: 'Protocol',
+      causes: 'One side keeps its counter in RAM and restarts from zero while the other remembers a higher value.',
+      fix: 'Persist the counter (charge before use), or run a challenge–response handshake at start-up that establishes a new session key and resets session counters under it.' },
+    { symptom: 'The team cannot say whether a security requirement is met', area: 'Process',
+      causes: 'No security argument was written, so mechanism and evidence were never tied to the requirement.',
+      fix: 'Write the six-part argument. If the mechanism or evidence line cannot be filled in, that is the finding.' },
+  ],
+  refs: [
+    { org: 'MITRE', title: 'eCTF public repositories, 2016–2025 (mitre-cyber-academy)', url: 'https://github.com/mitre-cyber-academy', note: 'Insecure example designs by year.' },
+    { org: 'MITRE', title: 'eCTF 2026 insecure example (ectfmitre)', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example' },
+    { org: 'MITRE', title: 'eCTF 2025 insecure example', url: 'https://github.com/mitre-cyber-academy/2025-ectf-insecure-example' },
+    { org: 'MITRE', title: 'eCTF 2024 insecure example', url: 'https://github.com/mitre-cyber-academy/2024-ectf-insecure-example' },
+    { org: 'MITRE', title: 'Common Weakness Enumeration (CWE)', url: 'https://cwe.mitre.org/', note: 'Not load-tested from this environment.' },
+    { org: 'NIST', title: 'SP 800-38D: Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC', url: 'https://doi.org/10.6028/NIST.SP.800-38D', note: 'DOI not load-tested from this environment.' },
+    { org: 'NIST', title: 'FIPS 180-4: Secure Hash Standard', url: 'https://doi.org/10.6028/NIST.FIPS.180-4', note: 'DOI not load-tested from this environment.' },
+    { org: 'NIST', title: 'FIPS 186-5: Digital Signature Standard', url: 'https://doi.org/10.6028/NIST.FIPS.186-5', note: 'DOI not load-tested from this environment.' },
+    { org: 'NIST', title: 'SP 800-108 Rev. 1: Recommendation for Key Derivation Using Pseudorandom Functions', url: 'https://csrc.nist.gov/publications', note: 'Find by title in the NIST publications catalogue; a direct link was not confirmed.' },
+    { org: 'NIST', title: 'SP 800-56C Rev. 2: Recommendation for Key-Derivation Methods in Key-Establishment Schemes', url: 'https://csrc.nist.gov/publications', note: 'Find by title in the NIST publications catalogue; a direct link was not confirmed.' },
+    { org: 'IETF', title: 'RFC 5869: HMAC-based Extract-and-Expand Key Derivation Function (HKDF)', url: 'https://www.rfc-editor.org/rfc/rfc5869', note: 'Not load-tested from this environment.' },
+  ],
+};

@@ -274,7 +274,7 @@ Set up a fault log with these columns: **symptom · measurements (where, value) 
 | Card | How to introduce it on the real board | Safe substitution |
 |---|---|---|
 | A. Reversed LED | Turn LED1 round | none needed |
-| B. No current limit | Do **not** remove R1. Replace R1 (330 Ω) with 100 Ω, or put both leads of R1 in adjacent holes of a strip joined by a jumper *with a second 100 Ω resistor in series elsewhere in the loop* | Current stays near 13 mA: clearly "too bright" and measurably wrong, without overdriving the LED |
+| B. No current limit | Do **not** remove R1 altogether. Replace R1 (330 Ω) with 100 Ω | Current stays near 13 mA: clearly "too bright" and measurably wrong, without overdriving the LED |
 | C. Floating input | Remove R2, or move its top lead to an unused column | none needed |
 | D. Missing ground | Power the "sensor" divider (R3, R4) from a second source such as two AA cells, and leave the two grounds unconnected. Measure SENSE relative to the main board's ground | Battery-powered second source only |
 | E. Wrong rail | Move the top of R3 from 3V3 to the board's 5 V pin, so SENSE sits above its design value | Keeps SENSE at 2.5 V: wrong, but harmless to a meter. Do not connect SENSE to a microcontroller pin during this card unless you have confirmed 2.5 V is within its limits |

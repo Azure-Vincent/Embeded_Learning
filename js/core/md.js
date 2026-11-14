@@ -32,7 +32,7 @@ export function md(src) {
       flush(); const n = Math.min(m[1].length + 1, 5); out += `<h${n}>${inline(m[2])}</h${n}>`; i++;
     } else if (/^\s*\|.*\|\s*$/.test(l)) {
       flush(); const rows = [];
-      while (i < L.length && /^\s*\|.*\|\s*$/.test(L[i])) rows.push(L[i++].trim().slice(1, -1).split('|').map((c) => c.trim()));
+      while (i < L.length && /^\s*\|.*\|\s*$/.test(L[i])) rows.push(L[i++].trim().slice(1, -1).replace(/`[^`]*`/g, (m) => m.replace(/\|/g, '\u0001')).split('|').map((c) => c.trim().replace(/\u0001/g, '|')));
       const hasHead = rows[1] && rows[1].every((c) => /^:?-+:?$/.test(c));
       out += '<div class="table-wrap"><table>';
       if (hasHead) out += `<thead><tr>${rows[0].map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead>`;

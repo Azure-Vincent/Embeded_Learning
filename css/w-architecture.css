@@ -76,7 +76,8 @@
 .interrupt-flow-t tr.chg td, .interrupt-flow-t tr.chg th { background: var(--copper-soft); color: var(--ink); }
 .interrupt-flow-t tr.chg th { box-shadow: inset 3px 0 0 var(--copper); }
 .interrupt-flow-stack tr.sep th, .interrupt-flow-stack tr.sep td { border-top: 2px solid var(--ink); }
-.interrupt-flow-stack td.own { color: var(--muted); font-family: var(--sans); }
+.interrupt-flow-stack td.own { color: var(--muted); font-family: var(--sans); white-space: nowrap; }
+.interrupt-flow-grid > div { min-width: 0; overflow-x: auto; }
 
 /* ---------- stack-heap ---------- */
 .stack-heap-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -128,7 +129,7 @@ button.boot-sequence-pick { cursor: pointer; border-color: var(--copper); } butt
 .timer-lab-chain { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; font-size: .8rem; }
 .timer-lab-chain span { border: 1px solid var(--line); border-radius: var(--r); padding: 2px 8px; background: var(--sunk); }
 .timer-lab .w-field input[type=number], .timer-lab .w-field select { width: 100%; min-width: 0; }
-.timer-lab-svg { margin: 10px 0; }
+.timer-lab-svg { margin: 10px 0; } .timer-lab-wd { overflow-x: auto; } .timer-lab-wd svg { min-width: 520px; }
 .timer-lab-ax { stroke: var(--muted); stroke-width: 1; } .timer-lab-saw { fill: none; stroke: var(--sig1); stroke-width: 2; }
 .timer-lab-cmp { stroke: var(--sig2); stroke-width: 1; stroke-dasharray: 5 3; } .timer-lab-win { stroke: var(--sig4); stroke-width: 1; stroke-dasharray: 2 3; }
 .timer-lab-out { fill: none; stroke: var(--sig3); stroke-width: 2; }

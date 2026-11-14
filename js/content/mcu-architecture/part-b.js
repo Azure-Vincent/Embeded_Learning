@@ -21,29 +21,29 @@ Both statements are correct C. Each works alone. What goes wrong when they share
 The electronics section covered the pin's output transistors and input thresholds. Here is the digital logic behind them.`,
 
       { t: 'figure', caption: 'One GPIO pin, simplified. Real chips add analogue switches, wake-up logic and interrupt edge detectors.',
-        svg: `<svg viewBox="0 0 640 300" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="12" fill="currentColor" stroke="currentColor">
+        svg: `<svg viewBox="0 0 660 300" xmlns="http://www.w3.org/2000/svg" font-family="monospace" font-size="12" fill="currentColor" stroke="currentColor">
   <g fill="none" stroke-width="1.5">
-    <rect x="20" y="30" width="110" height="34" rx="4"/><rect x="20" y="84" width="110" height="34" rx="4"/>
-    <rect x="20" y="138" width="110" height="34" rx="4"/><rect x="20" y="230" width="110" height="34" rx="4"/>
+    <rect x="10" y="30" width="130" height="34" rx="4"/><rect x="10" y="84" width="130" height="34" rx="4"/>
+    <rect x="10" y="138" width="130" height="34" rx="4"/><rect x="10" y="230" width="130" height="34" rx="4"/>
     <path d="M230 40 L290 60 L290 110 L230 130 Z"/>
     <path d="M360 62 L420 85 L360 108 Z" stroke="var(--sig1)"/>
-    <rect x="530" y="70" width="34" height="34" rx="3"/>
+    <rect x="560" y="68" width="44" height="34" rx="3"/>
     <path d="M430 220 L370 247 L430 274 Z" stroke="var(--sig2)"/>
-    <rect x="250" y="230" width="80" height="34" rx="4"/>
-    <path d="M130 47 H230 M130 101 H180 V70 H230 M290 85 H360 M420 85 H530"/>
-    <path d="M130 155 H390 V97" stroke-dasharray="4 3"/>
-    <path d="M480 85 V247 H430 M370 247 H330 M250 247 H130"/>
-    <path d="M480 85 V30 M470 30 h20 M480 30 v-0" stroke="var(--sig3)"/>
-    <path d="M472 34 l8 6 l8 -6 l-8 6 l-8 6 l8 6" stroke="var(--sig3)" transform="translate(0,-18) scale(1,0.7)"/>
+    <rect x="250" y="230" width="84" height="34" rx="4"/>
+    <path d="M140 47 H230 M140 101 H185 V70 H230 M290 85 H360 M420 85 H560"/>
+    <path d="M140 155 H390 V97" stroke-dasharray="4 3"/>
+    <path d="M480 85 V247 H430 M370 247 H334 M250 247 H140"/>
+    <path d="M480 85 V62 M480 34 V20 M468 20 H492" stroke="var(--sig3)"/>
+    <rect x="473" y="34" width="14" height="28" stroke="var(--sig3)"/>
   </g>
   <g stroke="none">
-    <text x="30" y="52">peripheral out</text><text x="30" y="106">OUT latch bit</text>
-    <text x="30" y="160">DIR / OE bit</text><text x="30" y="252">IN register bit</text>
-    <text x="238" y="90">MUX</text><text x="222" y="150">(function select)</text>
-    <text x="352" y="52" fill="var(--sig1)">output driver</text>
-    <text x="536" y="92">pin</text><text x="496" y="24" fill="var(--sig3)">pull-up (pull-down similar)</text>
-    <text x="366" y="210" fill="var(--sig2)">Schmitt input</text><text x="258" y="252">2-FF sync</text>
-    <text x="150" y="282">input path also feeds peripherals and the interrupt edge detector</text>
+    <text x="20" y="52">peripheral out</text><text x="20" y="106">OUT latch bit</text>
+    <text x="20" y="160">DIR / OE bit</text><text x="20" y="252">IN register bit</text>
+    <text x="246" y="90">MUX</text><text x="200" y="150">(function select)</text>
+    <text x="345" y="52" fill="var(--sig1)">output driver</text>
+    <text x="571" y="90">pin</text><text x="500" y="44" fill="var(--sig3)">pull-up resistor</text><text x="500" y="58" fill="var(--sig3)">(switchable)</text>
+    <text x="352" y="210" fill="var(--sig2)">Schmitt input</text><text x="258" y="252">2-FF sync</text>
+    <text x="150" y="290">input path also feeds peripherals and the interrupt edge detector</text>
   </g>
 </svg>` },
 
@@ -267,7 +267,7 @@ Neither is a wiring fault. Both are clock faults.`,
 A **phase-locked loop** multiplies a reference frequency. It compares the divided-down output of a
 voltage-controlled oscillator with the reference and steers the oscillator until they match, so
 f_out = f_ref × N / M. It inherits the accuracy of the reference, takes time to lock, and draws current. It is how a
-40 MHz crystal becomes a 240 MHz CPU clock on an ESP32.
+crystal of typically 40 MHz becomes a 240 MHz CPU clock on an ESP32.
 
 ### Clock tree
 
@@ -325,8 +325,8 @@ peripherals go a step further than a clock gate: each has its own power-enable r
 power is enabled do not take effect. TI's driver library calls this \`DL_<peripheral>_enablePower()\`, and generated
 code calls it first.
 
-**ESP32.** A 40 MHz crystal on the module feeds a PLL; the CPU clock is selectable up to 240 MHz, and most peripherals run from an
-80 MHz bus clock (APB). Peripheral clocks are enabled and held in reset through system-level registers; ESP-IDF
+**ESP32.** A crystal on the module (typically 40 MHz) feeds a PLL; the CPU clock is selectable up to 240 MHz, and most peripherals run from a
+bus clock (APB) that is typically 80 MHz — confirm both in the datasheet and technical reference manual for your chip. Peripheral clocks are enabled and held in reset through system-level registers; ESP-IDF
 drivers do it for you. Changing the CPU frequency for power saving can change the APB clock, and with it every
 baud rate and timer period derived from it: the driver must be told.`,
 

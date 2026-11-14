@@ -240,8 +240,8 @@ Each architecture defines a fixed first action:
   <text x="30" y="184">base + 0x14</text><text x="162" y="184">5  BusFault</text><text x="424" y="184">ARMv7-M only</text>
   <text x="30" y="213">base + 0x18</text><text x="162" y="213">6  UsageFault</text><text x="424" y="213">ARMv7-M only</text>
   <text x="30" y="242">base + 0x2C</text><text x="162" y="242">11 SVCall</text>
-  <text x="30" y="271">base + 0x38, 0x3C</text><text x="162" y="271">14 PendSV, 15 SysTick</text>
-  <text x="30" y="300">base + 0x40 ...</text><text x="162" y="300">16+ peripheral interrupts (IRQ0...)</text><text x="424" y="300">chip-specific</text>
+  <text x="30" y="271">+0x38, +0x3C</text><text x="162" y="271">14 PendSV, 15 SysTick</text>
+  <text x="30" y="300">base + 0x40 ...</text><text x="162" y="300">16+ peripheral IRQs</text><text x="424" y="300">chip-specific</text>
 </svg>` },
 
       `Every handler address in a Cortex-M vector table has **bit 0 set** (it is odd). That bit marks Thumb state, the

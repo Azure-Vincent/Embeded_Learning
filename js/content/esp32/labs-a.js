@@ -1361,7 +1361,425 @@ ledc_update_duty(PWM_MODE, MOTOR_CHANNEL);`,
   ],
 };
 
-const LABS = [p1, p2, p3];
+/* =====================================================================================
+ * Project 4: Temperature and environmental sensor (analog, on the ADC)
+ * ===================================================================================== */
+const P4_RAW = String.raw`#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_err.h"
+#include "esp_log.h"
+
+#define SENSOR_GPIO 34            /* ADC1 channel 6 on the original ESP32 */
+
+static const char *TAG = "p4";
+
+void app_main(void)
+{
+    adc_unit_t unit;
+    adc_channel_t chan;
+    ESP_ERROR_CHECK(adc_oneshot_io_to_channel(SENSOR_GPIO, &unit, &chan));
+    ESP_LOGI(TAG, "GPIO%d is ADC unit %d, channel %d", SENSOR_GPIO, (int)unit + 1, (int)chan);
+
+    adc_oneshot_unit_handle_t adc;
+    const adc_oneshot_unit_init_cfg_t unit_cfg = {
+        .unit_id = unit,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_cfg, &adc));
+
+    const adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten    = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc, chan, &chan_cfg));
+
+    while (1) {
+        int raw_min = 1 << 30, raw_max = 0, sum = 0;
+        for (int i = 0; i < 64; i++) {
+            int raw;
+            ESP_ERROR_CHECK(adc_oneshot_read(adc, chan, &raw));
+            if (raw < raw_min) raw_min = raw;
+            if (raw > raw_max) raw_max = raw;
+            sum += raw;
+        }
+        ESP_LOGI(TAG, "raw min %d  max %d  mean %d  spread %d",
+                 raw_min, raw_max, sum / 64, raw_max - raw_min);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}`;
+
+const P4_FINAL = String.raw`#include <stdio.h>
+#include <stdbool.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_err.h"
+#include "esp_log.h"
+
+#define SENSOR_GPIO  34            /* ADC1 channel 6 on the original ESP32 */
+#define SENSOR_ATTEN ADC_ATTEN_DB_12
+#define SAMPLES      64
+
+static const char *TAG = "p4";
+
+static adc_oneshot_unit_handle_t s_adc;
+static adc_channel_t             s_chan;
+static adc_cali_handle_t         s_cali;      /* NULL when no calibration scheme is available */
+
+/* Create whichever calibration scheme this chip supports. */
+static bool cali_init(adc_unit_t unit, adc_channel_t chan, adc_atten_t atten, adc_cali_handle_t *out)
+{
+    esp_err_t err = ESP_ERR_NOT_SUPPORTED;
+#if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
+    const adc_cali_curve_fitting_config_t cfg = {
+        .unit_id  = unit,
+        .chan     = chan,
+        .atten    = atten,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    err = adc_cali_create_scheme_curve_fitting(&cfg, out);
+#elif ADC_CALI_SCHEME_LINE_FITTING_SUPPORTED
+    (void)chan;
+    const adc_cali_line_fitting_config_t cfg = {
+        .unit_id  = unit,
+        .atten    = atten,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    err = adc_cali_create_scheme_line_fitting(&cfg, out);
+#else
+    (void)unit; (void)chan; (void)atten; (void)out;
+#endif
+    return err == ESP_OK;
+}
+
+/* Average SAMPLES conversions and return the pin voltage in millivolts. */
+static int read_millivolts(void)
+{
+    int sum = 0;
+    for (int i = 0; i < SAMPLES; i++) {
+        int raw;
+        ESP_ERROR_CHECK(adc_oneshot_read(s_adc, s_chan, &raw));
+        sum += raw;
+    }
+    int raw_mean = sum / SAMPLES;
+
+    int mv;
+    if (s_cali != NULL) {
+        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(s_cali, raw_mean, &mv));
+    } else {
+        mv = raw_mean * 3300 / 4095;          /* rough: assumes an ideal 12-bit, 3.3 V converter */
+    }
+    return mv;
+}
+
+/* TMP36: 500 mV at 0 C, 10 mV per degree. Result in tenths of a degree. */
+static int tmp36_decidegrees(int mv)
+{
+    return mv - 500;                           /* 1 mV = 0.1 C */
+}
+
+void app_main(void)
+{
+    adc_unit_t unit;
+    ESP_ERROR_CHECK(adc_oneshot_io_to_channel(SENSOR_GPIO, &unit, &s_chan));
+
+    const adc_oneshot_unit_init_cfg_t unit_cfg = {
+        .unit_id = unit,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_new_unit(&unit_cfg, &s_adc));
+
+    const adc_oneshot_chan_cfg_t chan_cfg = {
+        .atten    = SENSOR_ATTEN,
+        .bitwidth = ADC_BITWIDTH_DEFAULT,
+    };
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(s_adc, s_chan, &chan_cfg));
+
+    if (!cali_init(unit, s_chan, SENSOR_ATTEN, &s_cali)) {
+        s_cali = NULL;
+        ESP_LOGW(TAG, "no ADC calibration available: voltages are approximate");
+    }
+
+    while (1) {
+        int mv = read_millivolts();
+        int t10 = tmp36_decidegrees(mv);
+        int frac = t10 % 10;
+        if (frac < 0) frac = -frac;
+        ESP_LOGI(TAG, "%d mV  ->  %s%d.%d C", mv, (t10 < 0 && t10 > -10) ? "-" : "", t10 / 10, frac);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}`;
+
+const P4_NTC = String.raw`#include <math.h>
+
+#define VSUPPLY_MV   3300.0    /* measure your 3V3 rail with the multimeter and put the value here */
+#define R_FIXED      10000.0   /* R1, the top resistor: measure it too                           */
+#define NTC_R25      10000.0   /* thermistor resistance at 25 C, from its datasheet               */
+#define NTC_BETA     3950.0    /* B (beta) constant, from the thermistor datasheet                */
+
+/* Divider: 3V3 -- R_FIXED --+-- NTC -- GND, ADC on the junction. */
+static double ntc_celsius(int mv)
+{
+    double v   = (double)mv;
+    double r   = R_FIXED * v / (VSUPPLY_MV - v);                 /* thermistor resistance now */
+    double inv = 1.0 / 298.15 + log(r / NTC_R25) / NTC_BETA;     /* 1/T in 1/kelvin           */
+    return 1.0 / inv - 273.15;
+}`;
+
+const P4_FIG = sch.open(560, 250, 'Schematic: TMP36 output to GPIO34 with a supply decoupling capacitor, and the alternative thermistor voltage divider')
+  + sch.box(20, 30, 130, 190, 'ESP32 DevKit', [[55, '3V3'], [120, 'GPIO34'], [200, 'GND']])
+  + sch.wire('162,55 350,55', 'stroke="var(--sig3)"') + sch.wire('162,200 350,200')
+  + `<rect x="225" y="95" width="80" height="50" rx="4" fill="var(--surface)"/>` + sch.txt(265, 124, 'U1 TMP36', 'middle', 'font-weight="600"')
+  + sch.wire('265,55 265,95') + sch.dot(265, 55) + sch.txt(270, 88, '+Vs', 'start', 'font-size="10"')
+  + sch.wire('265,145 265,200') + sch.dot(265, 200) + sch.txt(270, 160, 'GND', 'start', 'font-size="10"')
+  + sch.wire('162,120 225,120', 'stroke="var(--sig1)"') + sch.txt(194, 113, 'Vout', 'middle', 'font-size="10"')
+  + sch.capV(350, 55, 145, 'C1 100 nF') + sch.gnd(265, 200)
+  + sch.wire('425,25 425,235', 'stroke-dasharray="3 5" opacity=".5"')
+  + sch.txt(495, 22, 'Variant B: thermistor', 'middle', 'font-weight="600"')
+  + sch.rail(480, 50, '3V3') + sch.resV(480, 50, 'R1 10 kΩ') + sch.wire('480,100 480,130') + sch.dot(480, 115)
+  + sch.wire('480,115 440,115', 'stroke="var(--sig1)"') + sch.txt(438, 106, 'to GPIO34', 'start', 'font-size="10"')
+  + sch.resV(480, 130, 'RT1 NTC 10 kΩ') + sch.wire('468,172 492,138', 'stroke-width="1.2"') + sch.wire('492,138 499,138', 'stroke-width="1.2"')
+  + sch.wire('480,180 480,200') + sch.gnd(480, 200)
+  + sch.close;
+
+const p4 = {
+  id: 'esp-p4', title: 'Project 4: Temperature and environmental sensor', kind: 'Project', minutes: 180,
+  summary: 'Measure temperature with an analog sensor on the ADC: look at the raw noise, average it, calibrate it into millivolts, convert to degrees, and check the result against a multimeter.',
+  skills: ['esp-pa-adc-measure'],
+  objectives: [
+    'Explain what an ADC conversion result means in terms of reference voltage, resolution and attenuation.',
+    'Configure the ESP-IDF oneshot ADC driver and the calibration scheme your chip supports.',
+    'Measure the noise of a real ADC input and reduce it by averaging, knowing what averaging costs.',
+    'Convert a voltage to a temperature for a linear sensor (TMP36) and for a thermistor divider.',
+    'Validate a measurement chain stage by stage against an independent instrument.',
+    'Describe how single-wire digital temperature sensors differ and when to choose one.',
+  ],
+  hardware: [
+    'ESP32 DevKit and breadboard.',
+    '1 × TMP36 analog temperature sensor in the 3-pin TO-92 package. It runs from 3.3 V and outputs 10 mV per °C with a 500 mV offset, so 0–50 °C is 0.5–1.0 V: comfortably inside the ADC range and away from both ends.',
+    '1 × 100 nF ceramic capacitor across the sensor supply pins, close to the sensor: the standard supply decoupling its datasheet asks for.',
+    'Variant B (step 7): 1 × 10 kΩ NTC thermistor with a known B constant, and 1 × 10 kΩ 1 % resistor. Equal values put the junction at half the supply at 25 °C, where the divider is most sensitive.',
+    '3 jumper wires. Keep the wire to the ADC pin short.',
+    'Multimeter. It is the reference instrument for this project.',
+  ],
+  software: ['ESP-IDF v6.1; copy the project skeleton to `p4_adc`.'],
+  background: [
+    `## What the ADC gives you
+
+An analog-to-digital converter compares the pin voltage with a reference and returns an integer. A 12-bit ADC returns 0–4095. In an ideal converter, \`code = V_in / V_fullscale × 4095\`. The ESP32's converter is not ideal in three ways that this project deals with:
+
+- **Range.** The ADC's own reference is about 1.1 V. To measure higher voltages an input **attenuator** is switched in. The attenuation setting (0, 2.5, 6 or 12 dB) selects the usable input range; the ESP-IDF ADC calibration documentation gives the recommended range for each setting on each chip. With 12 dB the range covers most of 0–3.3 V, but not the last few hundred millivolts at the top, and the bottom hundred or so millivolts are inaccurate.
+- **Chip-to-chip variation.** The reference differs between individual chips. Espressif measures it at the factory and stores correction data in eFuse. The **calibration** driver (\`adc_cali\`) uses that data to turn a raw code into millivolts. The original ESP32 uses a "line fitting" scheme; the S3 and C3 use "curve fitting". The code below selects whichever exists.
+- **Noise.** Successive conversions of a steady voltage differ by several counts, more when the radio is active. You will measure this.`,
+    { t: 'widget', name: 'adc-lab', props: { bits: 12, vref: 3.3 }, caption: 'Quantisation in an ideal ADC: how a voltage becomes a code, and how big one step is.' },
+    `## Two kinds of analog temperature sensor
+
+A **TMP36** is an integrated circuit that outputs a voltage proportional to temperature: 500 mV at 0 °C plus 10 mV per degree (750 mV at 25 °C). The conversion is one subtraction. Its accuracy is in its datasheet's specification table.
+
+A **thermistor** is a resistor whose value falls steeply as temperature rises (NTC). You put it in a voltage divider and measure the junction. It is cheap and sensitive but non-linear: you convert with the B-parameter equation, \`1/T = 1/T₀ + ln(R/R₀)/B\`, with T in kelvin.`,
+    { t: 'callout', kind: 'decision', md: `**Why GPIO34?** It belongs to ADC1. On the original ESP32, ADC2 is shared with Wi-Fi, so ADC2 pins stop being usable for measurements when Wi-Fi is on; use ADC1 for anything you will keep. GPIO34 is also input-only, which is no loss for an analog input and removes the chance of driving the sensor by mistake. On an ESP32-S3 or C3, choose a pin from the ADC1 list in the chip's datasheet; the code finds the channel from the GPIO number with \`adc_oneshot_io_to_channel\`, so only the \`#define\` changes.` },
+    { t: 'callout', kind: 'warn', md: `Never apply more than the 3.3 V supply to an ADC pin. A sensor or divider powered from 5 V can exceed it. Check the pin's absolute maximum in the datasheet. ${CURRENT_NOTE}` },
+  ],
+  diagram: [
+    { t: 'ascii', caption: 'Wiring, variant A (TMP36). Check the pin order against the datasheet drawing: it is given looking at the flat face with the leads down, and getting it backwards makes the part very hot.', text: String.raw`
+From                         To                       Why
+---------------------------  -----------------------  ----------------------------------------
+TMP36 pin 1 (+Vs)            DevKit 3V3               sensor supply (not 5 V: keeps Vout safe)
+TMP36 pin 2 (Vout)           DevKit GPIO34            analog signal, ADC1
+TMP36 pin 3 (GND)            DevKit GND               reference for both sensor and ADC
+C1 100 nF                    TMP36 pin 1 to pin 3     supply decoupling, right at the sensor
+
+Variant B (thermistor) replaces the TMP36:
+DevKit 3V3                   R1 10 kohm, lead A       top of the divider
+R1 lead B                    NTC lead A + GPIO34      junction = measured node
+NTC lead B                   DevKit GND               bottom of the divider
+` },
+    { t: 'figure', svg: P4_FIG, caption: 'Left: the TMP36 drives GPIO34 directly. Right: the thermistor alternative, a divider whose junction voltage falls as temperature rises.' },
+    { t: 'widget', name: 'voltage-divider', props: { vin: 3.3, r1: 10000, r2: 10000 }, caption: 'The thermistor is R2. Lower it (hotter) and raise it (colder) and watch the junction voltage and the ADC reading.' },
+  ],
+  steps: [
+    { title: 'Check the sensor with a multimeter before any code', blocks: [
+      `Wire variant A with the Vout wire **not yet** connected to GPIO34. Power the board. Measure DC volts from TMP36 Vout to GND.`,
+      { t: 'exercise', prompt: 'The room is at 22 °C. What voltage should the multimeter show on Vout, in mV?',
+        hints: ['500 mV at 0 °C, plus 10 mV for each degree.'],
+        answer: { type: 'number', value: 720, tol: 5, unit: 'mV' },
+        solution: `500 + 22 × 10 = **720 mV**. Allow for the sensor's stated accuracy and your meter's: anything from roughly 700 to 740 mV is believable. Pinch the sensor between two fingers and the reading should climb towards 0.8 V over half a minute.` },
+      `**You should see** a voltage between about 0.68 and 0.78 V at ordinary room temperatures, rising when you warm the sensor. Write it down: this number is the reference for everything the firmware reports. Then connect Vout to GPIO34.`,
+      { t: 'exercise', prompt: `**Debugging exercise A.** On another bench, Vout reads close to 2.6 V and the sensor is too hot to touch a few seconds after power-up. What has happened and what should you do first?`,
+        hints: ['A healthy TMP36 draws microamps and cannot heat itself noticeably.', 'The part is symmetrical-looking: which pins could be exchanged?'],
+        solution: `The sensor is inserted **backwards**, so +Vs and GND are swapped and the chip conducts heavily through its internal protection structures. Remove power immediately. Let it cool, refit it using the datasheet's pin drawing, and re-check the 0.7 V reading. A part that has been reversed may survive but can no longer be trusted for accuracy; mark it.` },
+    ] },
+    { title: 'Read raw codes and look at the noise', blocks: [
+      { t: 'predict', q: 'The sensor voltage is steady. The program takes 64 conversions in a row and prints the smallest and largest raw codes. What do you expect the spread (max − min) to be?',
+        choices: [
+          { t: 'Several counts to a few tens of counts', ok: true, why: 'Real converters have noise from the reference, the sampling switch and digital activity on the chip. A spread of a handful to a few dozen codes at 12 bits is normal for this ADC.' },
+          { t: 'Zero: the same voltage always gives the same code', why: 'That is the ideal model in the simulation. A real converter adds random noise of its own to every sample.' },
+          { t: 'Hundreds of counts, so single readings are useless', why: 'That would indicate a fault such as a floating input or a missing ground. A correctly wired low-impedance source is far quieter.' },
+        ],
+        reveal: 'One count at 12 bits and 12 dB attenuation is a little under 1 mV, which for the TMP36 is about 0.1 °C. A spread of 20 counts is therefore a 2 °C jitter in single readings. That is why the next step averages.' },
+      { t: 'code', lang: 'c', status: 'reviewed', code: P4_RAW, caption: 'main/main.c, version 1: raw codes and their spread' },
+      `**You should see** a first line naming the ADC unit and channel for your pin (unit 1, channel 6 for GPIO34 on the original ESP32), then once a second something like \`raw min 842  max 861  mean 851  spread 19\`. Your numbers will differ. Record the typical spread.
+
+Now pull the Vout wire out of GPIO34 and watch. **You should see** the readings wander and the spread grow: a floating ADC input, the analog version of project 2's floating button. Put it back.`,
+    ] },
+    { title: 'Average, and count the cost', blocks: [
+      `The mean of N samples of random noise is quieter than one sample by about √N. Sixty-four samples reduce the jitter roughly eightfold.
+
+Modify version 1 to print the **mean** only, and watch how much it moves from line to line. **You should see** successive means differ by only one or two counts.`,
+      { t: 'exercise', prompt: `**Debugging exercise B.** To save memory someone changes the accumulator's type. With 64 samples the reported mean is now sometimes negative or nonsensical, although each raw sample is fine. Why? What is the largest number of 12-bit samples this accumulator can sum safely?`,
+        code: String.raw`int16_t sum = 0;
+for (int i = 0; i < 64; i++) {
+    int raw;
+    ESP_ERROR_CHECK(adc_oneshot_read(adc, chan, &raw));
+    sum += raw;
+}
+int mean = sum / 64;`,
+        hints: ['What is the largest value an `int16_t` can hold?', 'What is the largest possible sum of 64 samples?'],
+        answer: { type: 'number', value: 8, tol: 0, unit: 'samples' },
+        solution: `An \`int16_t\` holds at most 32 767. Sixty-four samples of up to 4095 can sum to 262 080, so the accumulator wraps around and the result is garbage. The largest safe count is ⌊32 767 / 4095⌋ = **8** samples. Size an accumulator for the worst case: N × maximum sample. A plain \`int\` (32 bits here) is safe for over half a million 12-bit samples.` },
+      `Averaging is not free. Each conversion takes time, so 64 of them delay the result and cannot follow a fast-changing signal. Averaging also removes only *random* noise: an offset or a gain error in the converter passes straight through, which is what calibration is for.`,
+    ] },
+    { title: 'Calibrate: from codes to millivolts', blocks: [
+      { t: 'predict', q: 'Using the naive formula mV = raw × 3300 / 4095 on an original ESP32 at 12 dB attenuation, how will the result compare with your multimeter reading of about 720 mV?',
+        reveal: `It will usually be off by tens of millivolts, and the error is different on every chip. The formula assumes the full-scale voltage is exactly 3.3 V and the response is a straight line through zero, and neither is true for this converter. Tens of millivolts is several degrees for a TMP36. The calibration driver replaces the naive formula with a correction built from factory-measured values stored in that chip's eFuse.` },
+      `Add the calibration code. Print both the naive conversion and the calibrated one next to each other for a minute and compare both with the multimeter.`,
+      { t: 'code', lang: 'c', status: 'reviewed', code: P4_FINAL, caption: 'main/main.c, version 2: averaged, calibrated, converted to temperature' },
+      `**You should see** lines such as \`722 mV  ->  22.2 C\`. The millivolt figure should now agree with your multimeter to within roughly 10–20 mV. Write down both and the difference.
+
+If you see the warning that no calibration is available, the chip has no calibration data in eFuse (possible on very old or unusual modules); the program then falls back to the rough formula.`,
+    ] },
+    { title: 'Validate the whole chain', blocks: [
+      `A reading that looks plausible is not a verified measurement. Check each stage separately:
+
+1. **Sensor → voltage.** Multimeter on Vout, compared with a room thermometer if you have one.
+2. **Voltage → code → millivolts.** Compare the logged mV with the multimeter at room temperature, then with the sensor warmed between your fingers (about 30 °C at the surface), then cooled with a wrapped ice cube or a cold drink can. Three points show whether the error is an offset (constant difference) or a gain error (difference grows with voltage).
+3. **Millivolts → degrees.** Check the arithmetic by hand for one line of log.`,
+      { t: 'exercise', prompt: `**Debugging exercise C.** A colleague writes the conversion with unsigned types. On the bench it works. In a freezer test at −5 °C it reports a temperature of about 429 496 700 °C. Find the bug.`,
+        code: String.raw`uint32_t mv = (uint32_t)read_millivolts();     /* 450 mV at -5 C */
+uint32_t t10 = mv - 500;                        /* tenths of a degree */
+printf("%u.%u C\n", (unsigned)(t10 / 10), (unsigned)(t10 % 10));`,
+        hints: ['What is 450 − 500 in unsigned 32-bit arithmetic?'],
+        answer: { type: 'text', accept: ['unsigned', 'underflow', 'wrap', 'signed'], nudge: 'Think about the type of the subtraction result when the sensor is below 0 °C.' },
+        solution: `Below 0 °C the output is under 500 mV, and \`450u − 500u\` **wraps** to 4 294 967 246 in unsigned arithmetic; divided by 10 that prints as roughly 429 496 724. Temperatures can be negative, so the value must be a signed type. The final program uses \`int\` and also handles the display of values between −0.9 and −0.1, where integer division gives 0 and would lose the minus sign. Test conversions at the edges of the range on a PC, not only at room temperature on the bench.` },
+    ] },
+    { title: 'Explore attenuation', blocks: [
+      `The TMP36 never exceeds about 1 V in normal conditions, yet 12 dB attenuation spreads the 12-bit codes over a range more than three times wider. Change \`SENSOR_ATTEN\` to \`ADC_ATTEN_DB_2_5\`, re-flash, and compare.
+
+**You should see** the same millivolt value (calibration accounts for the attenuation) but, if you print raw codes, about twice as many counts for the same voltage, and a steadier temperature. Look up the recommended input range for 2.5 dB on your chip in the ESP-IDF ADC documentation and work out the highest temperature a TMP36 could report before it leaves that range.`,
+      { t: 'callout', kind: 'mistake', md: `**Choosing 12 dB "to be safe" for every signal.** The widest range gives the coarsest resolution and, on the original ESP32, the worst linearity. Choose the smallest attenuation whose range covers your signal with margin.` },
+    ] },
+    { title: 'Variant B: a thermistor divider', blocks: [
+      `Replace the TMP36 with the divider (wiring table, variant B) and set the attenuation back to 12 dB: at 25 °C the junction sits near 1.65 V.`,
+      { t: 'exercise', prompt: 'At 25 °C the 10 kΩ thermistor and the 10 kΩ fixed resistor are in series across 3.3 V. How much power is dissipated **in the thermistor**, in mW? (This self-heating is an error source.)',
+        hints: ['Find the current through the series pair first.', 'I = 3.3 V / 20 kΩ; P = I² × R.'],
+        answer: { type: 'number', value: 0.27, tol: 0.02, unit: 'mW' },
+        solution: `I = 3.3 / 20 000 = 165 µA. P = (165 µA)² × 10 kΩ ≈ **0.27 mW**. The thermistor's datasheet gives a dissipation constant in mW per °C; divide to get the self-heating error. With typical values it is a small fraction of a degree, which is one reason for choosing 10 kΩ rather than 100 Ω parts.` },
+      { t: 'code', lang: 'c', status: 'reviewed', code: P4_NTC, caption: 'Thermistor conversion: add this function and call it with the result of read_millivolts()' },
+      `Print the result with \`ESP_LOGI(TAG, "%d mV -> %.1f C", mv, ntc_celsius(mv));\`. **You should see** a temperature close to the TMP36's earlier reading, falling junction voltage when you warm the thermistor, and a much larger change in millivolts per degree than the TMP36 gave.
+
+Two things to notice. First, the result depends on \`VSUPPLY_MV\`: the divider is powered from the 3.3 V rail but the ADC measures against its own internal reference, so a rail that is really 3.25 V produces an error unless you put the measured value in. Second, the B equation is an approximation that is good near 25 °C and drifts further away; the thermistor datasheet says how far.`,
+    ] },
+    { title: 'Discussion: single-wire digital sensors', blocks: [
+      `Analog sensors put the burden of accuracy on your ADC, your reference and your wiring. A digital sensor does the conversion inside the package with its own calibrated reference and sends you a number, so a noisy or inaccurate MCU ADC no longer matters. Two families use a single data wire:
+
+- **1-Wire devices such as the DS18B20.** One open-drain data line with a pull-up resistor, shared by many sensors, each with a unique 64-bit ROM code and a CRC on every reading. The bus master creates precisely timed low pulses ("time slots") to write and read each bit.
+- **DHT-style humidity and temperature sensors.** A proprietary single-wire protocol in which the sensor answers a start pulse with 40 bits encoded as pulse widths of tens of microseconds, with a simple checksum.
+
+Both need microsecond timing that a FreeRTOS task with a 10 ms tick cannot produce by delay calls, and that interrupts disturb. On the ESP32 the usual solution is to let a hardware peripheral generate and capture the waveform; Espressif's RMT peripheral is designed for this. Espressif also publishes 1-Wire bus and DS18B20 driver components in its component registry. This project does not reproduce that code: if you fit one of these sensors, start from the sensor's datasheet timing diagram and the README of the component version you actually install, and verify the waveform with a logic analyser.`,
+      { t: 'callout', kind: 'decision', md: `**Analog or digital?** Choose analog when you need a fast response, the lowest cost, or you already have a good ADC. Choose a digital sensor when accuracy matters more than speed, when the sensor is at the end of a long cable, or when several sensors must share one pin. Project 5 uses a digital sensor on I2C for exactly these reasons.` },
+    ] },
+  ],
+  walkthrough: [
+    { t: 'code', lang: 'c', status: 'reviewed', code: P4_FINAL, caption: 'Version 2, annotated',
+      explain: [
+        { lines: '22-45', md: 'The `#if` picks the scheme at compile time from capability macros that the calibration header defines per chip. Curve fitting needs the channel because its correction is per channel; line fitting does not. Both read factory values from eFuse and build a conversion function.' },
+        { lines: '51-55', md: '`adc_oneshot_read` selects the channel in the SAR ADC\'s multiplexer, starts one conversion, waits for the done flag and returns the code. On chips where ADC2 is shared with Wi-Fi, the driver takes a lock here, which is why a read can fail with a timeout on ADC2 while Wi-Fi is busy.' },
+        { lines: '56', md: 'Averaging in the raw domain before conversion is deliberate: the calibration function is applied once, to the best estimate of the code.' },
+        { lines: '59-63', md: 'With a calibration handle the result is in millivolts at the pin. The fallback is labelled rough because it assumes an ideal converter.' },
+        { lines: '68-71', md: 'All integer arithmetic: 10 mV per degree means 1 mV is a tenth of a degree, so subtracting the 500 mV offset gives tenths directly. No floating point, and the value is signed.' },
+        { lines: '76', md: 'Translates a GPIO number into (unit, channel) using the chip\'s pin table, so the program is not tied to one chip\'s channel numbering. It returns an error if the pin has no ADC function.' },
+        { lines: '78-81', md: 'Creates the driver instance for that ADC unit and powers up the converter. Only one instance per unit may exist.' },
+        { lines: '83-87', md: 'Stores the attenuation for this channel; the driver writes it to the attenuation field for that pad when it converts. `ADC_BITWIDTH_DEFAULT` selects the chip\'s maximum width (12 bits on the ESP32, S3 and C3).' },
+        { lines: '96-99', md: 'Splits tenths of a degree into whole and fractional parts by hand. The extra minus sign handles values such as −0.4 °C, where the whole part is 0.' },
+      ] },
+    `**What happens on the pin.** Configuring the channel also puts the pad into analog mode: its digital input buffer and pull resistors are disconnected so they do not load the signal. During a conversion a small sampling capacitor is connected to the pin for a short time. A source with high output impedance cannot charge it fully in that time, which shows up as low or noisy readings; this is why a 10 kΩ divider works and a 1 MΩ divider needs a buffer amplifier or a capacitor at the pin.`,
+  ],
+  testing: [
+    `| Check | How | You should see |
+|---|---|---|
+| Sensor alone | DC volts Vout–GND, GPIO34 disconnected | 0.68–0.78 V at room temperature |
+| Sensor loaded | Same, with GPIO34 connected and the program running | no change (within 1–2 mV); a drop means the pin is not in analog mode or is the wrong pin |
+| Noise | Version 1 | spread of several to a few tens of counts |
+| Averaging | Mean of 64 | line-to-line change of 1–2 counts |
+| Calibration | Logged mV against the multimeter at three temperatures | agreement within roughly 10–20 mV; note whether the difference is constant |
+| Direction | Warm the sensor | TMP36: mV and °C rise. Thermistor: mV fall, °C rise |
+| Floating input | Pull the signal wire | readings wander; spread grows |
+| Supply | DC volts 3V3–GND | your actual rail voltage; use it for \`VSUPPLY_MV\` in variant B |
+
+There is nothing digital to capture here, so a logic analyser does not help; the multimeter is the right instrument. If you have an oscilloscope, look at Vout with AC coupling at a few mV per division to see noise the meter averages away.`,
+    { t: 'callout', kind: 'hw', md: `State your result honestly: "22.2 °C, with a combined uncertainty I estimate at about ±2 °C from the sensor's datasheet accuracy plus my measured ADC error". A number without an uncertainty is not a measurement.` },
+  ],
+  troubleshooting: [
+    { symptom: 'Reading is 0 or a few counts', cause: 'Signal wire on the wrong pin, sensor not powered, or sensor ground missing.', fix: 'Measure Vout with the multimeter at the DevKit pin, not at the sensor, to include the wire.' },
+    { symptom: 'Reading stuck at 4095', cause: 'Input above the range for the chosen attenuation: sensor or divider powered from 5 V, or 0 dB attenuation with a signal above about 1 V.', fix: 'Power the sensor from 3.3 V; choose an attenuation whose range covers the signal.' },
+    { symptom: 'Temperature several degrees wrong but stable', cause: 'Naive raw-to-voltage formula, missing calibration, or `VSUPPLY_MV`/resistor values not matching reality in the thermistor variant.', fix: 'Use `adc_cali`; compare logged mV with the multimeter to find which stage is wrong.' },
+    { symptom: 'Readings jump by tens of millivolts', cause: 'Long unshielded signal wire, missing decoupling capacitor, or Wi-Fi transmissions.', fix: 'Shorten the wire; fit C1 at the sensor; average more; sample between radio bursts if it matters.' },
+    { symptom: '`adc_oneshot_read` returns a timeout error', cause: 'An ADC2 pin is being read while Wi-Fi is using ADC2.', fix: 'Move the signal to an ADC1 pin.' },
+    { symptom: '`adc_oneshot_io_to_channel` fails', cause: 'The chosen GPIO has no ADC function on this chip.', fix: 'Pick a pin from the ADC channel table in the chip datasheet.' },
+    { symptom: 'Sensor is hot', cause: 'TMP36 inserted backwards.', fix: 'Power off at once; refit using the datasheet pin drawing.' },
+    { symptom: 'Thermistor result drifts upward over the first minute', cause: 'Self-heating, or heat from the nearby regulator and ESP32 module.', fix: 'Use higher resistances, power the divider only while measuring, and move the sensor away from the board.' },
+  ],
+  challenge: `**A thermostat you would trust.** No solution is given.
+
+1. Read the temperature once a second and switch the LED on GPIO18 (standing in for a heater) on below a set-point and off above it, with **hysteresis** so that noise near the set-point cannot make the output chatter. Choose the hysteresis width from the noise you measured, and justify it.
+2. Detect and report sensor faults: an open circuit, a short to ground and a short to 3.3 V each produce a voltage outside the plausible range. Decide what the "heater" must do in each case and why.
+3. Replace the simple mean with a method that also rejects a single wild sample (for example a median of several means). Demonstrate it by touching the input briefly with a jumper to 3V3 through a 10 kΩ resistor.
+4. In your notebook, list every error source between the air temperature and the number in your log, with an estimate for each, and say which one dominates.`,
+  quiz: [
+    { kind: 'concept', q: 'An ideal 12-bit ADC has a 3.3 V full scale. Roughly what temperature change does one count represent for a TMP36?',
+      choices: [
+        { t: 'About 0.08 °C', ok: true, why: '3300 mV / 4095 ≈ 0.81 mV per count, and the sensor gives 10 mV per degree, so one count is about 0.08 °C. Resolution is not the limit here; noise and accuracy are.' },
+        { t: 'About 0.8 °C', why: 'One count is about 0.8 mV, and the sensor moves 10 mV for each degree, so a single count is a much smaller temperature step than that.' },
+        { t: 'About 8 °C', why: 'That would make a 12-bit converter useless for temperature. Work out millivolts per count first, then divide by the sensor\'s millivolts per degree.' },
+      ] },
+    { kind: 'code', q: 'What is wrong with this averaging code, given 12-bit samples?', code: String.raw`uint16_t sum = 0;
+for (int i = 0; i < 32; i++) { int raw; adc_oneshot_read(adc, chan, &raw); sum += raw; }
+int mean = sum / 32;`,
+      choices: [
+        { t: 'The sum can reach 131 040, which does not fit in 16 bits, so it wraps', ok: true, why: '32 × 4095 = 131 040, but a `uint16_t` holds at most 65 535. It works for low readings and fails for high ones, which makes the bug easy to miss on the bench.' },
+        { t: 'Integer division loses too much precision', why: 'Dividing by 32 loses a fraction of one count, far below the noise. Look at the range the accumulator must cover.' },
+        { t: 'The ADC cannot be read 32 times in a row', why: 'It can be read as often as you like. The problem is in the arithmetic afterwards.' },
+      ] },
+    { kind: 'circuit', q: 'In the thermistor divider (10 kΩ fixed resistor on top, NTC to ground), the junction reads 1.10 V with a 3.30 V supply. What is the thermistor resistance?',
+      choices: [
+        { t: '5 kΩ', ok: true, why: 'R = R_fixed × V / (V_s − V) = 10 kΩ × 1.10 / 2.20 = 5 kΩ. Lower than its 25 °C value, so it is warmer than 25 °C.' },
+        { t: '20 kΩ', why: 'That is the ratio inverted. Check which resistor the measured voltage is across: the junction voltage is across the thermistor.' },
+        { t: '3.3 kΩ', why: 'That is 10 kΩ × 1.1 / 3.3, which uses the whole supply instead of the voltage across the fixed resistor in the denominator.' },
+      ] },
+    { kind: 'concept', q: 'What would happen if this project used GPIO25 (an ADC2 pin on the original ESP32) and the firmware later enabled Wi-Fi?',
+      choices: [
+        { t: 'ADC reads could fail or time out, because Wi-Fi uses ADC2', ok: true, why: 'On the original ESP32 the Wi-Fi driver needs ADC2, and the oneshot driver arbitrates between them. A design that will ever use the radio should put its analog inputs on ADC1.' },
+        { t: 'Nothing: the two are independent peripherals', why: 'They share hardware on this chip. The GPIO documentation for the original ESP32 says so explicitly.' },
+        { t: 'Wi-Fi would fail to start', why: 'Wi-Fi takes priority over application reads of that converter. It is the measurement that loses.' },
+      ] },
+    { kind: 'concept', q: 'Averaging 64 samples made the reading steady, but it is still 3 °C higher than a reference thermometer at every temperature. What does that tell you?',
+      choices: [
+        { t: 'There is a systematic offset that averaging cannot remove; it needs calibration or correction', ok: true, why: 'Averaging reduces random scatter only. A constant difference comes from the sensor\'s offset, the ADC\'s offset, or self-heating, and must be found stage by stage and corrected.' },
+        { t: 'More samples are needed; 256 would close the gap', why: 'More samples narrow the scatter around the same wrong value. The mean would not move.' },
+        { t: 'The ADC resolution is too low', why: 'One count is under a tenth of a degree. A 3 °C error is about 40 counts and is not a resolution effect.' },
+      ] },
+    { kind: 'arch', q: 'A sensor must sit at the end of a 10 m cable in a noisy plant room and report temperature to within 0.5 °C. Which approach is the better starting point?',
+      choices: [
+        { t: 'A digital sensor that converts at the sensing point and sends numbers with a checksum', ok: true, why: 'Millivolt-level analog signals pick up noise and lose accuracy over a long cable. A digital sensor\'s reading is unaffected by cable noise as long as the bits arrive, and a CRC tells you when they do not.' },
+        { t: 'A TMP36 with more averaging in firmware', why: 'Averaging helps with random noise but not with mains pickup, ground offsets along the cable, or the ADC\'s own inaccuracy.' },
+        { t: 'A thermistor with a larger fixed resistor', why: 'A higher-impedance node is more sensitive to picked-up noise, not less, and the conversion still depends on the MCU\'s ADC.' },
+      ] },
+  ],
+};
+
+const LABS = [p1, p2, p3, p4];
 
 /* ---------- section-level material contributed by these projects ---------- */
 const glossary = [

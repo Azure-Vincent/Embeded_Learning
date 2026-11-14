@@ -48,7 +48,7 @@ The practical differences that follow from integration:
       `## On real hardware: the three course platforms
 
 **ESP32-WROOM module.** The ESP32 *chip* contains two Xtensa CPU cores, RAM, a mask ROM, radio, and peripherals, but
-**no program flash**. The WROOM *module* is a small PCB that adds an SPI flash chip, a 40 MHz crystal, the RF matching
+**no program flash**. The WROOM *module* is a small PCB that adds an SPI flash chip, a crystal (typically 40 MHz), the RF matching
 network and a PCB antenna under a shield can. On the original ESP32, GPIO6–11 are normally wired to that flash inside
 the module, which is why you must not use them. So an ESP32-WROOM is: a module, containing an SoC, which behaves like
 an MCU once the flash is attached. A development board (DevKitC and similar) is a third layer: module plus USB-to-UART
@@ -345,7 +345,7 @@ Consequences that differ from ordinary memory:
 | **RW** | Read/write, reads back what was written | read-modify-write |
 | **RO** | Read-only; writes ignored | do not rely on writes |
 | **WO** | Write-only; reads undefined or 0 | plain write, keep a shadow copy if you need the value |
-| **W1C** | Write 1 to clear; writing 0 does nothing | write a mask with only the flags you handled. **Never** \`|=\` |
+| **W1C** | Write 1 to clear; writing 0 does nothing | write a mask with only the flags you handled. **Never** use an OR-assignment |
 | **W1S / W1T** | Write 1 to set / toggle | plain write of a mask |
 | **Reserved** | Not implemented or for the vendor's use | preserve the read value, or write the documented reset value. Never assume 0 |`,
 
@@ -427,13 +427,15 @@ void timer_wait(void)
 
 Four idioms cover almost every register access. Work each challenge by typing the C expression.
 
-| Goal | Idiom |
-|---|---|
-| Set bit *n* | \`reg |= (1u << n);\` |
-| Clear bit *n* | \`reg &= ~(1u << n);\` |
-| Toggle bit *n* | \`reg ^= (1u << n);\` |
-| Write a field of width *w* at position *p* | \`reg = (reg & ~(MASK << p)) | ((value & MASK) << p);\` with \`MASK = (1u << w) - 1\` |
-| Read that field | \`(reg >> p) & MASK\` |`,
+\`\`\`c
+reg |=  (1u << n);                                   /* set bit n            */
+reg &= ~(1u << n);                                   /* clear bit n          */
+reg ^=  (1u << n);                                   /* toggle bit n         */
+
+/* a field of width w at position p:  MASK = (1u << w) - 1                    */
+reg = (reg & ~(MASK << p)) | ((value & MASK) << p);  /* write the field      */
+field = (reg >> p) & MASK;                           /* read the field       */
+\`\`\``,
 
       { t: 'widget', name: 'register-bits', props: { challenge: 'set-bit' }, title: 'Set one bit' },
       { t: 'widget', name: 'register-bits', props: { challenge: 'clear-bit' }, title: 'Clear one bit' },

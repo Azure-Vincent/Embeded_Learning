@@ -272,7 +272,7 @@ export default function mount(el, props = {}, ctx) {
     if (msg) view.append(h('p', { class: 'w-msg ' + msg.cls, 'aria-live': 'polite', html: md(msg.text.replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]))) }));
     if (!c) view.append(h('p', { class: 'w-note' }, 'Try: ', ['reg |= (1u << 5);', 'reg &= ~(0x7u << 4);', 'reg = (reg & ~0xF00u) | (9u << 8);', 'x = (reg >> 8) & 0xF;', 'reg ^= 1u << 31;'].map((t) =>
       h('button', { type: 'button', class: 'linkbtn w-mono register-bits-eg', onclick: () => { input.value = t; input.focus(); } }, t))));
-    view.append(h('p', { class: 'w-note' }, 'Model: every value is a uint32_t and arithmetic wraps modulo 2³². Supported: numbers (decimal, 0x, 0b, with u/U/L suffixes), names, ( ), ~ ! - * / % + - << >> & ^ | comparisons, and assignments = |= &= ^= += -= <<= >>=. Real C would do some of this arithmetic as signed int when you leave off the `u`; write `1u << n`, because `1 << 31` on a signed int is undefined behaviour.'));
+    view.append(h('p', { class: 'w-note' }, 'Model: every value is a uint32_t and arithmetic wraps modulo 2³². Supported: numbers (decimal, 0x, 0b, with u/U/L suffixes), names, ( ), ~ ! - * / % + - << >> & ^ | comparisons, and assignments = |= &= ^= += -= <<= >>=. Real C would do some of this arithmetic as signed int when you leave off the u suffix; write 1u << n, because 1 << 31 on a signed int is undefined behaviour.'));
   }
   root.append(view);
   setChallenge(cid);

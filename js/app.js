@@ -133,9 +133,17 @@ function labView(sid, lid) {
   const sec = C.section(sid), lab = C.labOf(sid, lid); if (!lab) return notFound();
   if (C.isLocked(sec)) return sectionView(sid);
   const miss = (lab.requires || []).map(C.section).filter((r) => r && !C.sectionPassed(r));
-  page(lab.title, lab.summary, crumbs(['Dashboard', '#/'], [sec.title, '#/section/' + sid], [lab.kind || 'Laboratory']),
+  const head = [crumbs(['Dashboard', '#/'], [sec.title, '#/section/' + sid], [lab.kind || 'Laboratory'])];
+  if (miss.length && !store.s.settings.review) {
+    // Lab-level prerequisites lock the lab itself; the learner still sees what it will ask of them.
+    return page(lab.title, lab.summary, ...head,
+      h('aside', { class: 'callout c-warn' }, h('div', { class: 'tag' }, 'Locked'),
+        h('p', {}, 'This project builds on sections you have not demonstrated yet:'),
+        h('ul', {}, miss.map((r) => h('li', {}, h('a', { href: '#/section/' + r.id }, r.title), ' — master its lessons or ', h('a', { href: '#/checkpoint/' + r.id }, 'pass its checkpoint test'), '.')))),
+      h('section', {}, h('h2', {}, 'What you will do'), h('ul', {}, (lab.objectives || []).map((o) => h('li', { html: inline(o) })))));
+  }
+  page(lab.title, lab.summary, ...head,
     h('div', { class: 'lessonmeta' }, h('span', { class: 'muted' }, `About ${lab.minutes || 60} minutes`), toolbar(`#/lab/${sid}/${lid}`, lab.title)),
-    miss.length && !store.s.settings.review ? h('aside', { class: 'callout c-warn' }, h('div', { class: 'tag' }, 'Prerequisites'), h('p', {}, 'This project assumes you have demonstrated: ', miss.map((r, i) => [i ? ', ' : '', h('a', { href: '#/section/' + r.id }, r.title)]), '. You can read it now, but expect gaps.')) : null,
     renderLab(lab, renderNav));
 }
 

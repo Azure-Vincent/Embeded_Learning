@@ -2,7 +2,7 @@
 // The programs are real compiled code (tools/fwimages), executed instruction by instruction by js/sim/armsim.js.
 // The GDB front end below is a re-implementation of a subset of GDB's commands and output formats: a scripted
 // stand-in for practising the workflow, not GDB itself.
-import { h, clear } from '../core/dom.js';
+import { h, clear, append } from '../core/dom.js';
 import { ArmSim, SCB } from '../sim/armsim.js';
 import { DEBUG_PROGRAMS, b64ToBytes, TOOLCHAIN } from '../sim/fwimages.js';
 
@@ -1041,7 +1041,7 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
     clear(task).append(h('p', {}, h('strong', {}, info.title + '. '), info.brief));
     if (info.steps) {
       const firstOpen = info.steps.findIndex(([flag]) => !sess.flags.has(flag));
-      task.append(h('ol', { class: 'dbg-steps' }, info.steps.map(([flag, label, cmd], i) => h('li', { class: sess.flags.has(flag) ? 'done' : i === firstOpen ? 'next' : null },
+      task.append(h('ol', { class: 'dbg-steps' }, info.steps.map(([flag, label, cmd], i) => h('li', { class: sess.flags.has(flag) ? 'dbg-done' : i === firstOpen ? 'dbg-next' : null },
         label, sess.flags.has(flag) || i === firstOpen ? h('code', {}, ' ' + cmd) : null, sess.flags.has(flag) ? ' ✓' : ''))));
     }
     checkDone();
@@ -1063,7 +1063,7 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
       const hints = h('div', {});
       const reveal = h('div', {});
       const field = h('input', { type: 'text', class: 'w-mono', 'aria-label': `Answer to question ${i + 1}`, autocomplete: 'off', spellcheck: 'false' });
-      const hintBtn = h('button', { class: 'btn small ghost', type: 'button', onclick: () => { hintN[q.id] = Math.min((hintN[q.id] || 0) + 1, q.hints.length); clear(hints).append(q.hints.slice(0, hintN[q.id]).map((x) => h('p', { class: 'w-note' }, 'Hint: ' + x))); hintBtn.disabled = hintN[q.id] >= q.hints.length; } }, 'Hint');
+      const hintBtn = h('button', { class: 'btn small ghost', type: 'button', onclick: () => { hintN[q.id] = Math.min((hintN[q.id] || 0) + 1, q.hints.length); append(clear(hints), q.hints.slice(0, hintN[q.id]).map((x) => h('p', { class: 'w-note' }, 'Hint: ' + x))); hintBtn.disabled = hintN[q.id] >= q.hints.length; } }, 'Hint');
       qbox.append(h('div', { class: 'dbg-q' }, h('p', {}, h('strong', {}, `${i + 1}. `), q.q),
         h('form', { class: 'row', onsubmit: (e) => {
           e.preventDefault();
@@ -1103,13 +1103,13 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
   function start(n) {
     name = n; sess = new GdbSession(name); info = scenarioInfo(name);
     solved = {}; hintN = {}; tries = {}; history = []; hpos = 0; solvedSteps = new Set();
-    clear(tabs).append(SCENARIOS.map((sc) => h('button', { class: 'w-tab' + (sc === name ? ' on' : ''), role: 'tab', 'aria-selected': String(sc === name), onclick: () => start(sc) }, sc)));
+    append(clear(tabs), SCENARIOS.map((sc) => h('button', { class: 'w-tab' + (sc === name ? ' on' : ''), role: 'tab', 'aria-selected': String(sc === name), onclick: () => start(sc) }, sc)));
     clear(out); print(sess.intro);
-    clear(quick).append(
+    append(clear(quick), [
       name !== 'tour' ? h('button', { class: 'btn small', type: 'button', title: SETUP.join(' ; '), onclick: () => { if (sess.running) return; for (const c of SETUP) run(c); input.focus(); } }, 'Run the four setup commands') : null,
       QUICK[name].map((c) => h('button', { class: 'btn small ghost w-mono', type: 'button', onclick: () => { input.value = c; input.focus(); } }, c)),
       h('button', { class: 'btn small ghost', type: 'button', onclick: () => run('help') }, 'help'),
-      h('button', { class: 'btn small ghost', type: 'button', onclick: () => start(name) }, 'Restart'));
+      h('button', { class: 'btn small ghost', type: 'button', onclick: () => start(name) }, 'Restart')]);
     renderQuestions(); renderRef(); after();
   }
 

@@ -77,7 +77,7 @@
 .interrupt-flow-t tr.chg th { box-shadow: inset 3px 0 0 var(--copper); }
 .interrupt-flow-stack tr.sep th, .interrupt-flow-stack tr.sep td { border-top: 2px solid var(--ink); }
 .interrupt-flow-stack td.own { color: var(--muted); font-family: var(--sans); white-space: nowrap; }
-.interrupt-flow-grid > div { min-width: 0; overflow-x: auto; }
+.interrupt-flow-grid > div { min-width: 0; overflow-x: auto; } .interrupt-flow-grid > div:last-child { grid-column: 1 / -1; max-width: 640px; }
 
 /* ---------- stack-heap ---------- */
 .stack-heap-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }

@@ -16,8 +16,8 @@
 .debug-session .dbg-quick .btn { white-space: nowrap; }
 .debug-session .dbg-steps { margin: .4em 0 0; padding-left: 1.4em; font-size: .92rem; }
 .debug-session .dbg-steps li { color: var(--muted); }
-.debug-session .dbg-steps li.next { color: var(--ink); font-weight: 500; }
-.debug-session .dbg-steps li.done { color: var(--ok); }
+.debug-session .dbg-steps li.dbg-next { color: var(--ink); font-weight: 500; }
+.debug-session .dbg-steps li.dbg-done { color: var(--ok); }
 .debug-session .dbg-steps code { font-weight: 400; }
 .debug-session details { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--r); padding: 6px 12px; background: var(--surface); }
 .debug-session details summary { cursor: pointer; font-weight: 500; }

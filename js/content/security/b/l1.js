@@ -332,3 +332,4 @@ memcpy(name, &pkt[2], len);`, kind: 'code', choices: [
     ] },
   ],
 };
+export const TESTED = { BOUNDED_COPY, LINE_FIXED };

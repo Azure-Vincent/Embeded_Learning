@@ -1,6 +1,6 @@
 // Firmware image inspector: hex view, vector table, strings, entropy and ELF structure of synthetic images.
 // The images are built by tools/fwimages/build.sh from C sources in this repository (see js/sim/fwimages.js).
-import { h, s, clear } from '../core/dom.js';
+import { h, s, clear, append } from '../core/dom.js';
 import { INSPECTOR_IMAGES, b64ToBytes, TOOLCHAIN } from '../sim/fwimages.js';
 
 /* ------------------------------------------------------------------ pure logic */
@@ -534,7 +534,7 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
       taskBox.append(h('div', { class: 'w-task' },
         h('p', {}, h('strong', {}, `${i + 1}. `), t.q),
         h('form', { class: 'row fwi-inline', onsubmit: submit }, input, h('button', { class: 'btn small', type: 'submit' }, 'Check'),
-          (t.hints || []).length ? h('button', { class: 'btn small ghost', type: 'button', onclick: (e) => { st.hintN[t.id] = Math.min((st.hintN[t.id] || 0) + 1, t.hints.length); clear(hintBox).append(t.hints.slice(0, st.hintN[t.id]).map((x) => h('p', { class: 'w-note' }, 'Hint: ' + x))); if (st.hintN[t.id] >= t.hints.length) e.target.disabled = true; } }, 'Hint') : null,
+          (t.hints || []).length ? h('button', { class: 'btn small ghost', type: 'button', onclick: (e) => { st.hintN[t.id] = Math.min((st.hintN[t.id] || 0) + 1, t.hints.length); append(clear(hintBox), t.hints.slice(0, st.hintN[t.id]).map((x) => h('p', { class: 'w-note' }, 'Hint: ' + x))); if (st.hintN[t.id] >= t.hints.length) e.target.disabled = true; } }, 'Hint') : null,
           t.view !== st.view && (t.view !== 'elf' || INSPECTOR_IMAGES[st.image].elf) ? h('button', { class: 'btn small ghost', type: 'button', onclick: () => { st.view = t.view; render(); } }, `Open ${VIEWS.find((v) => v[0] === t.view)[1]} view`) : null),
         hintBox, msg, reveal,
         h('details', { class: 'fwi-cmds' }, h('summary', {}, 'On a real dump'), h('pre', { class: 'w-mono' }, t.commands.join('\n')))));

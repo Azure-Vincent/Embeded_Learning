@@ -593,7 +593,7 @@ hal_gpio_write(HAL_PIN_LATCH, lock_latch_open(&s_lock));
 \`\`\`
 
 Deriving outputs from the state in one place, every loop pass, is more robust than scattering \`latch_open()\`/\`latch_close()\` calls over the transitions: there is no path that can leave the latch open in the \`LOCKED\` state.`,
-    { t: 'widget', name: 'state-machine', props: { machine: 'door-lock' }, caption: 'Send events to a door-lock machine and watch which case of the switch runs. Its state names may differ slightly from the example file; the structure is the same.' },
+    { t: 'widget', name: 'state-machine', props: { machine: 'door-lock' }, caption: 'Send events to a door-lock machine and watch which case of the switch runs. This one reads a keypad digit by digit, so it has an extra ENTERING state that the example file (which receives whole PIN lines) does not need; the structure is the same.' },
 
     { t: 'predict', q: 'The lock is in `LOCKOUT` with 20 seconds remaining. An attacker who has guessed the correct PIN sends it. Using the code above, what happens?',
       choices: [

@@ -194,7 +194,7 @@ takes to fill the other half.)`,
 
 A freshly assembled board does nothing. No LED, no serial output. Is the fault in your application, the bootloader,
 the flash contents, the strapping resistors, or the power supply? You can only narrow it down if you know the
-sequence of stages between power-on and ¬main()¬, and what evidence each stage leaves.`,
+sequence of stages between power-on and \`main()\`, and what evidence each stage leaves.`,
 
       `## Theory
 
@@ -248,9 +248,9 @@ Each architecture defines a fixed first action:
 only instruction state a Cortex-M has; the real address of the code is the value with bit 0 cleared. A table of
 even handler addresses is not a valid image.
 
-Where the table sits is chip-specific. On the MSPM0L2228, flash starts at ¬0x0000_0000¬, so the table of whatever is
-at the start of flash is the one the core uses at reset. On the MAX78000, address ¬0x0000_0000¬ is ROM; the ROM code
-runs first and then transfers control to the image in flash at ¬0x1000_0000¬. On cores that have it (the M4, and
+Where the table sits is chip-specific. On the MSPM0L2228, flash starts at \`0x0000_0000\`, so the table of whatever is
+at the start of flash is the one the core uses at reset. On the MAX78000, address \`0x0000_0000\` is ROM; the ROM code
+runs first and then transfers control to the image in flash at \`0x1000_0000\`. On cores that have it (the M4, and
 this M0+ too), a register called **VTOR** holds the table's base address so that a bootloader can hand over to an
 application whose table is elsewhere.
 
@@ -264,28 +264,28 @@ Almost every modern MCU boots in stages, each loading or validating the next:
    later check relies on this one being correct.
 2. **Second-stage bootloader.** In flash, replaceable, written by the vendor or by you. Chooses an application
    image (factory, or one of two update slots), may verify its signature, may decrypt, and jumps to it.
-3. **Startup code** (¬Reset_Handler¬, ¬crt0¬). Part of your application. Initialises RAM for C (next lesson), sets up
-   the clock, calls ¬main()¬.
+3. **Startup code** (\`Reset_Handler\`, \`crt0\`). Part of your application. Initialises RAM for C (next lesson), sets up
+   the clock, calls \`main()\`.
 
 ### The three platforms
 
 **ESP32 family.** The ROM samples the strapping pins at reset (on the original ESP32: GPIO0, 2, 5, 12, 15) to choose
 between normal boot and serial download mode. In normal boot it loads the second-stage bootloader from a fixed flash
-offset: **¬0x1000¬ on the original ESP32, ¬0x0¬ on ESP32-S3, C3 and C6**. The bootloader reads the **partition table**
-(default offset ¬0x8000¬), selects an application partition (the factory app is at ¬0x10000¬ by default), maps its
+offset: **\`0x1000\` on the original ESP32, \`0x0\` on ESP32-S3, C3 and C6**. The bootloader reads the **partition table**
+(default offset \`0x8000\`), selects an application partition (the factory app is at \`0x10000\` by default), maps its
 segments through the flash cache, and jumps to it. With Secure Boot V2 the ROM verifies the bootloader's signature
 and the bootloader verifies the application's.
 
-**MAX78000.** ROM at ¬0x0000_0000¬ runs first, then the image at the start of flash (¬0x1000_0000¬). In the 2024
-and 2025 eCTF, a MITRE-supplied bootloader occupied the first ¬0xE000¬ bytes of flash and team firmware was linked at
-¬0x1000_E000¬. The ROM's own bootloader features and options are described in the device user guide; check there
+**MAX78000.** ROM at \`0x0000_0000\` runs first, then the image at the start of flash (\`0x1000_0000\`). In the 2024
+and 2025 eCTF, a MITRE-supplied bootloader occupied the first \`0xE000\` bytes of flash and team firmware was linked at
+\`0x1000_E000\`. The ROM's own bootloader features and options are described in the device user guide; check there
 rather than assuming.
 
-**MSPM0L2228.** Boot behaviour is governed by the **NONMAIN** configuration memory (¬BCR_CONFIG¬ at ¬0x41C0_0000¬,
-¬BSL_CONFIG¬ at ¬0x41C0_0100¬): debug access policy, whether the ROM bootstrap loader may be invoked, mass-erase
+**MSPM0L2228.** Boot behaviour is governed by the **NONMAIN** configuration memory (\`BCR_CONFIG\` at \`0x41C0_0000\`,
+\`BSL_CONFIG\` at \`0x41C0_0100\`): debug access policy, whether the ROM bootstrap loader may be invoked, mass-erase
 policy, and an optional application integrity check. TI also supplies an optional MCUboot-based secure-boot stage
-(Customer Secure Code). In the 2026 eCTF layout a bootloader occupies ¬0x0000_0000¬–¬0x0000_5FFF¬ and team firmware
-is linked at ¬0x0000_6000¬.`,
+(Customer Secure Code). In the 2026 eCTF layout a bootloader occupies \`0x0000_0000\`–\`0x0000_5FFF\` and team firmware
+is linked at \`0x0000_6000\`.`,
 
       { t: 'widget', name: 'boot-sequence', props: { platform: 'generic' }, title: 'A generic boot chain',
         caption: 'At each stage ask: what does this stage trust, and who could have changed it?' },
@@ -295,22 +295,22 @@ is linked at ¬0x0000_6000¬.`,
 
       `## Worked example: decode the first eight bytes of an image
 
-A hex dump of the start of a firmware binary built for the 2026 eCTF layout (linked at ¬0x0000_6000¬, SRAM
-¬0x2020_0000¬–¬0x2020_7FFF¬) begins:
+A hex dump of the start of a firmware binary built for the 2026 eCTF layout (linked at \`0x0000_6000\`, SRAM
+\`0x2020_0000\`–\`0x2020_7FFF\`) begins:
 
-¬¬¬
+\`\`\`
 00 80 20 20  C1 60 00 00  ...
-¬¬¬
+\`\`\`
 
-Cortex-M is little-endian, so the first word is ¬0x2020_8000¬ and the second is ¬0x0000_60C1¬.
+Cortex-M is little-endian, so the first word is \`0x2020_8000\` and the second is \`0x0000_60C1\`.
 
-- ¬0x2020_8000¬ is the initial stack pointer: exactly one past the end of the 32 KB SRAM. The stack is "full
-  descending": the first push decrements SP to ¬0x2020_7FFC¬ and writes there. Plausible.
-- ¬0x0000_60C1¬ is the reset handler. Bit 0 is set (Thumb). The code is at ¬0x0000_60C0¬, which is inside the team
-  flash region that starts at ¬0x6000¬. Plausible.
+- \`0x2020_8000\` is the initial stack pointer: exactly one past the end of the 32 KB SRAM. The stack is "full
+  descending": the first push decrements SP to \`0x2020_7FFC\` and writes there. Plausible.
+- \`0x0000_60C1\` is the reset handler. Bit 0 is set (Thumb). The code is at \`0x0000_60C0\`, which is inside the team
+  flash region that starts at \`0x6000\`. Plausible.
 
-If the second word had been ¬0x0000_00C1¬, the image was linked for address 0 and would jump into the bootloader's
-region when started from ¬0x6000¬: the classic "application linked at the wrong address" failure.`,
+If the second word had been \`0x0000_00C1\`, the image was linked for address 0 and would jump into the bootloader's
+region when started from \`0x6000\`: the classic "application linked at the wrong address" failure.`,
 
       { t: 'predict',
         q: 'A bootloader at the start of flash jumps to an application at `0x0000_6000` by loading the application\'s reset handler address and branching to it. It does not change VTOR or the stack pointer. The application runs, then enables a timer interrupt. What happens on the first timer interrupt?',
@@ -325,17 +325,17 @@ region when started from ¬0x6000¬: the classic "application linked at the wron
         md: 'A strapping pin that floats, or that is pulled the wrong way by an attached circuit (an LED, a level shifter, a sensor\'s output), makes the ROM choose download mode or the wrong flash voltage on some power-ups and not others. Give every strapping pin a defined level with a resistor and check that nothing else on the net overrides it during reset.' },
 
       { t: 'callout', kind: 'security', title: 'The boot chain is the security chain',
-        md: `Each stage decides whether to run the next. If any stage can be replaced by an attacker and the stage before it does not check, everything after it is under the attacker's control. Three questions for every stage: **Who can write it? Who verifies it, with which key? Where is that key, and who can change that?** The chain must end in something immutable (ROM plus eFuses or locked configuration). The secure-boot lessons and the ¬secure-boot-chain¬ tool in the security section build directly on this. Also remember the ROM's serial download mode and debug port are entry points too; on a product they must be disabled or authenticated, and you verify that by trying them.` },
+        md: `Each stage decides whether to run the next. If any stage can be replaced by an attacker and the stage before it does not check, everything after it is under the attacker's control. Three questions for every stage: **Who can write it? Who verifies it, with which key? Where is that key, and who can change that?** The chain must end in something immutable (ROM plus eFuses or locked configuration). The secure-boot lessons and the \`secure-boot-chain\` tool in the security section build directly on this. Also remember the ROM's serial download mode and debug port are entry points too; on a product they must be disabled or authenticated, and you verify that by trying them.` },
 
       { t: 'callout', kind: 'decision', title: 'Do you need your own bootloader?',
         md: 'Write one only if you need something the ROM and vendor bootloader do not give: field updates over your own transport, image verification with your own keys, A/B slots with rollback. A bootloader is the one piece of firmware you cannot easily update, so it must be small, have no unbounded loops, and be reviewed more carefully than anything else you ship.' },
 
       { t: 'exercise',
-        prompt: `An image for the MAX78000 linked at the start of flash (¬0x1000_0000¬, SRAM ¬0x2000_0000¬ with length ¬0x20000¬) begins with these eight bytes:
+        prompt: `An image for the MAX78000 linked at the start of flash (\`0x1000_0000\`, SRAM \`0x2000_0000\` with length \`0x20000\`) begins with these eight bytes:
 
-¬¬¬
+\`\`\`
 00 00 02 20  39 01 00 10
-¬¬¬
+\`\`\`
 
 What is the address of the first instruction the image executes? Answer in hex.`,
         hints: [
@@ -343,7 +343,7 @@ What is the address of the first instruction the image executes? Answer in hex.`
           'The second word is 0x10000139. What does bit 0 mean in a Cortex-M vector?',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?1000_?0138h?\\s*$'], nudge: 'Clear the Thumb bit of the reset vector.' },
-        solution: `First word: ¬0x2002_0000¬, the initial stack pointer (top of the 128 KB SRAM). Second word: ¬0x1000_0139¬. Clearing bit 0 (the Thumb marker) gives the address of the first instruction: **¬0x1000_0138¬**.` },
+        solution: `First word: \`0x2002_0000\`, the initial stack pointer (top of the 128 KB SRAM). Second word: \`0x1000_0139\`. Clearing bit 0 (the Thumb marker) gives the address of the first instruction: **\`0x1000_0138\`**.` },
 
       `## Harder application
 
@@ -352,7 +352,7 @@ baud rate shows a short message after every reset. Write a decision procedure wi
 (a) strapping pin holding the chip in download mode, (b) bootloader missing or at the wrong offset, (c) partition
 table missing, (d) application image invalid. For each, say which stage emits the evidence. (The ROM message states
 the boot mode: that settles (a). If the ROM reports a flash read or checksum failure, suspect (b): on this chip the
-bootloader must be at ¬0x1000¬, not ¬0x0¬. If the second-stage bootloader's own log appears and then complains about
+bootloader must be at \`0x1000\`, not \`0x0\`. If the second-stage bootloader's own log appears and then complains about
 partitions, (c). If it lists partitions and then rejects the image, (d).)`,
 
       { t: 'refs', items: [
@@ -409,7 +409,7 @@ partitions, (c). If it lists partitions and then rejects the image, (d).)`,
 Three bug reports:
 
 1. "The build succeeds, but the board dies after I added a 20 KB lookup table."
-2. "My global ¬int threshold = 50;¬ reads as garbage until I reflash; ¬static int count;¬ is fine."
+2. "My global \`int threshold = 50;\` reads as garbage until I reflash; \`static int count;\` is fine."
 3. "The same source runs on the MAX78000 but hard-faults at the first function call on the MSPM0."
 
 None is a C bug. All three are answered by one file you have probably never opened: the linker script.`,
@@ -443,10 +443,10 @@ The compiler does not choose addresses. It sorts everything it emits into named 
 
 | Section | Contents | Example | Needs flash? | Needs RAM? |
 |---|---|---|---|---|
-| ¬.text¬ | Machine code | function bodies | yes | no |
-| ¬.rodata¬ | Constants | ¬const¬ tables, string literals | yes | no |
-| ¬.data¬ | Variables with a non-zero initial value | ¬int threshold = 50;¬ | yes (the initial values) | yes (the live variable) |
-| ¬.bss¬ | Variables that start at zero | ¬static int count;¬, ¬int buf[256];¬ | no | yes |
+| \`.text\` | Machine code | function bodies | yes | no |
+| \`.rodata\` | Constants | \`const\` tables, string literals | yes | no |
+| \`.data\` | Variables with a non-zero initial value | \`int threshold = 50;\` | yes (the initial values) | yes (the live variable) |
+| \`.bss\` | Variables that start at zero | \`static int count;\`, \`int buf[256];\` | no | yes |
 | vectors | The vector table | array of handler addresses | yes | no |
 | stack, heap | Reserved space, no contents | — | no | yes |
 
@@ -455,9 +455,9 @@ The compiler does not choose addresses. It sorts everything it emits into named 
 The **linker** collects the sections from every object file and assigns addresses according to a **linker
 script**, which has two parts:
 
-- ¬MEMORY¬: the regions that exist, with origin, length and permissions. This is the chip's memory map written
+- \`MEMORY\`: the regions that exist, with origin, length and permissions. This is the chip's memory map written
   down for the tool.
-- ¬SECTIONS¬: which input sections go into which region, in which order, and which symbols mark the boundaries.`,
+- \`SECTIONS\`: which input sections go into which region, in which order, and which symbols mark the boundaries.`,
 
       { t: 'code', lang: 'ld', status: 'reviewed',
         caption: 'MEMORY for a MAX78000 application in the 2024/2025 eCTF layout. Origins and lengths are those in the reference designs\' firmware.ld; comments are added here.',
@@ -469,9 +469,9 @@ script**, which has two parts:
     SRAM       (rwx) : ORIGIN = 0x20000000, LENGTH = 0x00020000  /* 128 KB             */
 }`,
         explain: [
-          { lines: '2-3', md: 'The application does not start at the beginning of flash. Its vector table will be at ¬0x1000E000¬, and every absolute address in the image is computed for that origin.' },
-          { lines: '3', md: '¬0x38000¬ = 224 KB available to the team, out of the chip\'s 512 KB.' },
-          { lines: '6', md: 'All of ¬.data¬, ¬.bss¬, heap and stack must fit in ¬0x20000¬ bytes.' },
+          { lines: '2-3', md: 'The application does not start at the beginning of flash. Its vector table will be at \`0x1000E000\`, and every absolute address in the image is computed for that origin.' },
+          { lines: '3', md: '\`0x38000\` = 224 KB available to the team, out of the chip\'s 512 KB.' },
+          { lines: '6', md: 'All of \`.data\`, \`.bss\`, heap and stack must fit in \`0x20000\` bytes.' },
         ] },
 
       { t: 'code', lang: 'ld', status: 'reviewed',
@@ -512,17 +512,17 @@ script**, which has two parts:
     _stack_top = ORIGIN(SRAM) + LENGTH(SRAM);
 }`,
         explain: [
-          { lines: '3', md: '¬KEEP¬ stops the linker discarding the table as "unreferenced". Nothing in C refers to it; only the CPU does.' },
-          { lines: '7', md: '¬> FLASH¬ places the output section in the FLASH region. The location counter ¬.¬ advances as input is added.' },
+          { lines: '3', md: '\`KEEP\` stops the linker discarding the table as "unreferenced". Nothing in C refers to it; only the CPU does.' },
+          { lines: '7', md: '\`> FLASH\` places the output section in the FLASH region. The location counter \`.\` advances as input is added.' },
           { lines: '9-13', md: 'Two addresses for one section. The **VMA** (virtual, or run-time, address) is in SRAM: that is where code expects the variables. The **LMA** (load address) is in flash: that is where the initial values are stored in the image.' },
           { lines: '14', md: 'A symbol holding the LMA, so startup code knows where to copy from.' },
-          { lines: '16', md: '¬NOLOAD¬: the section occupies address space but contributes no bytes to the image. Zeros are not stored in flash.' },
+          { lines: '16', md: '\`NOLOAD\`: the section occupies address space but contributes no bytes to the image. Zeros are not stored in flash.' },
           { lines: '23', md: 'The initial stack pointer: the first word of the vector table refers to this symbol.' },
         ] },
 
       `### Startup code: making RAM match what C promises
 
-C guarantees that ¬threshold¬ is 50 and ¬count¬ is 0 when ¬main¬ starts. After power-on, RAM is undefined. The
+C guarantees that \`threshold\` is 50 and \`count\` is 0 when \`main\` starts. After power-on, RAM is undefined. The
 reset handler bridges the gap using the linker's symbols:`,
 
       { t: 'code', lang: 'c', status: 'reviewed', caption: 'The essential work of a reset handler (vendor startup files do the same thing, often in assembly)',
@@ -546,24 +546,24 @@ void Reset_Handler(void)
     for (;;) { }                    /* main must not return */
 }`,
         explain: [
-          { lines: '3', md: 'These are not variables. They are symbols whose *addresses* the linker defined; only ¬&symbol¬ is meaningful.' },
-          { lines: '11-13', md: 'Load from the LMA in flash, store to the VMA in RAM. This is why every byte of ¬.data¬ costs both flash and RAM.' },
-          { lines: '14-16', md: 'Zeroing costs time proportional to the size of ¬.bss¬ but no flash.' },
-          { lines: '18', md: 'There is nothing to return to. If ¬main¬ returns, stay here (or reset).' },
+          { lines: '3', md: 'These are not variables. They are symbols whose *addresses* the linker defined; only \`&symbol\` is meaningful.' },
+          { lines: '11-13', md: 'Load from the LMA in flash, store to the VMA in RAM. This is why every byte of \`.data\` costs both flash and RAM.' },
+          { lines: '14-16', md: 'Zeroing costs time proportional to the size of \`.bss\` but no flash.' },
+          { lines: '18', md: 'There is nothing to return to. If \`main\` returns, stay here (or reset).' },
         ] },
 
       `Now the three bug reports:
 
-1. The table was not ¬const¬, so it went to ¬.data¬: 20 KB of RAM as well as 20 KB of flash. Either the link failed
-   with "region SRAM overflowed", or it fit and left too little room for the stack, which then grew down into ¬.bss¬.
-2. The ¬.data¬ copy is not happening (custom startup code, wrong symbol names, or an image flashed without its
-   ¬.data¬ load region). ¬.bss¬ variables look fine because zero is also what the debugger-reset RAM happened to hold.
-3. The image was linked with SRAM at ¬0x2000_0000¬. On the MSPM0L2228 SRAM is at ¬0x2020_0000¬; the initial stack
+1. The table was not \`const\`, so it went to \`.data\`: 20 KB of RAM as well as 20 KB of flash. Either the link failed
+   with "region SRAM overflowed", or it fit and left too little room for the stack, which then grew down into \`.bss\`.
+2. The \`.data\` copy is not happening (custom startup code, wrong symbol names, or an image flashed without its
+   \`.data\` load region). \`.bss\` variables look fine because zero is also what the debugger-reset RAM happened to hold.
+3. The image was linked with SRAM at \`0x2000_0000\`. On the MSPM0L2228 SRAM is at \`0x2020_0000\`; the initial stack
    pointer points at nothing, and the first push faults.
 
 ### Reading a map file
 
-Ask the linker for a map (¬-Wl,-Map=firmware.map¬ with GCC). It lists every output section with its address and
+Ask the linker for a map (\`-Wl,-Map=firmware.map\` with GCC). It lists every output section with its address and
 size, and every input object's contribution.`,
 
       { t: 'ascii', caption: 'Excerpt of a GNU ld map file (illustrative values for an image linked at 0x1000E000)',
@@ -587,10 +587,10 @@ size, and every input object's contribution.`,
       `How to read it:
 
 - **First column**: section name. **Second**: address (VMA). **Third**: size in bytes. **Fourth**: the object file.
-- ¬.data¬ shows both addresses: VMA ¬0x20000000¬ and "load address" in flash.
-- Flash used = size of ¬.text¬ (which here includes ¬.rodata¬) + size of ¬.data¬ = ¬0x5a34 + 0x124¬.
-- Static RAM used = ¬.data¬ + ¬.bss¬ = ¬0x124 + 0x1e40¬. What remains of SRAM is for heap and stack.
-- To find what is eating flash, sort the input sections by size. Here ¬.rodata.sine¬ is 8 KB.`,
+- \`.data\` shows both addresses: VMA \`0x20000000\` and "load address" in flash.
+- Flash used = size of \`.text\` (which here includes \`.rodata\`) + size of \`.data\` = \`0x5a34 + 0x124\`.
+- Static RAM used = \`.data\` + \`.bss\` = \`0x124 + 0x1e40\`. What remains of SRAM is for heap and stack.
+- To find what is eating flash, sort the input sections by size. Here \`.rodata.sine\` is 8 KB.`,
 
       { t: 'predict',
         q: 'A firmware has `static uint8_t log_buf[16384];` (never given an initial value) and `static uint8_t lut[16384] = {1, 2, 3};`. How much flash do the two arrays use, in total?',
@@ -599,30 +599,30 @@ size, and every input object's contribution.`,
           { t: '16 KB: only the initialised one stores its values in flash', ok: true, why: 'log_buf is .bss (no bytes in the image); lut is .data, whose full 16 KB of initial values, mostly zeros, sit in flash.' },
           { t: '3 bytes: only the non-zero initialisers are stored', why: 'The linker stores the whole object; it does not compress the trailing zeros of an initialised array.' },
         ],
-        reveal: 'An array with even one non-zero initialiser goes entirely into .data. If the table never changes, make it ¬const¬: it then lives in .rodata, costs 16 KB of flash and no RAM. If it does change but starts as mostly zero, leave it uninitialised and fill the three entries in code.' },
+        reveal: 'An array with even one non-zero initialiser goes entirely into .data. If the table never changes, make it \`const\`: it then lives in .rodata, costs 16 KB of flash and no RAM. If it does change but starts as mostly zero, leave it uninitialised and fill the three entries in code.' },
 
       { t: 'callout', kind: 'mistake', title: 'Forgetting const on lookup tables',
-        md: 'A non-const table is copied to RAM at every boot and stays there. On a 32 KB part, a 4 KB table of font data or CRC constants that was meant to be read-only is an eighth of all RAM. Check the map file: read-only tables belong under ¬.rodata¬.' },
+        md: 'A non-const table is copied to RAM at every boot and stays there. On a 32 KB part, a 4 KB table of font data or CRC constants that was meant to be read-only is an eighth of all RAM. Check the map file: read-only tables belong under \`.rodata\`.' },
 
       { t: 'callout', kind: 'decision', title: 'Why keep initial values in flash and copy them, instead of running variables from flash?',
         md: 'Variables must be writable at bus speed, and flash is not. The alternatives are worse: initialising each variable with generated code costs more flash than a block copy, and requiring the programmer to initialise everything by hand contradicts the language. A single copy loop driven by linker symbols is the cheapest way to deliver C\'s guarantee.' },
 
       { t: 'callout', kind: 'security', title: 'The linker script decides what an overflow hits',
-        md: 'Section order in RAM determines what lies next to what. A buffer in ¬.bss¬ that overflows writes into whichever variables the linker placed after it, perhaps a function pointer or an authentication flag. The map file tells you, and tells an attacker with the same build. It is also where you confirm that secrets are not in a section that gets dumped or logged, and that code you believe is read-only is really in a non-writable region.' },
+        md: 'Section order in RAM determines what lies next to what. A buffer in \`.bss\` that overflows writes into whichever variables the linker placed after it, perhaps a function pointer or an authentication flag. The map file tells you, and tells an attacker with the same build. It is also where you confirm that secrets are not in a section that gets dumped or logged, and that code you believe is read-only is really in a non-writable region.' },
 
       { t: 'exercise',
-        prompt: `A map file for the MSPM0L2228 reports: ¬.text¬ size ¬0x7C00¬ (including ¬.rodata¬), ¬.data¬ size ¬0x200¬, ¬.bss¬ size ¬0x1E00¬. SRAM is ¬0x8000¬ bytes and the stack is at the top. How many bytes of SRAM remain for heap and stack together? Answer in decimal.`,
+        prompt: `A map file for the MSPM0L2228 reports: \`.text\` size \`0x7C00\` (including \`.rodata\`), \`.data\` size \`0x200\`, \`.bss\` size \`0x1E00\`. SRAM is \`0x8000\` bytes and the stack is at the top. How many bytes of SRAM remain for heap and stack together? Answer in decimal.`,
         hints: [
           'RAM used by static data is .data + .bss. .text does not use RAM.',
           '0x200 + 0x1E00 = 0x2000 = 8192. Subtract from 0x8000 = 32768.',
         ],
         answer: { type: 'number', value: 24576, tol: 0, unit: 'bytes' },
-        solution: `Static RAM = ¬0x200 + 0x1E00 = 0x2000¬ (8192 bytes). Remaining = ¬0x8000 − 0x2000 = 0x6000¬ = **24,576 bytes**. Flash used is ¬0x7C00 + 0x200 = 0x7E00¬ (32,256 bytes), because ¬.data¬'s initial values are stored in flash too.` },
+        solution: `Static RAM = \`0x200 + 0x1E00 = 0x2000\` (8192 bytes). Remaining = \`0x8000 − 0x2000 = 0x6000\` = **24,576 bytes**. Flash used is \`0x7C00 + 0x200 = 0x7E00\` (32,256 bytes), because \`.data\`'s initial values are stored in flash too.` },
 
       `## Harder application
 
-You are porting firmware from the 2025 eCTF layout (MAX78000, application at ¬0x1000_E000¬, SRAM ¬0x2000_0000¬,
-128 KB) to the 2026 layout (MSPM0L2228, application at ¬0x0000_6000¬, SRAM ¬0x2020_0000¬, 32 KB). List every place
+You are porting firmware from the 2025 eCTF layout (MAX78000, application at \`0x1000_E000\`, SRAM \`0x2000_0000\`,
+128 KB) to the 2026 layout (MSPM0L2228, application at \`0x0000_6000\`, SRAM \`0x2020_0000\`, 32 KB). List every place
 an address or size assumption could be hiding: the linker script, hard-coded flash addresses for stored data, the flash
 page size used by the storage code (8 KB versus 1 KB), stack size, any buffer sized for 128 KB of RAM, and
 alignment or instruction-set assumptions from moving from a Cortex-M4F to a Cortex-M0+. Which of these does the

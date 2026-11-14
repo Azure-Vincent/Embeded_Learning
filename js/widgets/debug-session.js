@@ -260,7 +260,7 @@ export class GdbSession {
     if (f === 'a') return hx(v) + this.symTag(v);
     if (t.k === 'ptr') {
       const u = v >>> 0;
-      if (t.to.k === 'func') return `${top ? `(${t.name}) ` : ''}${hx(u)}${this.symTag(u)}`;
+      if (t.to.k === 'func') return `${top ? `(${t.name}) ` : ''}${hx(u)}${this.symTag(this.funcAt(u & ~1) ? u & ~1 : u)}`;
       if (t.to.k === 'int' && t.to.char) { let str = ''; try { str = ' ' + gdbString(this.cstring(u), true); } catch (e) { str = ''; } return `${hx(u)}${this.symTag(u)}${str}`; }
       return `${top ? `(${t.name}) ` : ''}${hx(u)}${this.symTag(u)}`;
     }

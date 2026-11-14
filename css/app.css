@@ -82,7 +82,8 @@ a.item:hover { background: var(--mask-soft); } .item.locked { color: var(--muted
 .pager { display: flex; justify-content: space-between; gap: 16px; margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); }
 
 /* lesson blocks */
-.lesson > * { margin-bottom: 1.3em; }
+.lesson > * { margin-bottom: 1.3em; min-width: 0; }
+.lesson, .lab, .widget, .codefig, .fig { min-width: 0; max-width: 100%; } .prose { min-width: 0; } .prose { overflow-wrap: break-word; }
 .table-wrap { overflow-x: auto; margin: 0 0 1em; } table { border-collapse: collapse; font-size: .92rem; min-width: 50%; }
 th, td { text-align: left; padding: 6px 12px; border: 1px solid var(--line); vertical-align: top; } th { background: var(--sunk); font: 600 .88rem var(--cond); }
 blockquote { margin: 0 0 1em; padding: 2px 16px; border-left: 3px solid var(--line); color: var(--muted); }
@@ -147,7 +148,7 @@ a.gloss { color: inherit; text-decoration: underline dotted var(--mask); }
 .w-bits { display: flex; flex-wrap: wrap; gap: 2px; } .w-bit { width: 1.9em; text-align: center; padding: 3px 0; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: .84rem var(--mono); cursor: pointer; border-radius: 2px; } .w-bit.on { background: var(--mask); color: var(--mask-ink); border-color: var(--mask); }
 
 @media (max-width: 860px) {
-  #menu { display: block; } .shell { grid-template-columns: 1fr; }
+  #menu { display: block; } .shell { grid-template-columns: minmax(0, 1fr); }
   #nav { position: fixed; top: 52px; left: 0; width: min(86vw, 300px); z-index: 15; transform: translateX(-100%); transition: transform .15s; box-shadow: 4px 0 16px rgb(0 0 0 / .2); }
   body.navopen #nav { transform: none; } h1 { font-size: 1.7rem; } .istate { text-align: left; min-width: 0; } .explain { grid-template-columns: 1fr; }
 }

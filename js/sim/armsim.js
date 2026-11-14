@@ -117,7 +117,7 @@ export class ArmSim {
     addr >>>= 0;
     const m = this.region(addr);
     if (m) return m[0][m[1]];
-    const w = this.devRead(addr & ~3);
+    const w = this.devRead((addr & ~3) >>> 0);
     return w === undefined ? undefined : (w >>> ((addr & 3) * 8)) & 0xff;
   }
   peek(addr, size) {
@@ -138,7 +138,7 @@ export class ArmSim {
     addr >>>= 0;
     const m = this.region(addr);
     if (m && m[1] + size <= m[0].length) { let v = 0; for (let i = size - 1; i >= 0; i--) v = v * 256 + m[0][m[1] + i]; return v; }
-    const w = this.devRead(addr & ~3);
+    const w = this.devRead((addr & ~3) >>> 0);
     if (w === undefined) throw new Fault(CFSR.PRECISERR | CFSR.BFARVALID, addr);
     return size === 4 ? w : (w >>> ((addr & 3) * 8)) & (size === 1 ? 0xff : 0xffff);
   }
@@ -147,7 +147,7 @@ export class ArmSim {
     const m = this.region(addr);
     if (m && m[2] && m[1] + size <= m[0].length) { for (let i = 0; i < size; i++) m[0][m[1] + i] = (value >>> (8 * i)) & 0xff; return; }
     // Peripheral registers are 32 bits wide; narrower writes are widened (enough for the bundled programs).
-    if (!m && this.devWrite(addr & ~3, value >>> 0)) return;
+    if (!m && this.devWrite((addr & ~3) >>> 0, value >>> 0)) return;
     throw new Fault(CFSR.PRECISERR | CFSR.BFARVALID, addr); // unmapped, or a write to flash
   }
 

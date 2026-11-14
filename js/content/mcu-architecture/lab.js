@@ -91,7 +91,7 @@ The six questions:
 
 Record each document's title, revision and date in the notebook. Documents are revised; a page number without a revision is not a citation.
 
-Then open, in a browser or a local clone, the SDK sources listed in this section's references: the MSDK device header and linker script, the MSPM0 device header and linker command file, and ESP-IDF's ¬soc.h¬ for the ESP32.` },
+Then open, in a browser or a local clone, the SDK sources listed in this section's references: the MSDK device header and linker script, the MSPM0 device header and linker command file, and ESP-IDF's \`soc.h\` for the ESP32.` },
 
       { title: 'Summarise the MSPM0L2228 (guided)',
         md: `Start with the simplest of the three: one core, internal flash, flash at address zero.
@@ -100,14 +100,14 @@ Then open, in a browser or a local clone, the SDK sources listed in this section
 |---|---|---|
 | Core | Arm Cortex-M0+ (ARMv6-M), 1 core, no FPU, MPU present, VTOR present, 2 priority bits | SDK device header |
 | Max clock | **look up** (the 2026 eCTF reference design runs it at 32 MHz; that is a configuration, not a limit) | datasheet |
-| Flash | base ¬0x0000_0000¬, 256 KB | SDK linker command file |
-| SRAM | base ¬0x2020_0000¬, 32 KB | SDK linker command file |
-| Config memory | NONMAIN: ¬BCR_CONFIG¬ at ¬0x41C0_0000¬, ¬BSL_CONFIG¬ at ¬0x41C0_0100¬ | SDK linker command file |
+| Flash | base \`0x0000_0000\`, 256 KB | SDK linker command file |
+| SRAM | base \`0x2020_0000\`, 32 KB | SDK linker command file |
+| Config memory | NONMAIN: \`BCR_CONFIG\` at \`0x41C0_0000\`, \`BSL_CONFIG\` at \`0x41C0_0100\` | SDK linker command file |
 | Flash erase unit | **look up** (the eCTF reference code uses a 1 KB page constant) | TRM, flash chapter |
 | Clock sources | **look up**: internal oscillators, low-frequency source, crystal options, default after reset | TRM, clock chapter |
-| Boot path | reset → boot ROM reads NONMAIN (debug policy, bootloader invocation, optional integrity check) → application at start of main flash | TRM boot chapter; SDK ¬boot_config.h¬ lists the options |
-| Debug | SWD; XDS110 probe; debug access can be enabled, password-protected or disabled in NONMAIN | SDK docs and ¬boot_config.h¬; pins from the datasheet |
-| Vector table | start of main flash (¬0x0000_0000¬) at reset; relocatable through VTOR | device header, Cortex-M0+ guide |
+| Boot path | reset → boot ROM reads NONMAIN (debug policy, bootloader invocation, optional integrity check) → application at start of main flash | TRM boot chapter; SDK \`boot_config.h\` lists the options |
+| Debug | SWD; XDS110 probe; debug access can be enabled, password-protected or disabled in NONMAIN | SDK docs and \`boot_config.h\`; pins from the datasheet |
+| Vector table | start of main flash (\`0x0000_0000\`) at reset; relocatable through VTOR | device header, Cortex-M0+ guide |
 
 Fill the summary sheet. For each **look up** row, find the value in the datasheet or TRM and write the section and page next to it.`,
         blocks: [
@@ -122,16 +122,16 @@ Fill the summary sheet. For each **look up** row, find the value in the datashee
 |---|---|---|
 | Cores | Arm Cortex-M4 with FPU and MPU (ARMv7E-M); plus one RISC-V core that the Arm core must start | MSDK device header and user guide |
 | RISC-V variant, max clocks | **look up** | MAX78000 user guide / datasheet |
-| ROM | base ¬0x0000_0000¬ | MSDK linker script |
-| Flash | base ¬0x1000_0000¬, 512 KB, 8 KB pages | MSDK device header and linker script |
-| SRAM | base ¬0x2000_0000¬, 128 KB | same |
-| Peripherals | from ¬0x4000_0000¬ (for example AES at ¬0x4000_7400¬, TRNG at ¬0x4004_D000¬) | device header |
-| Clock sources | IPO 100 MHz, ISO 60 MHz, IBRO 7.3728 MHz, ERTCO 32.768 kHz, INRO about 30 kHz (nominal). Default after reset and accuracy: **look up** | ¬system_max78000.h¬; user guide |
+| ROM | base \`0x0000_0000\` | MSDK linker script |
+| Flash | base \`0x1000_0000\`, 512 KB, 8 KB pages | MSDK device header and linker script |
+| SRAM | base \`0x2000_0000\`, 128 KB | same |
+| Peripherals | from \`0x4000_0000\` (for example AES at \`0x4000_7400\`, TRNG at \`0x4004_D000\`) | device header |
+| Clock sources | IPO 100 MHz, ISO 60 MHz, IBRO 7.3728 MHz, ERTCO 32.768 kHz, INRO about 30 kHz (nominal). Default after reset and accuracy: **look up** | \`system_max78000.h\`; user guide |
 | Boot path | reset → ROM → image at start of flash. ROM bootloader features: **look up** | user guide |
 | Debug | SWD for the Arm core through the on-board MAX32625PICO (DAPLink); the RISC-V core has a separate JTAG port. Pins and lock options: **look up** | board documentation; user guide |
-| Vector table | at the start of the application image in flash (¬0x1000_0000¬ for a stand-alone build), relocatable through VTOR | linker script; Cortex-M4 guide |
+| Vector table | at the start of the application image in flash (\`0x1000_0000\` for a stand-alone build), relocatable through VTOR | linker script; Cortex-M4 guide |
 
-Add one line for the eCTF 2024/2025 layout: bootloader at ¬0x1000_0000¬ (length ¬0xE000¬), team firmware and its vector table at ¬0x1000_E000¬.`,
+Add one line for the eCTF 2024/2025 layout: bootloader at \`0x1000_0000\` (length \`0xE000\`), team firmware and its vector table at \`0x1000_E000\`.`,
         blocks: [
           { t: 'widget', name: 'memory-map', props: { platform: 'max78000' } },
           { t: 'widget', name: 'boot-sequence', props: { platform: 'max78000' } },
@@ -143,12 +143,12 @@ Add one line for the eCTF 2024/2025 layout: bootloader at ¬0x1000_0000¬ (lengt
 | Item | Value | Source |
 |---|---|---|
 | Cores | Xtensa, 2 cores, up to 240 MHz | ESP-IDF Kconfig / SoC capability files |
-| Mask ROM | ¬0x4000_0000¬–¬0x4007_0000¬ | ESP-IDF ¬soc.h¬ |
-| Flash | external SPI flash on the module; size depends on the module (**look up** in the module datasheet). Mapped through the cache: read-only data at ¬0x3F40_0000¬, code at ¬0x400D_0000¬ | ¬soc.h¬ |
-| RAM | data RAM ¬0x3FFA_E000¬–¬0x4000_0000¬; instruction RAM ¬0x4008_0000¬–¬0x400A_A000¬; RTC memories at ¬0x3FF8_0000¬, ¬0x400C_0000¬, ¬0x5000_0000¬ | ¬soc.h¬ |
+| Mask ROM | \`0x4000_0000\`–\`0x4007_0000\` | ESP-IDF \`soc.h\` |
+| Flash | external SPI flash on the module; size depends on the module (**look up** in the module datasheet). Mapped through the cache: read-only data at \`0x3F40_0000\`, code at \`0x400D_0000\` | \`soc.h\` |
+| RAM | data RAM \`0x3FFA_E000\`–\`0x4000_0000\`; instruction RAM \`0x4008_0000\`–\`0x400A_A000\`; RTC memories at \`0x3FF8_0000\`, \`0x400C_0000\`, \`0x5000_0000\` | \`soc.h\` |
 | Config / OTP | eFuses (keys, security configuration) | ESP-IDF security docs; TRM eFuse chapter |
 | Clock sources | **look up**: main crystal, PLL, internal oscillators, 32 kHz options | TRM, reset and clock chapter |
-| Boot path | reset → ROM samples strapping pins (GPIO0, 2, 5, 12, 15) → second-stage bootloader at flash offset ¬0x1000¬ → partition table at ¬0x8000¬ → application (factory default ¬0x10000¬) | ESP-IDF docs and ROM capability files |
+| Boot path | reset → ROM samples strapping pins (GPIO0, 2, 5, 12, 15) → second-stage bootloader at flash offset \`0x1000\` → partition table at \`0x8000\` → application (factory default \`0x10000\`) | ESP-IDF docs and ROM capability files |
 | Debug | JTAG on GPIO12–15; serial download through the ROM on UART0. The original ESP32 has no built-in USB (the S3, C3 and C6 have a USB Serial/JTAG controller). Disabling: eFuses (**look up** which) | ESP-IDF GPIO and security docs |
 | Vector table | Xtensa uses a set of fixed-offset exception vectors placed in instruction RAM by ESP-IDF, at an address held in a CPU register (VECBASE): **look up** the details in the Xtensa and TRM documentation. It is not a Cortex-M style table | TRM; ESP-IDF sources |
 
@@ -178,7 +178,7 @@ Useful search terms in a PDF: "memory map", "boot", "reset", "strapping", "clock
 3. its access type;
 4. what must be enabled first (clock gate, power enable, pin function).
 
-Starting points: ESP32 TRM, "IO MUX and GPIO Matrix" chapter, register summary; MSDK ¬gpio_regs.h¬ for the MAX78000; MSPM0 TRM GPIO chapter or the SDK's GPIO header. Then write the one-line C macro for it in the style of the registers lesson. Mark the code as unverified: you have not run it.`,
+Starting points: ESP32 TRM, "IO MUX and GPIO Matrix" chapter, register summary; MSDK \`gpio_regs.h\` for the MAX78000; MSPM0 TRM GPIO chapter or the SDK's GPIO header. Then write the one-line C macro for it in the style of the registers lesson. Mark the code as unverified: you have not run it.`,
         code: R`/* Template: fill in from the reference manual. Not compiled, not run. */
 #define GPIOx_BASE      0x________u
 #define GPIOx_OUT_SET   (*(volatile uint32_t *)(GPIOx_BASE + 0x__u))
@@ -197,7 +197,7 @@ Afterwards, note which of the six questions took longest. That is the one to pra
 - **Cores** fix the instruction set your compiler must target, what the exception frame looks like, whether floating
   point is done in hardware, and how many interrupt priority levels you have to share out.
 - **The memory map** is the linker script. Every address in your image is derived from it. One wrong base (SRAM at
-  ¬0x2000_0000¬ on an MSPM0) and the first stack push faults.
+  \`0x2000_0000\` on an MSPM0) and the first stack push faults.
 - **Clock sources** determine every time-dependent number: baud divisors, timer periods, ADC sample times, flash
   timing. The default after reset tells you what the chip is doing before your clock setup runs.
 - **The boot path** tells you which code runs before yours, what it trusts, and where your image must be placed for
@@ -215,11 +215,11 @@ Afterwards, note which of the six questions took longest. That is the one to pra
 
 1. **Address quiz.** Use the memory-map tool's quiz for each platform. With your sheet in front of you, you should
    be able to place every address without opening the explorer view.
-2. **Cross-check with a build artefact.** Open the linker scripts named in the references. Every ¬ORIGIN¬ and
-   ¬LENGTH¬ should match a row of your memory table. If you have a toolchain installed, build any SDK example and
+2. **Cross-check with a build artefact.** Open the linker scripts named in the references. Every \`ORIGIN\` and
+   \`LENGTH\` should match a row of your memory table. If you have a toolchain installed, build any SDK example and
    read its map file: the vector table's address should be the one on your sheet.
 3. **Peer check.** Give a colleague only your sheet and ask three questions: "Where would firmware linked for this
-   chip place its stack?", "Which document says which pins are the debug port?", "What runs before ¬main¬?" They
+   chip place its stack?", "Which document says which pins are the debug port?", "What runs before \`main\`?" They
    should be able to answer from the sheet alone.
 4. **Count the unknowns.** A finished sheet has no blank cells: each is a value with a source, or an explicit
    "ASSUMED" / "NOT FOUND".

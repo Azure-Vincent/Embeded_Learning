@@ -30,6 +30,7 @@ export function checkTick({ clkHz, div, reload }, targetS = 1e-3) {
 export function simulateWatchdog({ timeoutMs, windowMs = 0, feeds, endMs }) {
   let last = 0;
   for (const t of [...feeds].sort((a, b) => a - b)) {
+    if (t === 0) continue; // the watchdog starts counting at t = 0
     if (t - last > timeoutMs) return { resetAt: last + timeoutMs, reason: 'timeout' };
     if (windowMs && t - last < windowMs) return { resetAt: t, reason: 'early' };
     last = t;

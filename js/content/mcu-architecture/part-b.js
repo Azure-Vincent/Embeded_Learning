@@ -12,8 +12,8 @@ export default [
     blocks: [
       `## The problem
 
-Main code toggles a status LED on pin 3 with ¬GPIO_OUT ^= (1u << 3);¬. A timer interrupt drives a stepper-motor
-step pulse on pin 7 of the same port with ¬GPIO_OUT |= (1u << 7);¬. Once every few hours the motor misses a step.
+Main code toggles a status LED on pin 3 with \`GPIO_OUT ^= (1u << 3);\`. A timer interrupt drives a stepper-motor
+step pulse on pin 7 of the same port with \`GPIO_OUT |= (1u << 7);\`. Once every few hours the motor misses a step.
 Both statements are correct C. Each works alone. What goes wrong when they share a port?`,
 
       `## Theory: the pin's signal chain
@@ -51,11 +51,11 @@ The electronics section covered the pin's output transistors and input threshold
 
 | Role | Bench-MCU | ESP32 | MSPM0 | MAX78000 (MSDK) |
 |---|---|---|---|---|
-| Direction / output enable | ¬GPIO_DIR¬ | ¬GPIO_ENABLE_REG¬ | ¬DOE31_0¬ | ¬outen¬ |
-| Output latch | ¬GPIO_OUT¬ | ¬GPIO_OUT_REG¬ | ¬DOUT31_0¬ | ¬out¬ |
-| Pin level | ¬GPIO_IN¬ | ¬GPIO_IN_REG¬ | ¬DIN31_0¬ | ¬in¬ |
-| Atomic set / clear / toggle | ¬GPIO_SET/CLR/TOGGLE¬ | ¬…_W1TS¬ / ¬…_W1TC¬ | ¬DOUTSET/CLR/TGL31_0¬ | ¬out_set¬ / ¬out_clr¬ |
-| Function select | — | IO MUX and GPIO matrix | ¬IOMUX PINCM¬ registers | ¬en0/en1/en2¬ alternate-function bits |
+| Direction / output enable | \`GPIO_DIR\` | \`GPIO_ENABLE_REG\` | \`DOE31_0\` | \`outen\` |
+| Output latch | \`GPIO_OUT\` | \`GPIO_OUT_REG\` | \`DOUT31_0\` | \`out\` |
+| Pin level | \`GPIO_IN\` | \`GPIO_IN_REG\` | \`DIN31_0\` | \`in\` |
+| Atomic set / clear / toggle | \`GPIO_SET/CLR/TOGGLE\` | \`…_W1TS\` / \`…_W1TC\` | \`DOUTSET/CLR/TGL31_0\` | \`out_set\` / \`out_clr\` |
+| Function select | — | IO MUX and GPIO matrix | \`IOMUX PINCM\` registers | \`en0/en1/en2\` alternate-function bits |
 
 Register names for the real chips are as they appear in the vendor headers; open the header or reference manual for
 offsets and bit positions.
@@ -73,12 +73,12 @@ system clock, at the cost of two or so clock cycles of delay.
 
 ### Why set and clear registers exist
 
-¬GPIO_OUT |= mask¬ is load, OR, store. If an interrupt changes another bit of the same register between the load
+\`GPIO_OUT |= mask\` is load, OR, store. If an interrupt changes another bit of the same register between the load
 and the store, the store writes back a stale copy and the interrupt's change is erased. That is the missed step
-pulse from the opening problem: the main loop loaded ¬GPIO_OUT¬, the timer interrupt set pin 7, and the main loop
+pulse from the opening problem: the main loop loaded \`GPIO_OUT\`, the timer interrupt set pin 7, and the main loop
 stored its old copy with pin 7 low.
 
-A **set register** removes the read. Writing ¬1u << 7¬ to ¬GPIO_SET¬ is a single store; the hardware ORs it
+A **set register** removes the read. Writing \`1u << 7\` to \`GPIO_SET\` is a single store; the hardware ORs it
 into the latch. Bits written as 0 are untouched. There is no window, so no lock is needed. Use set/clear/toggle
 registers for every output change in code that shares a port with an interrupt or another task.
 
@@ -122,9 +122,9 @@ the function, the peripheral is running but connected to nothing.
       { t: 'widget', name: 'c-lab', title: 'C lab: change outputs with no read-modify-write',
         props: {
           title: 'Atomic set, clear and toggle',
-          prompt: `Bench-MCU has write-only ¬GPIO_SET¬ (offset ¬0x0C¬), ¬GPIO_CLR¬ (¬0x10¬) and ¬GPIO_TOGGLE¬ (¬0x14¬) registers. The predefined header already declares them.
+          prompt: `Bench-MCU has write-only \`GPIO_SET\` (offset \`0x0C\`), \`GPIO_CLR\` (\`0x10\`) and \`GPIO_TOGGLE\` (\`0x14\`) registers. The predefined header already declares them.
 
-¬board_init()¬ sets up six outputs with a starting pattern. Complete ¬update_outputs()¬ so that pin 5 is set, pin 0 is cleared and pin 9 is toggled, **without ever reading ¬GPIO_OUT¬** and with exactly three stores. Other pins must not change.`,
+\`board_init()\` sets up six outputs with a starting pattern. Complete \`update_outputs()\` so that pin 5 is set, pin 0 is cleared and pin 9 is toggled, **without ever reading \`GPIO_OUT\`** and with exactly three stores. Other pins must not change.`,
           starter: R`#include <stdint.h>
 #include <stdio.h>
 
@@ -177,20 +177,20 @@ int main(void)
           ],
           hints: [
             'Each of the three registers takes a mask: a 1 means "act on this pin", a 0 means "leave it".',
-            'These registers are write-only. Use ¬=¬, never ¬|=¬: an OR would first read a register that has no meaningful read value.',
-            'Work out the expected result by hand first: start ¬0x0113¬, set bit 5, clear bit 0, toggle bit 9.',
+            'These registers are write-only. Use \`=\`, never \`|=\`: an OR would first read a register that has no meaningful read value.',
+            'Work out the expected result by hand first: start \`0x0113\`, set bit 5, clear bit 0, toggle bit 9.',
           ],
           explain: 'Each statement compiles to a single store. An interrupt can arrive between any two of them, change other pins of the port, and nothing is lost, because no statement carries a stale copy of the latch.',
         } },
 
       { t: 'exercise',
-        prompt: `Main code runs ¬GPIO_OUT ^= 0x08;¬ (toggle pin 3). ¬GPIO_OUT¬ is ¬0x00¬ beforehand. An interrupt handler that executes ¬GPIO_OUT |= 0x80;¬ (set pin 7) runs after main's load and before main's store. What is ¬GPIO_OUT¬ after both have finished? Answer in hex.`,
+        prompt: `Main code runs \`GPIO_OUT ^= 0x08;\` (toggle pin 3). \`GPIO_OUT\` is \`0x00\` beforehand. An interrupt handler that executes \`GPIO_OUT |= 0x80;\` (set pin 7) runs after main's load and before main's store. What is \`GPIO_OUT\` after both have finished? Answer in hex.`,
         hints: [
           'Main loaded 0x00 into a register before the interrupt.',
           'The handler makes the latch 0x80. Then main computes 0x00 ^ 0x08 from its stale copy and stores it.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?0?8h?\\s*$'], nudge: 'Which copy of the register does main store back?' },
-        solution: `Main loads ¬0x00¬. The handler sets the latch to ¬0x80¬. Main stores ¬0x00 ^ 0x08 = 0x08¬. Final value **0x08**: pin 7 is low again and the step pulse lasted only as long as the gap between handler exit and main's store, perhaps a hundred nanoseconds. With ¬GPIO_TOGGLE = 0x08¬ and ¬GPIO_SET = 0x80¬ the result would be ¬0x88¬.` },
+        solution: `Main loads \`0x00\`. The handler sets the latch to \`0x80\`. Main stores \`0x00 ^ 0x08 = 0x08\`. Final value **0x08**: pin 7 is low again and the step pulse lasted only as long as the gap between handler exit and main's store, perhaps a hundred nanoseconds. With \`GPIO_TOGGLE = 0x08\` and \`GPIO_SET = 0x80\` the result would be \`0x88\`.` },
 
       `## Harder application
 
@@ -198,7 +198,7 @@ A board uses an ESP32 pin as a strapping pin (it is sampled at reset to choose t
 chip-select output for an SPI device whose select line has an external pull-up. List what the pin's state is at each
 of these moments, and whether anything conflicts: (a) during reset, (b) in the ROM before your code runs,
 (c) after your GPIO setup. Then check your reasoning against the strapping-pin table in the ESP32 datasheet. The
-general lesson: a pin has a life before ¬main()¬, and external parts see all of it.`,
+general lesson: a pin has a life before \`main()\`, and external parts see all of it.`,
     ],
     quiz: [
       { q: 'Why does writing a mask to a "set" register avoid the race that `OUT |= mask` has?', kind: 'arch', choices: [
@@ -318,11 +318,11 @@ This is why odd frequencies such as 7.3728 MHz exist: 7,372,800 / 115,200 = 64 e
 **MAX78000.** The device header lists five oscillators (nominal): IPO 100 MHz and ISO 60 MHz internal oscillators,
 IBRO 7.3728 MHz (the baud-rate-friendly one), ERTCO 32.768 kHz crystal for the RTC, and INRO around 30 kHz for
 low-power timing. Peripheral clocks are gated through the global control block's peripheral clock-disable
-registers; MSDK drivers open the gate in their ¬_Init¬ functions.
+registers; MSDK drivers open the gate in their \`_Init\` functions.
 
 **MSPM0L2228.** The 2026 eCTF reference design runs the CPU at 32 MHz from the internal oscillator. MSPM0
 peripherals go a step further than a clock gate: each has its own power-enable register, and reads or writes before
-power is enabled do not take effect. TI's driver library calls this ¬DL_<peripheral>_enablePower()¬, and generated
+power is enabled do not take effect. TI's driver library calls this \`DL_<peripheral>_enablePower()\`, and generated
 code calls it first.
 
 **ESP32.** A 40 MHz crystal on the module feeds a PLL; the CPU clock is selectable up to 240 MHz, and most peripherals run from an
@@ -355,7 +355,7 @@ temperatures. Fit a crystal, lower the baud rate tolerance requirement with a pr
 often, or calibrate the RC oscillator against a known reference.`,
 
       { t: 'callout', kind: 'mistake', title: 'Changing the system clock and forgetting everything derived from it',
-        md: 'Baud divisors, timer prescalers, ADC sample times, flash wait states and the SysTick reload were all computed for the old frequency. Switching the clock source without recomputing them breaks every one at once. Keep one function that owns the clock configuration, and derive the rest from a single ¬system_clock_hz¬ value.' },
+        md: 'Baud divisors, timer prescalers, ADC sample times, flash wait states and the SysTick reload were all computed for the old frequency. Switching the clock source without recomputing them breaks every one at once. Keep one function that owns the clock configuration, and derive the rest from a single \`system_clock_hz\` value.' },
 
       { t: 'callout', kind: 'decision', title: 'RC or crystal?',
         md: `Choose the internal RC when cost, board area, start-up time and sleep current dominate and the only timing-sensitive interface is a UART to a crystal-clocked partner. Choose a crystal when the chip has a radio, USB or CAN, when two RC-clocked devices must talk at high baud rates, or when you keep wall-clock time. Many designs use both: RC for a fast wake, crystal once it has stabilised.` },
@@ -445,7 +445,7 @@ and the interrupted code continues, unaware.
 | **Enable** (local) | Peripheral interrupt-enable register | Let this flag raise the peripheral's request line |
 | **Enable** (controller) and **priority** | Interrupt controller (NVIC on Cortex-M) | Let this request line reach the CPU, and at what urgency |
 | **Pending** | Interrupt controller | A request has arrived and is waiting for its turn |
-| **Global mask** | CPU (PRIMASK on Cortex-M, ¬mstatus.MIE¬ on RISC-V) | All maskable interrupts held off |
+| **Global mask** | CPU (PRIMASK on Cortex-M, \`mstatus.MIE\` on RISC-V) | All maskable interrupts held off |
 
 An interrupt fires only when the whole chain is open. When a handler "never runs", walk the chain with a debugger:
 is the flag set, is the local enable set, is it pending in the controller, is it enabled there, is the global mask
@@ -465,9 +465,9 @@ The interrupted code has live values in registers. Something must preserve them.
   register) and loads LR with a special marker value. Those are exactly the registers the C calling convention lets
   a function overwrite, so **a handler is an ordinary C function**. Returning to the marker value triggers the
   unstacking.
-- **RISC-V**: the hardware saves almost nothing on the stack. It copies PC to the ¬mepc¬ register, records the
-  cause in ¬mcause¬, disables interrupts, and jumps to the address in ¬mtvec¬. **Software** must save and restore
-  every register it uses; the compiler does it for functions marked ¬__attribute__((interrupt))¬, or an assembly
+- **RISC-V**: the hardware saves almost nothing on the stack. It copies PC to the \`mepc\` register, records the
+  cause in \`mcause\`, disables interrupts, and jumps to the address in \`mtvec\`. **Software** must save and restore
+  every register it uses; the compiler does it for functions marked \`__attribute__((interrupt))\`, or an assembly
   stub does it.`,
 
       { t: 'widget', name: 'interrupt-flow', props: { arch: 'cortex-m' }, title: 'Interrupt on a Cortex-M',
@@ -501,7 +501,7 @@ chip maker.
    push to a queue, and leave. Parsing, printing, and anything with a loop of unknown length belong in main code or a task.
 3. **Never block.** No delays, no waiting for another interrupt, no mutexes.
 4. **Treat shared data as dangerous.** Any variable written in a handler and read in main code (or the reverse)
-   can change between two instructions of the main code. Declare it ¬volatile¬ so the compiler re-reads it; that
+   can change between two instructions of the main code. Declare it \`volatile\` so the compiler re-reads it; that
    alone does not make multi-step updates safe.`,
 
       { t: 'code', lang: 'c', status: 'reviewed', caption: 'The standard shape: the handler captures, the main loop processes',
@@ -535,10 +535,10 @@ bool uart_get(uint8_t *out)
     return true;
 }`,
         explain: [
-          { lines: '6-8', md: 'A ring buffer with one writer per index. The ISR only writes ¬rx_head¬; main only writes ¬rx_tail¬. Each index is a single aligned 32-bit word, which a 32-bit CPU loads or stores in one instruction, so neither side ever sees a half-updated index.' },
+          { lines: '6-8', md: 'A ring buffer with one writer per index. The ISR only writes \`rx_head\`; main only writes \`rx_tail\`. Each index is a single aligned 32-bit word, which a 32-bit CPU loads or stores in one instruction, so neither side ever sees a half-updated index.' },
           { lines: '12', md: 'Reading the data register pops the byte and, on most UARTs, removes the interrupt request. Do it first.' },
           { lines: '15-18', md: 'The data byte is stored *before* the index is advanced. Main code cannot see the new slot until it is filled.' },
-          { lines: '23-28', md: 'Main reads ¬rx_head¬ once. If the ISR runs right after, main simply sees the extra byte on its next call.' },
+          { lines: '23-28', md: 'Main reads \`rx_head\` once. If the ISR runs right after, main simply sees the extra byte on its next call.' },
         ] },
 
       { t: 'predict',
@@ -568,8 +568,8 @@ bool uart_get(uint8_t *out)
       `## Harder application
 
 A 32-bit CPU keeps a 64-bit millisecond counter that a tick interrupt increments. Main code reads it with
-¬uint64_t now = ticks;¬. Explain how ¬now¬ can come out wrong by about 49.7 days, and give two fixes. (The read is
-two 32-bit loads. If the tick increments from ¬0x00000000_FFFFFFFF¬ to ¬0x00000001_00000000¬ between them, main
+\`uint64_t now = ticks;\`. Explain how \`now\` can come out wrong by about 49.7 days, and give two fixes. (The read is
+two 32-bit loads. If the tick increments from \`0x00000000_FFFFFFFF\` to \`0x00000001_00000000\` between them, main
 combines the old low word with the new high word, or the reverse, and is off by 2³² ms. Fixes: mask the interrupt
 around the read, or read high, low, high again and retry if the high words differ. This is the "shared data hazard"
 in its smallest form; the RTOS section generalises it.)`,
@@ -657,8 +657,8 @@ unsigned numbers of the counter's width and a single wrap between the two edges 
 
 ### The system tick
 
-An RTOS or a ¬millis()¬ function needs a periodic interrupt. Cortex-M cores include a dedicated 24-bit down-counter
-for this, **SysTick**, so the same OS code works on any vendor's chip. RISC-V defines ¬mtime¬ and ¬mtimecmp¬ for the
+An RTOS or a \`millis()\` function needs a periodic interrupt. Cortex-M cores include a dedicated 24-bit down-counter
+for this, **SysTick**, so the same OS code works on any vendor's chip. RISC-V defines \`mtime\` and \`mtimecmp\` for the
 same purpose. On the ESP32, ESP-IDF configures a hardware timer for the FreeRTOS tick.`,
 
       { t: 'widget', name: 'timer-lab', props: { mode: 'timer' }, title: 'Clock, prescaler, counter, compare',
@@ -680,12 +680,12 @@ are off by one count or one factor of two.`,
       { t: 'widget', name: 'c-lab', title: 'C lab: poll a timer flag',
         props: {
           title: 'Three timer periods, by polling',
-          prompt: `Use Bench-MCU TIMER0 (base ¬0x4000_2000¬; the predefined header declares ¬TIM_CTRL¬, ¬TIM_LOAD¬, ¬TIM_COUNT¬, ¬TIM_STATUS¬).
+          prompt: `Use Bench-MCU TIMER0 (base \`0x4000_2000\`; the predefined header declares \`TIM_CTRL\`, \`TIM_LOAD\`, \`TIM_COUNT\`, \`TIM_STATUS\`).
 
-- ¬TIM_CTRL¬: bit 0 ¬ENABLE¬, bit 1 ¬AUTO_RELOAD¬
-- ¬TIM_STATUS¬: bit 0 ¬EXPIRED¬, **write 1 to clear**
+- \`TIM_CTRL\`: bit 0 \`ENABLE\`, bit 1 \`AUTO_RELOAD\`
+- \`TIM_STATUS\`: bit 0 \`EXPIRED\`, **write 1 to clear**
 
-Complete ¬wait_period()¬ so that it blocks until the timer expires and then acknowledges the flag. ¬main¬ toggles pin 0 once per period, three times. If you forget to clear the flag, the second and third waits return at once; the program still prints the right text, so read the hint about how to see the difference.
+Complete \`wait_period()\` so that it blocks until the timer expires and then acknowledges the flag. \`main\` toggles pin 0 once per period, three times. If you forget to clear the flag, the second and third waits return at once; the program still prints the right text, so read the hint about how to see the difference.
 
 Bench-MCU advances one simulated tick per executed statement; timing here is illustrative, not cycle-accurate.`,
           starter: R`#include <stdint.h>
@@ -760,9 +760,9 @@ int main(void)
             { name: 'waits for three real expiries and leaves pin 0 high', regs: { GPIO_OUT: 0x0001 }, stdoutIncludes: 'toggles=3 waited=1' },
           ],
           hints: [
-            'The loop condition is "flag bit is still 0". Mask the status register with ¬TIM_EXPIRED¬ before comparing.',
-            'Put ¬polls++¬ in the loop body. The final ¬waited=1¬ is only printed if the three waits together polled at least 30 times, which they cannot do unless each wait really spans a timer period.',
-            'To clear a write-1-to-clear bit, assign the mask: ¬TIM_STATUS = TIM_EXPIRED;¬. Writing 0 does nothing.',
+            'The loop condition is "flag bit is still 0". Mask the status register with \`TIM_EXPIRED\` before comparing.',
+            'Put \`polls++\` in the loop body. The final \`waited=1\` is only printed if the three waits together polled at least 30 times, which they cannot do unless each wait really spans a timer period.',
+            'To clear a write-1-to-clear bit, assign the mask: \`TIM_STATUS = TIM_EXPIRED;\`. Writing 0 does nothing.',
           ],
           explain: 'With a 40-tick period and three waits, a correct program polls far more than 30 times. If the flag is never cleared, only the first wait blocks. On real hardware the same bug shows as a "delay" that works once and then returns instantly.',
         } },

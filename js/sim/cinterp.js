@@ -534,7 +534,7 @@ function compile(source, opts = {}) {
   // ------------------------------------------------ machine state
   const flash = new Uint8Array(MEM_SIZE).fill(0xFF), sram = new Uint8Array(MEM_SIZE);
   let fp = STACK_TOP, sp = STACK_TOP, steps = 0, curLine = 0, retVal, loading = false;
-  let heapBase = SRAM_BASE, heapTop = SRAM_BASE, irqOn = true, inIsr = false;
+  let heapBase = SRAM_BASE, heapTop = SRAM_BASE, heapLim = SRAM_BASE, irqOn = true, inIsr = false;
   let maxSteps = 2000000, stopAt = -1, breakLine = -1;
   const frames = [], blocks = [], fnByAddr = new Map(), handlers = [null, null], irqCounts = [0, 0];
   const out = [], uartTx = [], gpioTrace = [];
@@ -570,7 +570,7 @@ function compile(source, opts = {}) {
   function rd(a, n) {
     const o = a - SRAM_BASE;
     if (o >= 0 && o + n <= MEM_SIZE) {
-      if (a < heapTop && a >= heapBase) heapCheck(a, n, false);
+      if (a < heapLim && a >= heapBase) heapCheck(a, n, false);
       return n === 1 ? sram[o] : n === 2 ? sram[o] | (sram[o + 1] << 8) : (sram[o] | (sram[o + 1] << 8) | (sram[o + 2] << 16) | (sram[o + 3] << 24)) >>> 0;
     }
     const f = a - FLASH_BASE;
@@ -584,7 +584,7 @@ function compile(source, opts = {}) {
   function wr(a, n, v) {
     const o = a - SRAM_BASE;
     if (o >= 0 && o + n <= MEM_SIZE) {
-      if (a < heapTop && a >= heapBase) heapCheck(a, n, true);
+      if (a < heapLim && a >= heapBase) heapCheck(a, n, true);
       sram[o] = v;
       if (n > 1) { sram[o + 1] = v >>> 8; if (n > 2) { sram[o + 2] = v >>> 16; sram[o + 3] = v >>> 24; } }
       return;
@@ -1819,7 +1819,7 @@ function compile(source, opts = {}) {
     for (let i = blocks.length - 1; i >= 0; i--) { const b = blocks[i]; if (b.free && b.cap === size) { b.free = false; b.size = n; b.line = curLine; return b.addr; } }
     const addr = heapTop + 8;
     if (n > MEM_SIZE || addr + size > sp - 256) return 0;
-    heapTop = addr + size;
+    heapTop = addr + size; heapLim = heapTop + 8;
     const o = addr - 8 - SRAM_BASE; sram[o] = size | 1; sram[o + 1] = size >> 8; sram[o + 2] = 0; sram[o + 3] = 0;
     blocks.push({ addr, size: n, cap: size, free: false, line: curLine, freeLine: 0 });
     return addr;

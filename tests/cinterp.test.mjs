@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run, runTest, layoutOf, layoutStruct, REGISTERS } from '../js/sim/cinterp.js';
 
-const main = (body, pre = '') => `#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n#include <stdlib.h>\n${pre}\nint main(void) {\n${body}\nreturn 0;\n}\n`;
+const main = (body, pre = '') => `#include <stdio.h>\n#include <stdint.h>\n#include <string.h>\n${pre}\nint main(void) {\n${body}\nreturn 0;\n}\n`;
 const out = (src, opts) => { const r = run(src, opts); assert.deepEqual(r.errors, [], 'unexpected error'); return r.stdout; };
 const hasWarn = (r, re) => r.warnings.some((w) => re.test(w.msg));
 
@@ -418,12 +418,14 @@ test('interrupt between statements causes a lost update; irq_disable protects it
   const body = (guard) => `irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 7; TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
     int mine = 0;
     for (int i = 0; i < 200; i++) { ${guard ? 'irq_disable();' : ''} int tmp = shared; tmp = tmp + 1; shared = tmp; ${guard ? 'irq_enable();' : ''} mine++; }
-    TIM_CTRL = 0; printf("%d", shared > mine ? 1 : 0);`;
+    TIM_CTRL = 0; printf("%d %d", shared, mine);`;
   const racy = run(main(body(false), pre)), safe = run(main(body(true), pre));
   assert.ok(racy.irqCounts.IRQ_TIMER > 10);
-  assert.equal(racy.stdout, '0'); // every ISR increment that landed between the load and the store was overwritten
+  const [rs, rm] = racy.stdout.split(' ').map(Number), [ss, sm] = safe.stdout.split(' ').map(Number);
+  assert.equal(rm, 200); assert.equal(sm, 200);
+  assert.ok(rs < rm + racy.irqCounts.IRQ_TIMER, 'some ISR increments must be lost'); // those that landed between the load and the store
   assert.ok(safe.irqCounts.IRQ_TIMER > 10);
-  assert.equal(safe.stdout, '1');
+  assert.equal(ss, sm + safe.irqCounts.IRQ_TIMER);
 });
 test('an interrupt whose flag is never cleared starves main', () => {
   const pre = 'volatile int n = 0;\nvoid timer_isr(void) { n++; }';
@@ -565,7 +567,7 @@ const CROSS = {
   'signed arithmetic and division': 'int32_t v[] = {7, -7, 100, -100, 2147483647, -2147483647}; for (int i = 0; i < 6; i++) printf("%d %d %d %d|", v[i] / 3, v[i] % 3, v[i] >> 1, -v[i] / 7); printf("\\n");',
   'unsigned compare pitfalls': 'int32_t i = -1; uint32_t u = 1; uint8_t small = 255; int8_t s8 = -1; printf("%d %d %d %d %d\\n", i < (int32_t)u, (uint32_t)i > u, small == s8, (uint8_t)s8 == small, sizeof(int32_t) > (uint32_t)i);',
   '64-bit math': 'uint64_t a = 0x123456789ABCDEFull; int64_t b = -1234567890123ll; uint64_t m = a * 3 + (uint64_t)b; printf("%llx %lld %llu %lld %llu\\n", (unsigned long long)(a >> 12), (long long)(b / 1000), (unsigned long long)(m % 1000003), (long long)(b % 97), (unsigned long long)((a << 20) ^ a));',
-  'strings and arrays': 'char buf[32] = "embedded"; char rev[32]; size_t n = strlen(buf); for (size_t i = 0; i < n; i++) rev[i] = buf[n - 1 - i]; rev[n] = 0; char up[16]; int k = 0; for (const char *p = "Bench-MCU"; *p; p++) up[k++] = (*p >= \'a\' && *p <= \'z\') ? *p - 32 : *p; up[k] = 0;\nprintf("%s %s %s %d %d %d\\n", rev, up, strcat(buf, "!"), strcmp(buf, rev) > 0, (int)strlen(buf), memcmp("abc", "abd", 3) < 0);',
+  'strings and arrays': 'char buf[32] = "embedded"; char rev[32]; size_t n = strlen(buf); for (size_t i = 0; i < n; i++) rev[i] = buf[n - 1 - i]; rev[n] = 0; char up[16]; int k = 0; for (const char *p = "Bench-MCU"; *p; p++) up[k++] = (*p >= \'a\' && *p <= \'z\') ? *p - 32 : *p; up[k] = 0;\nstrcat(buf, "!"); printf("%s %s %s %d %d %d\\n", rev, up, buf, strcmp(buf, rev) > 0, (int)strlen(buf), memcmp("abc", "abd", 3) < 0);',
   'struct layout with fixed-width fields': 'struct A { uint8_t a; uint32_t b; uint16_t c; }; struct B { uint32_t b; uint16_t c; uint8_t a; }; struct C { uint8_t a; uint16_t c; uint8_t d; uint64_t q; uint8_t e; }; union U { uint32_t w; uint8_t b[4]; uint16_t h; }; union U u; u.w = 0x01020304;\nprintf("%u %u %u %u %u %u %x %x\\n", (unsigned)sizeof(struct A), (unsigned)sizeof(struct B), (unsigned)sizeof(struct C), (unsigned)offsetof(struct A, c), (unsigned)offsetof(struct C, q), (unsigned)offsetof(struct C, e), u.b[0], u.h);',
   'sorting and searching': 'int32_t v[] = {42, -3, 17, 0, 99, -50, 8, 23}; int n = 8; for (int i = 1; i < n; i++) { int32_t key = v[i]; int j = i - 1; while (j >= 0 && v[j] > key) { v[j + 1] = v[j]; j--; } v[j + 1] = key; } int lo = 0, hi = n - 1, at = -1; while (lo <= hi) { int mid = (lo + hi) / 2; if (v[mid] == 23) { at = mid; break; } if (v[mid] < 23) lo = mid + 1; else hi = mid - 1; }\nfor (int i = 0; i < n; i++) printf("%d ", v[i]); printf("%d\\n", at);',
   'switch state machine': 'enum { IDLE, HEADER, BODY, DONE } st = IDLE; const uint8_t in[] = {0, 0xAA, 3, 10, 20, 30, 0xAA, 1, 5}; int left = 0, sum = 0, frames = 0; for (unsigned i = 0; i < sizeof in; i++) { switch (st) { case IDLE: if (in[i] == 0xAA) st = HEADER; break; case HEADER: left = in[i]; st = left ? BODY : DONE; break; case BODY: sum += in[i]; if (--left == 0) st = DONE; if (st != DONE) break; /* fall through */ case DONE: frames++; st = IDLE; break; } }\nprintf("%d %d %d\\n", sum, frames, st);',
@@ -573,9 +575,9 @@ const CROSS = {
   'printf formats': 'printf("[%5d|%-5d|%05d|%x|%X|%08x|%c|%s|%10s|%-10s|%.2s|%%|%u|%3d|%+d]\\n", -42, 42, 42, 48879, 48879, 255, 90, "s", "right", "left", "cut", 4000000000u, 1000, 7);',
   'ring buffer': 'uint8_t rb[8]; uint8_t head = 0, tail = 0; int dropped = 0; for (int i = 0; i < 11; i++) { uint8_t nx = (uint8_t)((head + 1) & 7); if (nx == tail) { dropped++; continue; } rb[head] = (uint8_t)(i * 3); head = nx; } int sum = 0, cnt = 0; while (tail != head) { sum += rb[tail]; tail = (uint8_t)((tail + 1) & 7); cnt++; }\nprintf("%d %d %d\\n", sum, cnt, dropped);',
   'fixed-point and hex dump': 'uint16_t raw = 2731; uint32_t mv = (uint32_t)raw * 3300u / 4095u; int32_t c10 = ((int32_t)mv - 500) * 10 / 10; uint8_t bytes[4]; for (int i = 0; i < 4; i++) bytes[i] = (uint8_t)(mv >> (8 * i)); uint32_t be = ((uint32_t)bytes[0] << 24) | ((uint32_t)bytes[1] << 16) | ((uint32_t)bytes[2] << 8) | bytes[3];\nprintf("%u %d.%d %02x%02x%02x%02x %08x\\n", mv, c10 / 10, c10 % 10, bytes[0], bytes[1], bytes[2], bytes[3], be);',
-  'macros': 'int x = 3; printf("%d %d %u %d %s %d\\n", SQ(x + 1), MAX(x++, 2), BIT(5) | BIT(1), ARRAY_LEN(tbl), STR(hello world), x);',
+  'macros': 'int x = 3; int sq1 = SQ(x + 1); int mx = MAX(x++, 2); printf("%d %d %u %d %s %d\\n", sq1, mx, BIT(5) | BIT(1), ARRAY_LEN(tbl), STR(hello world), x);',
 };
-const CROSS_PRE = '#include <stddef.h>\n#define SQ(x) ((x) * (x))\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n#define BIT(n) (1u << (n))\n#define ARRAY_LEN(a) ((int)(sizeof(a) / sizeof((a)[0])))\n#define STR(x) #x\nstatic const int tbl[] = {1, 2, 3, 4, 5};\nstatic int sq(int v) { return v * v; }\nstatic int neg(int v) { return -v; }\nstatic int apply(int (*f)(int), int v) { return f(v); }\nstatic int gcd(int a, int b) { return b ? gcd(b, a % b) : a; }\nstatic unsigned collatz(unsigned n) { unsigned steps = 0; while (n != 1) { n = (n & 1) ? 3 * n + 1 : n / 2; steps++; } return steps; }';
+const CROSS_PRE = '#include <stddef.h>\n#include <stdlib.h>\n#define SQ(x) ((x) * (x))\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n#define BIT(n) (1u << (n))\n#define ARRAY_LEN(a) ((int)(sizeof(a) / sizeof((a)[0])))\n#define STR(x) #x\nstatic const int tbl[] = {1, 2, 3, 4, 5};\nstatic int sq(int v) { return v * v; }\nstatic int neg(int v) { return -v; }\nstatic int apply(int (*f)(int), int v) { return f(v); }\nstatic int gcd(int a, int b) { return b ? gcd(b, a % b) : a; }\nstatic unsigned collatz(unsigned n) { unsigned steps = 0; while (n != 1) { n = (n & 1) ? 3 * n + 1 : n / 2; steps++; } return steps; }';
 let gccDir = null;
 function gccRun(src) {
   if (gccDir === false) return null;

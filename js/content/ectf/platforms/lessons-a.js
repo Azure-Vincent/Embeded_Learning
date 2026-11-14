@@ -22,9 +22,7 @@ MITRE's Embedded Capture the Flag (eCTF) is a competition in which teams are giv
 Two things this course cannot give you, and says so:
 
 - The **exact rules, scoring and named security requirements** for a year. Those live on MITRE's rules site, which was not reachable when this course's fact sheet was compiled. Candidate URL (not load-tested): ${N.rules}.
-- Anything official. The exercises and scenarios in this track are written for this course. They copy the *shape* of eCTF work, not its content.
-
-{t-note}`.replace('{t-note}', ''),
+- Anything official. The exercises and scenarios in this track are written for this course. They copy the *shape* of eCTF work, not its content.`,
 
     { t: 'callout', kind: 'warn', title: 'The repositories are not where you might guess', md: `MITRE's public reference designs for 2016–2025 are under [github.com/mitre-cyber-academy](${S.mcaOrg}). The 2026 reference design is under [github.com/ectfmitre](${S.y2026}). The account \`github.com/ectf\` is **not** MITRE's: it is an unrelated account with a single 2016 repository${src('account page', S.notEctf, 'MITRE org repository list', S.mcaRepos)}. Cloning the wrong repository is a cheap mistake to make and an expensive one to discover late.` },
 
@@ -56,7 +54,7 @@ Sources per year: 2017${src('README', S.y2017readme, 'bootloader Makefile', S.y2
 
 Sort the rows by what actually changes between years:
 
-- **Processor family.** 8-bit AVR (2017), Arm Cortex-M0 class PSoC 4 (2018), Zynq application processors running Linux with FPGA fabric (2019, 2020), an emulated Cortex-M3 Stellaris part (2021), Cortex-M4F Tiva C (2022, 2023), a dual-core Cortex-M4F + RISC-V part (2024, 2025), a Cortex-M0+ (2026). The core names for the Tiva and MSPM0 parts are in the sources above and in lessons 3 and 4; for the older parts, confirm the core in the manufacturer's datasheet before relying on it.
+- **Processor family.** An Atmel AVR (2017), a Cypress PSoC 4 (2018), Zynq boards running Linux with FPGA fabric (2019, 2020), an emulated Stellaris part (2021), TI Tiva C (2022, 2023), a Cortex-M4F with a RISC-V coprocessor (2024, 2025), a Cortex-M0+ (2026). The cores of the 2024–2026 parts are established from vendor headers in lessons 3 and 4. For the earlier parts the fact sheet records part numbers, not cores — look the core up in each manufacturer's datasheet rather than trusting memory.
 - **Whether there is physical hardware at all.** 2021 was emulated; 2022 was both.
 - **How code reaches the chip.** An ISP programmer (2017), a vendor IDE's programmer (2018), an SD card image (2019, 2020), a vendor flashing tool (2023), a MITRE bootloader over serial (2024, 2025).
 - **How the build is made reproducible.** Vagrant VMs, then Docker, then Nix, then Docker again.
@@ -169,7 +167,7 @@ The name covers chips with different instruction sets. From ESP-IDF v6.1's own c
 
 The specific Xtensa core names (often quoted as "LX6" and "LX7") are not stated in the configuration files that were read; confirm them in each chip's datasheet (candidate URL, not load-tested: ${N.esp32ds}).
 
-Neither Xtensa nor RISC-V is Arm. Every eCTF microcontroller from 2022 to 2026 in the previous lesson's table has an Arm Cortex-M core as its main processor. So the ESP32 already differs from those kits at the level of the instruction set, the exception model and the debugger.`,
+Neither Xtensa nor RISC-V is Arm. The eCTF 2024–2025 part (MAX78000) and the eCTF 2026 part (MSPM0L2228) both have an Arm Cortex-M core as their main processor (lessons 3 and 4). So the ESP32 already differs from those kits at the level of the instruction set, the exception model and the debugger.`,
 
     { t: 'widget', name: 'mcu-block-diagram', props: { platform: 'esp32' }, caption: 'Click through the ESP32 blocks. Note what is on the chip and what is outside it — in particular, where program flash lives.' },
 
@@ -528,8 +526,5 @@ In 2024, an Application Processor and two Components were three separate MAX7800
       ] },
   ],
 };
-
-// Remove the empty placeholder block in the history lesson.
-history.blocks = history.blocks.map((b) => (typeof b === 'string' ? b.trimEnd() : b));
 
 export default [history, esp32, max78000];

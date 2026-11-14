@@ -13,7 +13,7 @@ export default [
       `## The problem
 
 A device runs for eleven days and then reports a configuration value of 1,953,719,668 instead of 100. No code
-writes that variable after start-up. Printed as bytes, the number is ¬'t' 'e' 's' 't'¬. Something else wrote
+writes that variable after start-up. Printed as bytes, the number is \`'t' 'e' 's' 't'\`. Something else wrote
 text over it. On a PC the operating system would have stopped the offending program with a segmentation fault. On
 this microcontroller nothing stopped anything. Why not, and what wrote there?`,
 
@@ -21,8 +21,8 @@ this microcontroller nothing stopped anything. Why not, and what wrote there?`,
 
 | | Static | Stack | Heap |
 |---|---|---|---|
-| What | Globals and ¬static¬ variables (¬.data¬, ¬.bss¬) | Function locals, saved registers, return addresses | Blocks from ¬malloc¬ |
-| Lifetime | Whole program | Until the function returns | Until ¬free¬ |
+| What | Globals and \`static\` variables (\`.data\`, \`.bss\`) | Function locals, saved registers, return addresses | Blocks from \`malloc\` |
+| Lifetime | Whole program | Until the function returns | Until \`free\` |
 | Address decided | At link time | At run time, by the stack pointer | At run time, by the allocator |
 | Size known | Exactly, from the map file | Only by analysis or measurement | Depends on run-time behaviour |
 | Cost of allocation | None | One subtract from SP | A search through allocator data structures |
@@ -63,7 +63,7 @@ that moment. Interrupt handlers use the stack of whatever they interrupted (on C
 A desktop OS puts an unmapped *guard page* below each stack; overflow touches it and the process is killed at once.
 A microcontroller has no MMU and, unless you configure a protection unit, no guard. When the stack pointer moves
 below the space reserved for the stack, pushes continue to succeed. They are ordinary stores to ordinary RAM, which
-happens to contain the heap or ¬.bss¬. The symptoms appear later and elsewhere:
+happens to contain the heap or \`.bss\`. The symptoms appear later and elsewhere:
 
 - a global variable changes "by itself" (the stack wrote over it), or
 - a function returns to a garbage address (a global write went through the stack's saved return address), or
@@ -71,17 +71,17 @@ happens to contain the heap or ¬.bss¬. The symptoms appear later and elsewhere
   immediately. That is why some linker scripts deliberately put the stack first: a crash at the moment of
   overflow is far better than silent corruption.
 
-Large local arrays, recursion, and ¬printf¬-family functions (hundreds of bytes of frame) are the usual causes.`,
+Large local arrays, recursion, and \`printf\`-family functions (hundreds of bytes of frame) are the usual causes.`,
 
       { t: 'widget', name: 'stack-heap', props: { program: 'recursion' }, title: 'Recursion until the stack runs out',
         caption: 'Before stepping, predict which region the stack will reach first and what will be corrupted.' },
 
       `### The heap
 
-¬malloc(n)¬ finds a free block of at least *n* bytes in a region managed by the allocator, records its size in a
-small header, and returns its address. ¬free¬ returns the block. After many allocations and frees of different
+\`malloc(n)\` finds a free block of at least *n* bytes in a region managed by the allocator, records its size in a
+small header, and returns its address. \`free\` returns the block. After many allocations and frees of different
 sizes, free memory is split into small pieces between live blocks: **fragmentation**. The total free memory may be
-ample while no single piece is large enough, so ¬malloc¬ returns ¬NULL¬. A PC hides this with virtual memory and
+ample while no single piece is large enough, so \`malloc\` returns \`NULL\`. A PC hides this with virtual memory and
 gigabytes of space. A device with 32 KB of RAM that must run for years does not.
 
 Other heap hazards: use after free (the block has been given to someone else), double free (corrupts the
@@ -102,13 +102,13 @@ the state of the heap, which breaks timing guarantees.`,
           { t: 'Memory above the array: other locals, saved registers and the saved return address of this function', ok: true, why: 'The array is filled from low to high addresses; the frame\'s saved state lies at higher addresses, pushed earlier.' },
           { t: 'Nothing: the write faults at the end of the array', why: 'Nothing in C or in the hardware marks the end of a local array; they are plain stores.' },
         ],
-        reveal: 'The stack grows down, but buffers fill upward, straight toward the saved return address. That geometry is what makes stack buffer overflows exploitable, and it is the answer to this lesson\'s opening problem in the other direction: text written past the end of some buffer landed on a neighbouring variable. The security section\'s ¬stack-smash¬ tool lets you do it deliberately against a simulated target.' },
+        reveal: 'The stack grows down, but buffers fill upward, straight toward the saved return address. That geometry is what makes stack buffer overflows exploitable, and it is the answer to this lesson\'s opening problem in the other direction: text written past the end of some buffer landed on a neighbouring variable. The security section\'s \`stack-smash\` tool lets you do it deliberately against a simulated target.' },
 
       `### Finding out how much stack you use
 
-- **Static analysis**: compilers can report each function's frame size (GCC ¬-fstack-usage¬); add up the deepest
+- **Static analysis**: compilers can report each function's frame size (GCC \`-fstack-usage\`); add up the deepest
   call chain and the worst interrupt nesting.
-- **High-water mark**: at boot, fill the stack region with a pattern such as ¬0xA5¬; later, scan from the far end to
+- **High-water mark**: at boot, fill the stack region with a pattern such as \`0xA5\`; later, scan from the far end to
   find how far the pattern has been overwritten. RTOS kernels provide this per task.
 - **Guard**: place a known word at the end of the stack region and check it periodically, or configure the MPU
   (Cortex-M) so that an access to the guard region faults.`,
@@ -131,7 +131,7 @@ A 32-bit value occupies four byte addresses. **Byte order** says which byte goes
         caption: 'Do the cast-to-bytes and network-order tasks. Predict each byte before revealing it.' },
 
       `Byte order is invisible while you treat a value as a whole. It appears the moment bytes cross a boundary:
-a hex dump, a pointer cast, a ¬memcpy¬ of a struct into a packet, a sensor that sends its high byte first.
+a hex dump, a pointer cast, a \`memcpy\` of a struct into a packet, a sensor that sends its high byte first.
 
 The portable way to convert is to say exactly what you mean with shifts, which works on any CPU, at any alignment:`,
 
@@ -158,24 +158,24 @@ void put_be32(uint8_t *p, uint32_t v)
         ] },
 
       { t: 'callout', kind: 'mistake', title: 'Casting a byte buffer to a wider pointer',
-        md: '¬uint32_t v = *(uint32_t *)&rx_buf[3];¬ has three bugs in one line: it assumes the CPU\'s byte order matches the sender\'s, it may read from an unaligned address (which faults on a Cortex-M0+), and it violates C\'s aliasing rules, which lets an optimiser break it. Assemble the value from bytes instead.' },
+        md: '\`uint32_t v = *(uint32_t *)&rx_buf[3];\` has three bugs in one line: it assumes the CPU\'s byte order matches the sender\'s, it may read from an unaligned address (which faults on a Cortex-M0+), and it violates C\'s aliasing rules, which lets an optimiser break it. Assemble the value from bytes instead.' },
 
       { t: 'exercise',
-        prompt: `A little-endian MCU holds ¬uint32_t x = 0x0A0B0C0D;¬. Code executes ¬uint8_t *p = (uint8_t *)&x;¬ and then reads ¬p[1]¬. What value is read? Answer in hex.`,
+        prompt: `A little-endian MCU holds \`uint32_t x = 0x0A0B0C0D;\`. Code executes \`uint8_t *p = (uint8_t *)&x;\` and then reads \`p[1]\`. What value is read? Answer in hex.`,
         hints: [
           'p[0] is the byte at the lowest address.',
           'Little-endian puts the least significant byte, 0x0D, at the lowest address. What comes next?',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?0?ch?\\s*$'], nudge: 'List the four bytes in address order first.' },
-        solution: `In memory, lowest address first: ¬0D 0C 0B 0A¬. ¬p[1]¬ is **¬0x0C¬**. On a big-endian machine it would be ¬0x0B¬. (Reading an object through a ¬uint8_t¬ pointer is allowed by C; it is the wider casts that are dangerous.)` },
+        solution: `In memory, lowest address first: \`0D 0C 0B 0A\`. \`p[1]\` is **\`0x0C\`**. On a big-endian machine it would be \`0x0B\`. (Reading an object through a \`uint8_t\` pointer is allowed by C; it is the wider casts that are dangerous.)` },
 
       `## Harder application
 
-A sensor returns a 12-bit temperature left-justified in two bytes, high byte first: bytes ¬0x1C¬, ¬0x80¬. A driver
-does ¬int16_t raw = *(int16_t *)buf; temp = raw >> 4;¬ on a little-endian MCU and reports nonsense. Give the value
-the driver computes, the value it should compute, and a corrected expression. (The driver reads ¬0x801C¬, which as a
-signed 16-bit number is negative, then shifts: −2047. The intended value is ¬0x1C80 >> 4 = 0x1C8 = 456¬. Correct:
-¬(int16_t)((buf[0] << 8) | buf[1]) >> 4¬, and check the datasheet for whether the shift should be arithmetic.)`,
+A sensor returns a 12-bit temperature left-justified in two bytes, high byte first: bytes \`0x1C\`, \`0x80\`. A driver
+does \`int16_t raw = *(int16_t *)buf; temp = raw >> 4;\` on a little-endian MCU and reports nonsense. Give the value
+the driver computes, the value it should compute, and a corrected expression. (The driver reads \`0x801C\`, which as a
+signed 16-bit number is negative, then shifts: −2047. The intended value is \`0x1C80 >> 4 = 0x1C8 = 456\`. Correct:
+\`(int16_t)((buf[0] << 8) | buf[1]) >> 4\`, and check the datasheet for whether the shift should be arithmetic.)`,
     ],
     quiz: [
       { q: 'On an MCU with no MMU and no MPU configured, what happens at the moment the stack grows past its reserved area into .bss?', kind: 'arch', choices: [
@@ -221,8 +221,8 @@ signed 16-bit number is negative, then shifts: −2047. The intended value is ¬
     blocks: [
       `## The problem
 
-The debugger halts in a function called ¬HardFault_Handler¬. The call stack shows only that one function. LR holds
-¬0xFFFF_FFF9¬, which is not an address in your program. The firmware was working yesterday. Where was the
+The debugger halts in a function called \`HardFault_Handler\`. The call stack shows only that one function. LR holds
+\`0xFFFF_FFF9\`, which is not an address in your program. The firmware was working yesterday. Where was the
 processor when it went wrong, and why? Everything you need is in memory; you have to know where the core put it.`,
 
       `## Theory
@@ -231,22 +231,22 @@ processor when it went wrong, and why? Everything you need is in memory; you hav
 
 | Register | Role |
 |---|---|
-| ¬r0¬–¬r3¬ | Arguments and return value; a called function may overwrite them (caller-saved) |
-| ¬r4¬–¬r11¬ | Must be preserved by a called function (callee-saved) |
-| ¬r12¬ | Scratch (caller-saved) |
-| ¬r13¬ = **SP** | Stack pointer. Two physical registers exist, **MSP** and **PSP**; one is visible as SP at any time |
-| ¬r14¬ = **LR** | Link register: return address after ¬bl¬; holds an ¬EXC_RETURN¬ code inside a handler |
-| ¬r15¬ = **PC** | Program counter |
+| \`r0\`–\`r3\` | Arguments and return value; a called function may overwrite them (caller-saved) |
+| \`r4\`–\`r11\` | Must be preserved by a called function (callee-saved) |
+| \`r12\` | Scratch (caller-saved) |
+| \`r13\` = **SP** | Stack pointer. Two physical registers exist, **MSP** and **PSP**; one is visible as SP at any time |
+| \`r14\` = **LR** | Link register: return address after \`bl\`; holds an \`EXC_RETURN\` code inside a handler |
+| \`r15\` = **PC** | Program counter |
 | **xPSR** | Program status: N, Z, C, V flags; the Thumb state bit; and the number of the exception currently being handled (IPSR field) |
-| ¬PRIMASK¬ | 1 = mask all configurable-priority exceptions |
-| ¬BASEPRI¬, ¬FAULTMASK¬ | Finer masking; ARMv7-M only |
-| ¬CONTROL¬ | Selects PSP or MSP in thread mode, and privileged or unprivileged thread mode |
+| \`PRIMASK\` | 1 = mask all configurable-priority exceptions |
+| \`BASEPRI\`, \`FAULTMASK\` | Finer masking; ARMv7-M only |
+| \`CONTROL\` | Selects PSP or MSP in thread mode, and privileged or unprivileged thread mode |
 
 **Thumb.** Cortex-M executes only the Thumb instruction set: mostly 16-bit encodings for code density, with 32-bit
 encodings mixed in (Thumb-2). ARMv6-M (Cortex-M0+) has the 16-bit set plus a handful of 32-bit instructions (such as
-¬bl¬ and the system-register access instructions). ARMv7-M (Cortex-M3/M4) has the full Thumb-2 set, including
-hardware divide, bit-field instructions and conditional execution with ¬it¬ blocks. Low registers ¬r0¬–¬r7¬ are
-reachable by all 16-bit instructions; ¬r8¬–¬r12¬ only by some, which is why compilers for the M0+ prefer the low
+\`bl\` and the system-register access instructions). ARMv7-M (Cortex-M3/M4) has the full Thumb-2 set, including
+hardware divide, bit-field instructions and conditional execution with \`it\` blocks. Low registers \`r0\`–\`r7\` are
+reachable by all 16-bit instructions; \`r8\`–\`r12\` only by some, which is why compilers for the M0+ prefer the low
 ones.
 
 ### Modes and stacks
@@ -270,7 +270,7 @@ the **NVIC** (nested vectored interrupt controller), which is part of the core, 
 | 2 | NMI | Non-maskable interrupt |
 | 3 | HardFault | Any fault with no enabled specific handler, and all faults on ARMv6-M |
 | 4, 5, 6 | MemManage, BusFault, UsageFault | ARMv7-M only: MPU violation; bus error; undefined instruction, divide by zero, bad state |
-| 11 | SVCall | ¬svc¬ instruction: system call into an OS |
+| 11 | SVCall | \`svc\` instruction: system call into an OS |
 | 14 | PendSV | Software-requested, lowest priority: used for context switches |
 | 15 | SysTick | The core's 24-bit down-counting system timer |
 | 16+ | IRQ0… | Peripheral interrupts |
@@ -304,11 +304,11 @@ When an exception is taken, the hardware:
                       0xFFFFFFF9  return to thread mode,  frame on MSP
                       0xFFFFFFFD  return to thread mode,  frame on PSP   (RTOS task)` },
 
-      `The handler returns with an ordinary function return. Loading an ¬EXC_RETURN¬ value into PC is what tells the
+      `The handler returns with an ordinary function return. Loading an \`EXC_RETURN\` value into PC is what tells the
 core to pop the frame and resume. The stacked registers are exactly the caller-saved set, so handlers are plain
 C functions.
 
-With an FPU in use (Cortex-M4F), the frame can be extended with floating-point registers ¬s0¬–¬s15¬ and the
+With an FPU in use (Cortex-M4F), the frame can be extended with floating-point registers \`s0\`–\`s15\` and the
 floating-point status word. **Lazy stacking** reserves the space but only writes it if the handler actually uses
 the FPU, keeping latency low.`,
 
@@ -317,27 +317,27 @@ the FPU, keeping latency low.`,
 
       `## Worked example: where did it fault?
 
-Back to the opening problem. LR = ¬0xFFFF_FFF9¬ means "thread mode, frame on MSP". So the frame is at MSP. The
+Back to the opening problem. LR = \`0xFFFF_FFF9\` means "thread mode, frame on MSP". So the frame is at MSP. The
 debugger shows:
 
-¬¬¬
+\`\`\`
 (gdb) x/8xw $msp
 0x20007f98:  0x00000000  0x20000410  0x00000040  0x0000000a
 0x20007fa8:  0x00000000  0x0800123d  0x08001a52  0x61000000
-¬¬¬
+\`\`\`
 
-Reading it against the frame layout: r0 = 0, r1 = ¬0x2000_0410¬, r2 = ¬0x40¬, r3 = ¬0xA¬, r12 = 0,
-LR = ¬0x0800_123D¬, **PC = ¬0x0800_1A52¬**, xPSR = ¬0x6100_0000¬.
+Reading it against the frame layout: r0 = 0, r1 = \`0x2000_0410\`, r2 = \`0x40\`, r3 = \`0xA\`, r12 = 0,
+LR = \`0x0800_123D\`, **PC = \`0x0800_1A52\`**, xPSR = \`0x6100_0000\`.
 
-- The faulting instruction is at ¬0x0800_1A52¬. Ask the debugger: ¬info line *0x08001a52¬ or look it up in the
-  disassembly. Suppose it is a ¬str¬ through ¬r0¬ inside ¬memset¬.
+- The faulting instruction is at \`0x0800_1A52\`. Ask the debugger: \`info line *0x08001a52\` or look it up in the
+  disassembly. Suppose it is a \`str\` through \`r0\` inside \`memset\`.
 - r0 is 0: a write through a null pointer. On this (hypothetical) chip address 0 is flash, so the store faulted.
-- The stacked LR, ¬0x0800_123D¬, is where ¬memset¬ was called from (clear bit 0): that names the guilty caller.
+- The stacked LR, \`0x0800_123D\`, is where \`memset\` was called from (clear bit 0): that names the guilty caller.
 - xPSR has the Thumb bit (bit 24) set and an exception number of 0: the fault happened in thread mode.
 
 On an ARMv7-M core the fault status registers in the System Control Block (CFSR, HFSR, and the fault address
 registers MMFAR and BFAR) say more: which kind of fault, and for some bus faults the exact address accessed. ARMv6-M
-has none of these; the stacked frame is all the evidence there is. The ¬debug-session¬ tool in the debugging
+has none of these; the stacked frame is all the evidence there is. The \`debug-session\` tool in the debugging
 section lets you practise this on a simulated target.`,
 
       { t: 'predict',
@@ -366,17 +366,17 @@ refuses. Both course cores have one. Uses:
 |---|---|---|
 | Architecture | ARMv6-M | ARMv7E-M |
 | Instruction set | 16-bit Thumb plus a few 32-bit instructions | Full Thumb-2, plus DSP extension (saturating and SIMD-style arithmetic, single-cycle multiply-accumulate) |
-| Hardware divide | No (library routine) | Yes (¬sdiv¬, ¬udiv¬) |
-| Floating point | Software only (the eCTF 2026 build uses ¬-mfloat-abi=soft¬) | Single-precision FPU; ¬double¬ is still done in software |
+| Hardware divide | No (library routine) | Yes (\`sdiv\`, \`udiv\`) |
+| Floating point | Software only (the eCTF 2026 build uses \`-mfloat-abi=soft\`) | Single-precision FPU; \`double\` is still done in software |
 | Fault exceptions | HardFault only; no fault status registers | HardFault, MemManage, BusFault, UsageFault, with status and address registers |
-| Interrupt priority bits | 2 (4 levels) | 3 to 8, chip-specific: see the device header's ¬__NVIC_PRIO_BITS¬ |
+| Interrupt priority bits | 2 (4 levels) | 3 to 8, chip-specific: see the device header's \`__NVIC_PRIO_BITS\` |
 | Interrupt masking | PRIMASK only | PRIMASK, FAULTMASK, BASEPRI (mask below a chosen priority) |
 | Interrupt lines | Up to 32 | Up to 240 |
 | Unaligned access | Always faults | Supported for most instructions |
-| Lock-free updates | No exclusive-access instructions | ¬ldrex¬/¬strex¬ for lock-free updates |
+| Lock-free updates | No exclusive-access instructions | \`ldrex\`/\`strex\` for lock-free updates |
 | MPU, VTOR | Optional in the architecture; present on the MSPM0L2228 | Present |
 
-Practical consequences when moving code to the M0+: ¬float¬ arithmetic and division become slow library calls; code
+Practical consequences when moving code to the M0+: \`float\` arithmetic and division become slow library calls; code
 that relied on BASEPRI for critical sections must use PRIMASK; fault handlers have less to report; four priority
 levels must be shared among all interrupts.`,
 
@@ -384,21 +384,21 @@ levels must be shared among all interrupts.`,
         md: 'On Cortex-M the numerically lower value preempts the higher. And because only the top bits of the priority field exist, writing a raw value that uses unimplemented low bits silently rounds: on a 2-bit chip, raw priorities 0x00–0x3F are all the same level. Use the vendor or CMSIS priority-setting function and the number of levels from the device header.' },
 
       { t: 'callout', kind: 'security', title: 'What the architecture gives a defender',
-        md: 'Execute-never RAM regions, a stack guard region, privileged/unprivileged separation with ¬svc¬ as the only way in, and fault handlers that record PC and LR before resetting. None is enabled by default. Each one you turn on converts a class of silent corruption into an immediate, logged fault. Verify by writing a test that deliberately violates the rule and checking that the fault fires.' },
+        md: 'Execute-never RAM regions, a stack guard region, privileged/unprivileged separation with \`svc\` as the only way in, and fault handlers that record PC and LR before resetting. None is enabled by default. Each one you turn on converts a class of silent corruption into an immediate, logged fault. Verify by writing a test that deliberately violates the rule and checking that the fault fires.' },
 
       { t: 'exercise',
-        prompt: `In a HardFault handler on a Cortex-M0+, LR holds ¬0xFFFFFFF9¬ and MSP is ¬0x2020_7FA0¬. At what address is the stacked PC (the address of the instruction that was executing when the fault occurred)? Answer in hex.`,
+        prompt: `In a HardFault handler on a Cortex-M0+, LR holds \`0xFFFFFFF9\` and MSP is \`0x2020_7FA0\`. At what address is the stacked PC (the address of the instruction that was executing when the fault occurred)? Answer in hex.`,
         hints: [
           'The frame starts at SP with r0, then r1, r2, r3, r12, LR, PC, xPSR, four bytes each.',
           'PC is the seventh word: offset 6 × 4 = 0x18.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?2020_?7fb8h?\\s*$'], nudge: 'Count the words from r0 at offset 0.' },
-        solution: `¬0xFFFFFFF9¬ confirms the frame is on MSP. PC is at offset ¬0x18¬: ¬0x2020_7FA0 + 0x18¬ = **¬0x2020_7FB8¬**. Read that word (¬x/xw 0x20207fb8¬) to get the faulting instruction's address.` },
+        solution: `\`0xFFFFFFF9\` confirms the frame is on MSP. PC is at offset \`0x18\`: \`0x2020_7FA0 + 0x18\` = **\`0x2020_7FB8\`**. Read that word (\`x/xw 0x20207fb8\`) to get the faulting instruction's address.` },
 
       `## Harder application
 
 Write, in words, a HardFault handler that works on both course cores and gives a field engineer something useful.
-Consider: which stack pointer holds the frame (test bit 2 of ¬EXC_RETURN¬), what to do if the fault *was* a stack
+Consider: which stack pointer holds the frame (test bit 2 of \`EXC_RETURN\`), what to do if the fault *was* a stack
 overflow so the stack itself is unusable (switch to a small dedicated stack first), where to store the stacked PC
 and LR so they survive the reset that follows (a no-init RAM section, checked and reported on the next boot),
 and what must not be done in the handler (anything that could fault again, since a fault inside HardFault locks
@@ -456,7 +456,7 @@ the core up).`,
       `## The problem
 
 You move a project from the original ESP32 to an ESP32-C3 because of cost. The C code compiles. The crash dump,
-however, no longer talks about the registers you learned: it lists ¬MEPC¬, ¬MCAUSE¬, ¬MTVAL¬, ¬RA¬, ¬SP¬, ¬A0¬.
+however, no longer talks about the registers you learned: it lists \`MEPC\`, \`MCAUSE\`, \`MTVAL\`, \`RA\`, \`SP\`, \`A0\`.
 Meanwhile the MAX78000 on the next bench has a second core that the documentation calls "RV32". To debug either,
 you need a second mental model beside the Cortex-M one.`,
 
@@ -485,23 +485,23 @@ only be 2-byte aligned.
 
 ### Registers
 
-There are 32 integer registers ¬x0¬–¬x31¬ and a separate ¬pc¬. ¬x0¬ is hard-wired to zero: writes are discarded.
+There are 32 integer registers \`x0\`–\`x31\` and a separate \`pc\`. \`x0\` is hard-wired to zero: writes are discarded.
 Nothing in the hardware makes any other register special; their roles come from the calling convention (ABI), and
 tools show the ABI names.
 
 | Register | ABI name | Role | Saved by |
 |---|---|---|---|
-| ¬x0¬ | ¬zero¬ | Constant 0 | — |
-| ¬x1¬ | ¬ra¬ | Return address | caller |
-| ¬x2¬ | ¬sp¬ | Stack pointer | callee |
-| ¬x3¬ | ¬gp¬ | Global pointer | — |
-| ¬x4¬ | ¬tp¬ | Thread pointer | — |
-| ¬x5¬–¬x7¬, ¬x28¬–¬x31¬ | ¬t0¬–¬t6¬ | Temporaries | caller |
-| ¬x8¬, ¬x9¬, ¬x18¬–¬x27¬ | ¬s0¬/¬fp¬, ¬s1¬–¬s11¬ | Saved registers | callee |
-| ¬x10¬–¬x17¬ | ¬a0¬–¬a7¬ | Arguments; ¬a0¬/¬a1¬ return values | caller |
+| \`x0\` | \`zero\` | Constant 0 | — |
+| \`x1\` | \`ra\` | Return address | caller |
+| \`x2\` | \`sp\` | Stack pointer | callee |
+| \`x3\` | \`gp\` | Global pointer | — |
+| \`x4\` | \`tp\` | Thread pointer | — |
+| \`x5\`–\`x7\`, \`x28\`–\`x31\` | \`t0\`–\`t6\` | Temporaries | caller |
+| \`x8\`, \`x9\`, \`x18\`–\`x27\` | \`s0\`/\`fp\`, \`s1\`–\`s11\` | Saved registers | callee |
+| \`x10\`–\`x17\` | \`a0\`–\`a7\` | Arguments; \`a0\`/\`a1\` return values | caller |
 
-There is **no flags register**. A conditional branch compares two registers itself: ¬beq a0, a1, label¬,
-¬bltu t0, t1, label¬. A call is ¬jal ra, target¬ (jump and link); return is ¬jalr zero, 0(ra)¬, written ¬ret¬.
+There is **no flags register**. A conditional branch compares two registers itself: \`beq a0, a1, label\`,
+\`bltu t0, t1, label\`. A call is \`jal ra, target\` (jump and link); return is \`jalr zero, 0(ra)\`, written \`ret\`.
 
 ### Privilege modes and CSRs
 
@@ -509,36 +509,36 @@ RISC-V defines privilege modes: **Machine (M)**, always present and all-powerful
 and **User (U)**. A small microcontroller core implements M only, or M and U.
 
 The processor's control state lives in **control and status registers (CSRs)**, a separate 12-bit address space
-reached only by special instructions (¬csrr¬ to read, ¬csrw¬ to write, ¬csrs¬/¬csrc¬ to set or clear bits). They
+reached only by special instructions (\`csrr\` to read, \`csrw\` to write, \`csrs\`/\`csrc\` to set or clear bits). They
 are *not* memory-mapped.
 
 | CSR | Purpose |
 |---|---|
-| ¬mstatus¬ | Global state. Bit 3 **MIE**: machine interrupts enabled. Bit 7 **MPIE**: the previous MIE, saved on trap entry. Bits 12:11 **MPP**: the previous privilege mode |
-| ¬mtvec¬ | Trap vector base address. Low 2 bits select the mode: 0 = **direct** (every trap jumps to the base), 1 = **vectored** (interrupts jump to base + 4 × cause) |
-| ¬mepc¬ | PC of the instruction that was interrupted or that caused the exception |
-| ¬mcause¬ | Why: top bit 1 = interrupt, 0 = exception; the remaining bits are the cause code |
-| ¬mtval¬ | Extra information: the faulting address, or the bad instruction |
-| ¬mie¬ / ¬mip¬ | Per-source interrupt enable / pending bits |
-| ¬mscratch¬ | A spare word for the trap handler, typically a pointer to a save area |
+| \`mstatus\` | Global state. Bit 3 **MIE**: machine interrupts enabled. Bit 7 **MPIE**: the previous MIE, saved on trap entry. Bits 12:11 **MPP**: the previous privilege mode |
+| \`mtvec\` | Trap vector base address. Low 2 bits select the mode: 0 = **direct** (every trap jumps to the base), 1 = **vectored** (interrupts jump to base + 4 × cause) |
+| \`mepc\` | PC of the instruction that was interrupted or that caused the exception |
+| \`mcause\` | Why: top bit 1 = interrupt, 0 = exception; the remaining bits are the cause code |
+| \`mtval\` | Extra information: the faulting address, or the bad instruction |
+| \`mie\` / \`mip\` | Per-source interrupt enable / pending bits |
+| \`mscratch\` | A spare word for the trap handler, typically a pointer to a save area |
 
 Standard cause codes worth recognising: interrupts 3 (machine software), 7 (machine timer), 11 (machine external);
 exceptions 0 (instruction address misaligned), 1 (instruction access fault), 2 (illegal instruction), 3
-(breakpoint), 4/6 (load/store address misaligned), 5/7 (load/store access fault), 8/11 (¬ecall¬ from U/M mode).
+(breakpoint), 4/6 (load/store address misaligned), 5/7 (load/store access fault), 8/11 (\`ecall\` from U/M mode).
 
 ### Taking a trap
 
 "Trap" covers both interrupts and exceptions. In machine mode the hardware does this and no more:
 
-1. ¬mepc¬ ← current PC.
-2. ¬mcause¬ ← cause (and ¬mtval¬ ← detail).
-3. ¬mstatus.MPIE¬ ← ¬mstatus.MIE¬; ¬mstatus.MIE¬ ← 0 (interrupts off); ¬mstatus.MPP¬ ← current mode.
-4. PC ← address derived from ¬mtvec¬.
+1. \`mepc\` ← current PC.
+2. \`mcause\` ← cause (and \`mtval\` ← detail).
+3. \`mstatus.MPIE\` ← \`mstatus.MIE\`; \`mstatus.MIE\` ← 0 (interrupts off); \`mstatus.MPP\` ← current mode.
+4. PC ← address derived from \`mtvec\`.
 
 No general register is saved and nothing is pushed. The handler must save every register it will use, do its
-work, restore them, and execute ¬mret¬, which restores MIE from MPIE, the mode from MPP, and PC from ¬mepc¬.
-For a synchronous exception such as ¬ecall¬, ¬mepc¬ points *at* the instruction, so a handler that wants to continue
-after it must add the instruction's length to ¬mepc¬ first.`,
+work, restore them, and execute \`mret\`, which restores MIE from MPIE, the mode from MPP, and PC from \`mepc\`.
+For a synchronous exception such as \`ecall\`, \`mepc\` points *at* the instruction, so a handler that wants to continue
+after it must add the instruction's length to \`mepc\` first.`,
 
       { t: 'widget', name: 'interrupt-flow', props: { arch: 'riscv' }, title: 'A RISC-V machine-mode trap',
         caption: 'Step it and list, in order, every CSR the hardware writes. Then list what the software prologue has to save.' },
@@ -560,17 +560,17 @@ after it must add the instruction's length to ¬mepc¬ first.`,
     addi  sp, sp, 64
     mret                       # MIE <- MPIE, pc <- mepc`,
         explain: [
-          { lines: '2-5', md: 'This is the work a Cortex-M does in hardware. Here it is visible, and costs instructions and time. A compiler emits the equivalent for functions marked ¬__attribute__((interrupt))¬.' },
-          { lines: '7-8', md: 'CSRs are read with ¬csrr¬ into ordinary registers; they cannot be loaded from an address.' },
-          { lines: '9', md: 'The C function is a normal function, so it preserves the callee-saved registers ¬s0¬–¬s11¬ itself. That is why the stub need not save them.' },
-          { lines: '15', md: '¬mret¬ is the only way back. A plain ¬ret¬ would jump to whatever ¬ra¬ holds and leave interrupts disabled.' },
+          { lines: '2-5', md: 'This is the work a Cortex-M does in hardware. Here it is visible, and costs instructions and time. A compiler emits the equivalent for functions marked \`__attribute__((interrupt))\`.' },
+          { lines: '7-8', md: 'CSRs are read with \`csrr\` into ordinary registers; they cannot be loaded from an address.' },
+          { lines: '9', md: 'The C function is a normal function, so it preserves the callee-saved registers \`s0\`–\`s11\` itself. That is why the stub need not save them.' },
+          { lines: '15', md: '\`mret\` is the only way back. A plain \`ret\` would jump to whatever \`ra\` holds and leave interrupts disabled.' },
         ] },
 
       `### Interrupt controllers
 
 The core has just three standard machine interrupt inputs: software, timer, external. The classic companions are:
 
-- **CLINT** (core-local interruptor): memory-mapped ¬mtime¬ and ¬mtimecmp¬ registers that raise the timer interrupt
+- **CLINT** (core-local interruptor): memory-mapped \`mtime\` and \`mtimecmp\` registers that raise the timer interrupt
   when time reaches the compare value, and a software-interrupt bit.
 - **PLIC** (platform-level interrupt controller): gathers many peripheral sources into the one external interrupt.
   Each source has a priority and an enable; the handler *claims* the highest-priority pending source by reading a
@@ -584,8 +584,8 @@ reference manual.
 
 **ESP32 family.** The original ESP32 and the ESP32-S3 use Xtensa cores (two of them). The **ESP32-C3 and ESP32-C6
 are RISC-V**, single core, with CPU frequencies up to 160 MHz. Their ROM loads the second-stage bootloader from
-flash offset ¬0x0¬, not ¬0x1000¬. ESP-IDF hides most of the difference; you meet RISC-V in panic dumps (which list
-MEPC, MCAUSE, MTVAL and the ABI-named registers), in the debugger, and in any assembly or ¬naked¬ functions.
+flash offset \`0x0\`, not \`0x1000\`. ESP-IDF hides most of the difference; you meet RISC-V in panic dumps (which list
+MEPC, MCAUSE, MTVAL and the ABI-named registers), in the debugger, and in any assembly or \`naked\` functions.
 
 **MAX78000.** Besides the Cortex-M4 there is a RISC-V core. It does not start by itself: the Arm core must set
 it up and hand over, the two share peripherals and coordinate through inter-core semaphores, and it is debugged
@@ -602,7 +602,7 @@ extensions it implements is a user-guide item; look it up before writing code fo
         reveal: 'The failure is intermittent, because it depends on what the interrupted code had in its temporaries and in ra at that instant. This is the single most important behavioural difference from Cortex-M: there, a handler is a C function; here, something must make it one.' },
 
       { t: 'callout', kind: 'mistake', title: 'Looking for a flags register',
-        md: 'People coming from Arm search a RISC-V register dump for N, Z, C, V. There are none. Comparisons happen inside the branch instruction, and carry is computed explicitly with ¬sltu¬ when multi-word arithmetic needs it. In disassembly, read the branch itself to see the condition.' },
+        md: 'People coming from Arm search a RISC-V register dump for N, Z, C, V. There are none. Comparisons happen inside the branch instruction, and carry is computed explicitly with \`sltu\` when multi-word arithmetic needs it. In disassembly, read the branch itself to see the condition.' },
 
       { t: 'callout', kind: 'decision', title: 'Does the architecture matter for your application?',
         md: 'For C application code, rarely: the compiler and the vendor SDK hide it. It matters for start-up code, interrupt entry, context switches, fault diagnosis, reading disassembly during reverse engineering, and anything timing-critical. Choose a chip for its peripherals, memory, power, tools and security features first; then learn the architecture it happens to bring.' },
@@ -611,23 +611,23 @@ extensions it implements is a user-guide item; look it up before writing code fo
 
 A panic dump on a RISC-V MCU shows:
 
-¬¬¬
+\`\`\`
 MEPC    : 0x42001a3c   RA : 0x42001a20   SP : 0x3fc91f40
 MCAUSE  : 0x00000007   MTVAL : 0x00000004
-¬¬¬
+\`\`\`
 
-- ¬mcause¬ top bit is 0: an exception, not an interrupt. Code 7: store access fault.
-- ¬mtval¬ = 4: the address the store tried to write. Address 4 is a null pointer plus an offset of 4, typically
-  writing the second field of a struct through a ¬NULL¬ pointer.
-- ¬mepc¬ = ¬0x4200_1A3C¬: the store instruction. Look it up with ¬addr2line¬ or the debugger.
-- ¬ra¬ = ¬0x4200_1A20¬: the current function was called from just before that address (or is the same function, if
+- \`mcause\` top bit is 0: an exception, not an interrupt. Code 7: store access fault.
+- \`mtval\` = 4: the address the store tried to write. Address 4 is a null pointer plus an offset of 4, typically
+  writing the second field of a struct through a \`NULL\` pointer.
+- \`mepc\` = \`0x4200_1A3C\`: the store instruction. Look it up with \`addr2line\` or the debugger.
+- \`ra\` = \`0x4200_1A20\`: the current function was called from just before that address (or is the same function, if
   it has made no calls yet).
 
-Had ¬mcause¬ been ¬0x8000_0007¬, the top bit would mark an interrupt and code 7 would mean the machine timer.
+Had \`mcause\` been \`0x8000_0007\`, the top bit would mark an interrupt and code 7 would mean the machine timer.
 The same number means different things depending on that bit.`,
 
       { t: 'exercise',
-        prompt: `A RISC-V core reports ¬mcause = 0x8000000B¬. Is this an interrupt or an exception, and which standard cause is it? Answer with the cause's usual name.`,
+        prompt: `A RISC-V core reports \`mcause = 0x8000000B\`. Is this an interrupt or an exception, and which standard cause is it? Answer with the cause's usual name.`,
         hints: [
           'The most significant bit distinguishes interrupts from exceptions.',
           'The low bits are 0xB = 11. Look up interrupt code 11 in the table above.',

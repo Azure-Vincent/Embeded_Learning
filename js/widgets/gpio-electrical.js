@@ -85,7 +85,7 @@ export default function mount(el, props = {}, ctx = {}) {
       rail(52, 40, 'VDD'), g({ class: st.mode === 'od' || !out ? 'off' : '' }, sw(52, 40, 'v', hi)), txt(40, 66, 'P', { anchor: 'end', cls: hi ? 'good' : 'sub' }),
       wire([52, 80], [52, 120]), g({ class: !out ? 'off' : '' }, sw(52, 120, 'v', lo)), gnd(52, 160), txt(40, 146, 'N', { anchor: 'end', cls: lo ? 'good' : 'sub' }),
       txt(18, 194, !out ? 'driver off (hi-Z)' : st.mode === 'od' ? 'open-drain: P unused' : 'push-pull', { cls: 'sub' }),
-      wire([52, Y], [178, Y]), dot(52, Y), s('rect', { x: 174, y: Y - 6, width: 12, height: 12, class: 'el-body' }), txt(180, Y - 13, 'pad', { anchor: 'middle', cls: 'sub' }),
+      wire([52, Y], [178, Y]), dot(52, Y), s('rect', { x: 174, y: Y - 6, width: 12, height: 12, class: 'el-body' }), txt(180, Y - 17, 'pad', { anchor: 'middle', cls: 'sub' }),
       st.pull === 'up' ? g({}, rail(104, 40, 'VDD'), resistor(104, 40, 'v', '45 kΩ'), dot(104, Y)) : null,
       st.pull === 'down' ? g({}, resistor(104, Y, 'v', '45 kΩ'), gnd(104, 160), dot(104, Y)) : null,
       // input buffer

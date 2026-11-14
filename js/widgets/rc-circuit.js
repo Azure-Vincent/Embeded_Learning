@@ -72,7 +72,7 @@ export default function mount(el, props = {}) {
   function debounce() {
     const edges = bounceEdges({ bounceMs: st.bounce, seed: st.seed });
     const sim = simulateDebounce({ r: st.r, c: st.c, rp: RP, vcc: VCC, vtLow: VT_LOW, vtHigh: VT_HIGH, edges, duration: WINDOW });
-    const X = { x: 44, w: 282 }, n = sim.raw.length, tx = (k) => X.x + k / (n - 1) * X.w;
+    const X = { x: 44, w: 270 }, n = sim.raw.length, tx = (k) => X.x + k / (n - 1) * X.w;
     const row = (y, hgt) => scale({ x: X.x, y, w: X.w, h: hgt }, 0, WINDOW, 0, 1);
     const digital = (arr, sc0) => { const p = []; let prev = arr[0]; p.push([tx(0), sc0.y(prev * 0.8 + 0.1)]); for (let k = 1; k < n; k++) { if (arr[k] !== prev) { p.push([tx(k), sc0.y(prev * 0.8 + 0.1)], [tx(k), sc0.y(arr[k] * 0.8 + 0.1)]); prev = arr[k]; } } p.push([tx(n - 1), sc0.y(prev * 0.8 + 0.1)]); return p; };
     const r1 = row(178, 44), r2 = scale({ x: X.x, y: 244, w: X.w, h: 84 }, 0, WINDOW, 0, VCC * 1.05), r3 = row(350, 44);

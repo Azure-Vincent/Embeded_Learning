@@ -171,7 +171,7 @@ handler. The opposite mistake, clearing *all* flags with \`|=\`, discards events
       title: 'Debug: pulses that go missing',
       prompt: `A timer interrupt stands in for the flow-meter pulse: each one adds to \`produced\` and \`pending\`. The main loop takes pulses off \`pending\` one at a time and counts them in \`handled\`. At the end \`produced - handled\` should be 0.
 
-The decrement is written as three statements to match the load, modify and store instructions a compiler emits for \`pending--\`. Run it a few times and look at \`lost\`. Then make the decrement safe with a critical section (\`irq_disable()\` / \`irq_enable()\`). Keep the critical section as short as you can.`,
+The decrement is written as three statements to match the load, modify and store instructions a compiler emits for \`pending--\`. Run it and look at \`lost\`: the pulses arrive while main is in the middle of a decrement. Then make the decrement safe with a critical section (\`irq_disable()\` / \`irq_enable()\`). Keep the critical section as short as you can.`,
       starter: C`
 #include <stdint.h>
 #include <stdio.h>
@@ -191,7 +191,7 @@ int main(void)
     uint32_t handled = 0;
 
     irq_attach(IRQ_TIMER, timer_isr);
-    TIM_LOAD = 9;
+    TIM_LOAD = 7;                     /* pulses arrive faster than main handles them */
     TIM_CTRL = 0x7u;                  /* ENABLE | AUTO_RELOAD | IRQ_EN */
 
     while (produced < 40) {
@@ -232,7 +232,7 @@ int main(void)
     uint32_t handled = 0;
 
     irq_attach(IRQ_TIMER, timer_isr);
-    TIM_LOAD = 9;
+    TIM_LOAD = 7;                     /* pulses arrive faster than main handles them */
     TIM_CTRL = 0x7u;                  /* ENABLE | AUTO_RELOAD | IRQ_EN */
 
     while (produced < 40) {

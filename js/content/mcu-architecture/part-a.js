@@ -54,11 +54,11 @@ the module, which is why you must not use them. So an ESP32-WROOM is: a module, 
 an MCU once the flash is attached. A development board (DevKitC and similar) is a third layer: module plus USB-to-UART
 bridge, regulator and buttons.
 
-**MAX78000.** A single-die MCU: Arm Cortex-M4 with FPU, 512 KB flash at ¬0x1000_0000¬, 128 KB SRAM at
-¬0x2000_0000¬, plus a second, RISC-V core and a convolutional neural-network accelerator. The MAX78000FTHR board
+**MAX78000.** A single-die MCU: Arm Cortex-M4 with FPU, 512 KB flash at \`0x1000_0000\`, 128 KB SRAM at
+\`0x2000_0000\`, plus a second, RISC-V core and a convolutional neural-network accelerator. The MAX78000FTHR board
 adds a debug adapter (a MAX32625PICO presenting as a DAPLink drive), LEDs and buttons.
 
-**MSPM0L2228.** A single-die MCU: Arm Cortex-M0+, 256 KB flash at ¬0x0000_0000¬, 32 KB SRAM at ¬0x2020_0000¬,
+**MSPM0L2228.** A single-die MCU: Arm Cortex-M0+, 256 KB flash at \`0x0000_0000\`, 32 KB SRAM at \`0x2020_0000\`,
 with an LCD controller and security peripherals (AES, TRNG, key store). The evaluation board is the LP-MSPM0L2228.`,
 
       { t: 'widget', name: 'mcu-block-diagram', props: { platform: 'esp32' }, title: 'ESP32',
@@ -157,9 +157,9 @@ semaphores for the last one. You will meet all three ideas later in this section
     blocks: [
       `## The problem
 
-A debugger halts your firmware and shows ¬pc = 0x0800_0124¬, eight registers full of hex, and one line of assembly.
-The C source line it claims to be on is ¬count += 1;¬ and yet single-stepping takes three steps to get past it.
-Why three? And why did an interrupt that fired "during" that line see the old value of ¬count¬?
+A debugger halts your firmware and shows \`pc = 0x0800_0124\`, eight registers full of hex, and one line of assembly.
+The C source line it claims to be on is \`count += 1;\` and yet single-stepping takes three steps to get past it.
+Why three? And why did an interrupt that fired "during" that line see the old value of \`count\`?
 
 To answer you need the model of what the processor does on each step.`,
 
@@ -184,16 +184,16 @@ The state it works on is small:
 
 Arm Cortex-M and RISC-V are **load/store** (RISC) machines: arithmetic works only on registers. Memory is touched
 by exactly two kinds of instruction, *load* (memory → register) and *store* (register → memory). There is no
-"add 1 to this memory location" instruction. So ¬count += 1¬ on a global becomes:
+"add 1 to this memory location" instruction. So \`count += 1\` on a global becomes:
 
-¬¬¬
+\`\`\`
 load   r0 ← [address of count]
 add    r0 ← r0 + 1
 store  [address of count] ← r0
-¬¬¬
+\`\`\`
 
-That is the three steps. Between the load and the store the only up-to-date copy of the value is in ¬r0¬.
-An interrupt arriving there sees stale memory. Keep this picture: it explains ¬volatile¬, read-modify-write
+That is the three steps. Between the load and the store the only up-to-date copy of the value is in \`r0\`.
+An interrupt arriving there sees stale memory. Keep this picture: it explains \`volatile\`, read-modify-write
 races on registers, and every lost-update bug in the RTOS section.
 
 ### Pipelines, briefly
@@ -209,7 +209,7 @@ firmware, only to explain odd PC values and why branches cost more than straight
 
       `## On real hardware
 
-Compile ¬count += 1;¬ for a Cortex-M0+ with optimisation and you get something of this shape:`,
+Compile \`count += 1;\` for a Cortex-M0+ with optimisation and you get something of this shape:`,
 
       { t: 'code', lang: 'asm', status: 'reviewed', caption: 'Typical Thumb code for incrementing a global (register choice and literal layout vary by compiler)',
         code: R`    ldr   r3, .L_count_addr   @ r3 = address of count (a constant stored near the code)
@@ -221,7 +221,7 @@ Compile ¬count += 1;¬ for a Cortex-M0+ with optimisation and you get something
     .word count               @ the linker fills in the 32-bit address`,
         explain: [
           { lines: '1', md: 'A 16-bit Thumb instruction cannot hold a 32-bit address, so the compiler places the address in a *literal pool* near the function and loads it PC-relative.' },
-          { lines: '2', md: 'A bus read. If ¬count¬ were a peripheral register, this read is what the peripheral sees.' },
+          { lines: '2', md: 'A bus read. If \`count\` were a peripheral register, this read is what the peripheral sees.' },
           { lines: '3', md: 'Pure register arithmetic: no bus activity, cannot be observed from outside the CPU.' },
           { lines: '4', md: 'A bus write. Only now does memory, or a peripheral, change.' },
         ] },
@@ -236,50 +236,50 @@ Compile ¬count += 1;¬ for a Cortex-M0+ with optimisation and you get something
           { t: 'The Z flag, which the compare set by subtracting and discarding the result', ok: true, why: 'Compare is a subtract that only updates flags. The conditional branch looks at the flags and nothing else.' },
           { t: 'The value in the program counter', why: 'PC says where execution is, not what the outcome of a comparison was.' },
         ],
-        reveal: 'Decisions are always two steps: an instruction that sets flags, then an instruction that tests them. If anything between the two changes the flags (on Arm, most arithmetic with an ¬s¬ suffix), the branch tests the wrong thing. Compilers get this right; hand-written assembly and fault-injection attacks both exploit the gap.' },
+        reveal: 'Decisions are always two steps: an instruction that sets flags, then an instruction that tests them. If anything between the two changes the flags (on Arm, most arithmetic with an \`s\` suffix), the branch tests the wrong thing. Compilers get this right; hand-written assembly and fault-injection attacks both exploit the gap.' },
 
       `## Function calls
 
-A call must remember where to come back to. On Arm, ¬bl target¬ ("branch with link") copies the address of the next
+A call must remember where to come back to. On Arm, \`bl target\` ("branch with link") copies the address of the next
 instruction into the **link register (LR)** and loads PC with the target. Return is "load PC from LR". If the
 function itself calls another function, LR would be overwritten, so it first pushes LR onto the stack and pops
-it back into PC at the end. RISC-V does the same thing with the ¬ra¬ register and ¬jal¬/¬ret¬.`,
+it back into PC at the end. RISC-V does the same thing with the \`ra\` register and \`jal\`/\`ret\`.`,
 
       { t: 'widget', name: 'cpu-stepper', props: { program: 'call' }, title: 'Call and return',
         caption: 'Step through the call. Write down the value saved as the return address before you step the return.' },
 
       { t: 'callout', kind: 'mistake', title: 'Believing one C statement is one indivisible step',
-        md: 'No C statement that touches memory is atomic on a load/store machine unless the hardware gives you a special instruction or you disable interrupts around it. ¬flags |= 4;¬ is load, OR, store. Treat every read-modify-write as three separate events.' },
+        md: 'No C statement that touches memory is atomic on a load/store machine unless the hardware gives you a special instruction or you disable interrupts around it. \`flags |= 4;\` is load, OR, store. Treat every read-modify-write as three separate events.' },
 
       { t: 'callout', kind: 'security', title: 'Why this matters to an attacker',
         md: 'The return address is ordinary data: in LR for a moment, then on the stack next to local arrays. Overwrite it and "return" becomes "jump where I say". The stack-smashing material in the security section depends on exactly the call sequence you just stepped through.' },
 
       { t: 'exercise',
-        prompt: `A load/store CPU executes the following. Memory word at address ¬0x2000_0010¬ initially holds 7.
+        prompt: `A load/store CPU executes the following. Memory word at address \`0x2000_0010\` initially holds 7.
 
-¬¬¬
+\`\`\`
 1: load  r1 ← [0x2000_0010]
 2: add   r1 ← r1 + r1
 3: load  r2 ← [0x2000_0010]
 4: add   r1 ← r1 + r2
 5: store [0x2000_0010] ← r1
-¬¬¬
+\`\`\`
 
-An interrupt handler runs between instructions 2 and 3 and stores the value 1 to ¬0x2000_0010¬. The handler
+An interrupt handler runs between instructions 2 and 3 and stores the value 1 to \`0x2000_0010\`. The handler
 preserves all registers. What value does memory hold after instruction 5?`,
         hints: [
           'After instruction 2, r1 = 14 and that value lives only in the register.',
           'Instruction 3 reads memory again. What does memory hold at that moment?',
         ],
         answer: { type: 'number', value: 15 },
-        solution: `After 2: ¬r1 = 14¬. The handler writes 1 to memory. Instruction 3 loads ¬r2 = 1¬. Instruction 4: ¬r1 = 15¬. Instruction 5 stores **15**. Without the interrupt the answer would be 21. The program used two different values of the "same" variable in one calculation.` },
+        solution: `After 2: \`r1 = 14\`. The handler writes 1 to memory. Instruction 3 loads \`r2 = 1\`. Instruction 4: \`r1 = 15\`. Instruction 5 stores **15**. Without the interrupt the answer would be 21. The program used two different values of the "same" variable in one calculation.` },
 
       `## Harder application
 
-A colleague writes ¬if (sensor_ready) { value = sensor_data; }¬ where both variables are written by an interrupt
-handler. Using only the load/store model, describe a sequence in which ¬value¬ receives data belonging to the
-*next* reading rather than the one that set ¬sensor_ready¬. (The handler runs between the load of ¬sensor_ready¬
-and the load of ¬sensor_data¬. The fix, taking both under one protected section, is the subject of the
+A colleague writes \`if (sensor_ready) { value = sensor_data; }\` where both variables are written by an interrupt
+handler. Using only the load/store model, describe a sequence in which \`value\` receives data belonging to the
+*next* reading rather than the one that set \`sensor_ready\`. (The handler runs between the load of \`sensor_ready\`
+and the load of \`sensor_data\`. The fix, taking both under one protected section, is the subject of the
 RTOS section.)`,
     ],
     quiz: [
@@ -321,7 +321,7 @@ RTOS section.)`,
     blocks: [
       `## The problem
 
-A vendor example turns an LED on with ¬gpio_set_level(5, 1)¬. You are asked to do the same from a 200-byte
+A vendor example turns an LED on with \`gpio_set_level(5, 1)\`. You are asked to do the same from a 200-byte
 bootloader stub that cannot link the vendor library. Somewhere under that function call is one store instruction to
 one address. Which address, which value, and how do you find them without the library?`,
 
@@ -345,7 +345,7 @@ Consequences that differ from ordinary memory:
 | **RW** | Read/write, reads back what was written | read-modify-write |
 | **RO** | Read-only; writes ignored | do not rely on writes |
 | **WO** | Write-only; reads undefined or 0 | plain write, keep a shadow copy if you need the value |
-| **W1C** | Write 1 to clear; writing 0 does nothing | write a mask with only the flags you handled. **Never** ¬|=¬ |
+| **W1C** | Write 1 to clear; writing 0 does nothing | write a mask with only the flags you handled. **Never** \`|=\` |
 | **W1S / W1T** | Write 1 to set / toggle | plain write of a mask |
 | **Reserved** | Not implemented or for the vendor's use | preserve the read value, or write the documented reset value. Never assume 0 |`,
 
@@ -356,18 +356,18 @@ table of registers by **offset**, then a bit-field table for each. The Bench-MCU
 
 | Offset | Name | Access | Fields |
 |---|---|---|---|
-| ¬0x00¬ | ¬TIM_CTRL¬ | RW | bit 0 ¬ENABLE¬, bit 1 ¬AUTO_RELOAD¬, bit 2 ¬IRQ_EN¬ |
-| ¬0x04¬ | ¬TIM_LOAD¬ | RW | reload value |
-| ¬0x08¬ | ¬TIM_COUNT¬ | RO | current count |
-| ¬0x0C¬ | ¬TIM_STATUS¬ | RW, W1C | bit 0 ¬EXPIRED¬ |
+| \`0x00\` | \`TIM_CTRL\` | RW | bit 0 \`ENABLE\`, bit 1 \`AUTO_RELOAD\`, bit 2 \`IRQ_EN\` |
+| \`0x04\` | \`TIM_LOAD\` | RW | reload value |
+| \`0x08\` | \`TIM_COUNT\` | RO | current count |
+| \`0x0C\` | \`TIM_STATUS\` | RW, W1C | bit 0 \`EXPIRED\` |
 
-Base ¬0x4000_2000¬. So "start the timer in auto-reload mode" is: store ¬0x3¬ to address ¬0x4000_2000¬.
-"Has it expired?" is: load from ¬0x4000_200C¬ and test bit 0. "Acknowledge the expiry" is: store ¬0x1¬ to
-¬0x4000_200C¬.
+Base \`0x4000_2000\`. So "start the timer in auto-reload mode" is: store \`0x3\` to address \`0x4000_2000\`.
+"Has it expired?" is: load from \`0x4000_200C\` and test bit 0. "Acknowledge the expiry" is: store \`0x1\` to
+\`0x4000_200C\`.
 
 On a real chip the path is the same, only longer. For the original ESP32, the technical reference manual lists the
-GPIO block at base ¬0x3FF4_4000¬, with ¬GPIO_OUT_REG¬ at offset ¬0x04¬ and separate write-1-to-set and
-write-1-to-clear registers (¬GPIO_OUT_W1TS_REG¬, ¬GPIO_OUT_W1TC_REG¬) directly after it. Confirm the offsets
+GPIO block at base \`0x3FF4_4000\`, with \`GPIO_OUT_REG\` at offset \`0x04\` and separate write-1-to-set and
+write-1-to-clear registers (\`GPIO_OUT_W1TS_REG\`, \`GPIO_OUT_W1TC_REG\`) directly after it. Confirm the offsets
 in the TRM's GPIO register summary before you use them: finding that table is the skill.`,
 
       { t: 'ascii', caption: 'From C expression to bus transaction',
@@ -404,15 +404,15 @@ void timer_wait(void)
     TIM_STATUS = TIM_STATUS_EXPIRED;
 }`,
         explain: [
-          { lines: '4', md: '¬(volatile uint32_t *)¬ converts the integer to "pointer to a 32-bit object that may change behind the compiler\'s back". The leading ¬*¬ dereferences it, so ¬TIM_CTRL¬ behaves like a variable located at that address.' },
-          { lines: '7-9', md: 'Masks built with ¬1u <<¬. The ¬u¬ matters: shifting a signed 1 into bit 31 is undefined behaviour.' },
+          { lines: '4', md: '\`(volatile uint32_t *)\` converts the integer to "pointer to a 32-bit object that may change behind the compiler\'s back". The leading \`*\` dereferences it, so \`TIM_CTRL\` behaves like a variable located at that address.' },
+          { lines: '7-9', md: 'Masks built with \`1u <<\`. The \`u\` matters: shifting a signed 1 into bit 31 is undefined behaviour.' },
           { lines: '13', md: 'Read-modify-write: one load, one OR in a register, one store. Correct for an RW register; other bits keep their values.' },
-          { lines: '18-20', md: 'Each loop iteration performs a real bus read, because the object is ¬volatile¬. Without it the compiler may read once and spin forever.' },
-          { lines: '21', md: 'Plain assignment, not ¬|=¬: the field is write-1-to-clear. Writing only the mask clears only that flag.' },
+          { lines: '18-20', md: 'Each loop iteration performs a real bus read, because the object is \`volatile\`. Without it the compiler may read once and spin forever.' },
+          { lines: '21', md: 'Plain assignment, not \`|=\`: the field is write-1-to-clear. Writing only the mask clears only that flag.' },
         ] },
 
       { t: 'callout', kind: 'why', title: 'Why volatile',
-        md: `The compiler assumes that memory only changes when your code writes it. Under that assumption, a loop that reads the same address twice with no write between can be reduced to one read, and two writes to the same address with no read between can be reduced to the last one. Both are wrong for hardware. ¬volatile¬ tells the compiler: **every access written in the source must happen, exactly once, in order**. It does not make anything atomic and does not protect against interrupts.` },
+        md: `The compiler assumes that memory only changes when your code writes it. Under that assumption, a loop that reads the same address twice with no write between can be reduced to one read, and two writes to the same address with no read between can be reduced to the last one. Both are wrong for hardware. \`volatile\` tells the compiler: **every access written in the source must happen, exactly once, in order**. It does not make anything atomic and does not protect against interrupts.` },
 
       { t: 'predict',
         q: 'A status register has two W1C flags: bit 0 RX_DONE and bit 1 TX_DONE. Both are currently set. Your receive handler runs `STATUS |= RX_DONE;` to acknowledge reception. What is in the register afterwards?',
@@ -421,7 +421,7 @@ void timer_wait(void)
           { t: 'Both flags are cleared, and the transmit-complete event is lost', ok: true, why: 'The load returns 0b11, the OR leaves 0b11, and the store writes a 1 to both W1C bits.' },
           { t: 'Nothing changes because OR-ing a set bit has no effect', why: 'That would be true for an RW bit. For W1C, the stored 1 is a command, not a value.' },
         ],
-        reveal: '¬|=¬ on a W1C register clears every flag that happened to be set at the moment of the read. The transmit side then waits forever for an event that has already been erased. The correct form is ¬STATUS = RX_DONE;¬.' },
+        reveal: '\`|=\` on a W1C register clears every flag that happened to be set at the moment of the read. The transmit side then waits forever for an event that has already been erased. The correct form is \`STATUS = RX_DONE;\`.' },
 
       `## Practise the bit operations
 
@@ -429,11 +429,11 @@ Four idioms cover almost every register access. Work each challenge by typing th
 
 | Goal | Idiom |
 |---|---|
-| Set bit *n* | ¬reg |= (1u << n);¬ |
-| Clear bit *n* | ¬reg &= ~(1u << n);¬ |
-| Toggle bit *n* | ¬reg ^= (1u << n);¬ |
-| Write a field of width *w* at position *p* | ¬reg = (reg & ~(MASK << p)) | ((value & MASK) << p);¬ with ¬MASK = (1u << w) - 1¬ |
-| Read that field | ¬(reg >> p) & MASK¬ |`,
+| Set bit *n* | \`reg |= (1u << n);\` |
+| Clear bit *n* | \`reg &= ~(1u << n);\` |
+| Toggle bit *n* | \`reg ^= (1u << n);\` |
+| Write a field of width *w* at position *p* | \`reg = (reg & ~(MASK << p)) | ((value & MASK) << p);\` with \`MASK = (1u << w) - 1\` |
+| Read that field | \`(reg >> p) & MASK\` |`,
 
       { t: 'widget', name: 'register-bits', props: { challenge: 'set-bit' }, title: 'Set one bit' },
       { t: 'widget', name: 'register-bits', props: { challenge: 'clear-bit' }, title: 'Clear one bit' },
@@ -443,14 +443,14 @@ Four idioms cover almost every register access. Work each challenge by typing th
       { t: 'widget', name: 'register-bits', props: { challenge: 'field-read' }, title: 'Read a multi-bit field' },
 
       { t: 'callout', kind: 'mistake', title: 'Assigning a whole register when you meant to change one bit',
-        md: '¬GPIO_DIR = 1u << 5;¬ makes pin 5 an output and **every other pin an input**. Whatever another driver configured is gone. Unless you own the whole register, modify, do not assign.' },
+        md: '\`GPIO_DIR = 1u << 5;\` makes pin 5 an output and **every other pin an input**. Whatever another driver configured is gone. Unless you own the whole register, modify, do not assign.' },
 
       { t: 'widget', name: 'c-lab', title: 'C lab: one pin, without touching the others',
         props: {
           title: 'Configure pin 5 without disturbing other pins',
-          prompt: `The Bench-MCU GPIO block is at base ¬0x4000_0000¬: ¬GPIO_DIR¬ at offset ¬0x00¬ (1 = output) and ¬GPIO_OUT¬ at offset ¬0x04¬ (output latch). Both are RW.
+          prompt: `The Bench-MCU GPIO block is at base \`0x4000_0000\`: \`GPIO_DIR\` at offset \`0x00\` (1 = output) and \`GPIO_OUT\` at offset \`0x04\` (output latch). Both are RW.
 
-¬board_init()¬ models another driver that already owns pins 0, 1 and 12. Fix ¬led_init()¬ so that pin 5 becomes an output driven high, and pins 0, 1 and 12 keep their direction and level.
+\`board_init()\` models another driver that already owns pins 0, 1 and 12. Fix \`led_init()\` so that pin 5 becomes an output driven high, and pins 0, 1 and 12 keep their direction and level.
 
 Bench-MCU is a simulated teaching target; the addresses are not those of any real chip.`,
           starter: R`#include <stdint.h>
@@ -512,12 +512,12 @@ int main(void)
             { name: 'pin 5 is an output and high; pins 0, 1, 12 unchanged', regs: { GPIO_DIR: 0x1023, GPIO_OUT: 0x1021 }, stdoutIncludes: 'DIR=1023 OUT=1021' },
           ],
           hints: [
-            'Run the starter and compare the printed DIR with what ¬board_init¬ wrote. Which bits disappeared?',
-            'A plain ¬=¬ replaces all 32 bits. You need an operation that keeps the bits you are not naming.',
-            '¬reg |= (1u << 5);¬ loads the register, sets bit 5 in the copy, and stores it back.',
+            'Run the starter and compare the printed DIR with what \`board_init\` wrote. Which bits disappeared?',
+            'A plain \`=\` replaces all 32 bits. You need an operation that keeps the bits you are not naming.',
+            '\`reg |= (1u << 5);\` loads the register, sets bit 5 in the copy, and stores it back.',
             'Order matters on real hardware: set the output latch before switching the pin to output, so the pin never drives the wrong level, even briefly.',
           ],
-          explain: 'The solution writes ¬GPIO_OUT¬ before ¬GPIO_DIR¬. If the direction were switched first, the pin would drive whatever the latch held (low) for a few hundred nanoseconds. For an LED nobody notices; for a reset line or a MOSFET gate, that glitch is a real fault.',
+          explain: 'The solution writes \`GPIO_OUT\` before \`GPIO_DIR\`. If the direction were switched first, the pin would drive whatever the latch held (low) for a few hundred nanoseconds. For an LED nobody notices; for a reset line or a MOSFET gate, that glitch is a real fault.',
         } },
 
       `## Harder application
@@ -526,7 +526,7 @@ A device header describes a UART interrupt-flag register like this: bits 0–3 a
 interrupt enables, the rest are reserved with reset value 0. You must acknowledge event bit 2 without changing the
 enables and without clearing other pending events. Write the single C statement. (Answer: read the register, keep
 only the RW enable bits, OR in the one flag to clear, and write it back:
-¬REG = (REG & 0x00000F00u) | (1u << 2);¬. A plain ¬REG = 1u << 2¬ would zero the enables; a ¬|=¬ would clear
+\`REG = (REG & 0x00000F00u) | (1u << 2);\`. A plain \`REG = 1u << 2\` would zero the enables; a \`|=\` would clear
 every pending flag. Mixed-access registers are where most driver bugs hide, which is why many chips put flags and
 enables in separate registers.)`,
 
@@ -598,7 +598,7 @@ boot. Nothing in the code changed. What did the designer not know about flash?`,
 
 SRAM is *volatile* with respect to power, not reset. A reset (button, watchdog, software) leaves SRAM cells powered,
 so they still hold their old contents. Variables look freshly initialised after reset only because the startup code
-re-copies ¬.data¬ and zeroes ¬.bss¬ (the linker lesson shows this). Memory the startup code does not touch survives. Firmware
+re-copies \`.data\` and zeroes \`.bss\` (the linker lesson shows this). Memory the startup code does not touch survives. Firmware
 uses this deliberately ("no-init" sections holding a crash record). Attackers use it too: secrets left in RAM
 survive a reset into a bootloader.
 
@@ -607,11 +607,11 @@ After a real power-off, SRAM contents are undefined at the next power-up. Not ze
 ### How flash really writes
 
 A flash cell stores charge on a floating gate. **Erase** removes the charge from every cell in a block, and all
-bits read 1 (¬0xFF¬). **Program** adds charge to selected cells, turning 1 into 0. Program can never turn 0 back
+bits read 1 (\`0xFF\`). **Program** adds charge to selected cells, turning 1 into 0. Program can never turn 0 back
 into 1. So:
 
-- To change a byte from ¬0x0F¬ to ¬0xF0¬ you must erase the whole block containing it and rewrite everything else in that block.
-- The erase unit is large. MAX78000: 8 KB pages (¬0x2000¬). The MSPM0 code in the 2026 eCTF reference design uses
+- To change a byte from \`0x0F\` to \`0xF0\` you must erase the whole block containing it and rewrite everything else in that block.
+- The erase unit is large. MAX78000: 8 KB pages (\`0x2000\`). The MSPM0 code in the 2026 eCTF reference design uses
   1 KB flash pages. Typical SPI flash on an ESP32 module: 4 KB sectors.
 - Erase is slow (milliseconds to hundreds of milliseconds). Losing power in the middle leaves a
   block in an undefined state.
@@ -632,18 +632,18 @@ guaranteed minimum for a while.`,
       `### Execute in place, or through a cache
 
 On most MCUs the CPU fetches instructions directly from internal flash at its bus address: **execute in place
-(XIP)**. MAX78000 code runs from ¬0x1000_0000¬, MSPM0L2228 code from ¬0x0000_0000¬. Nothing is copied to RAM
+(XIP)**. MAX78000 code runs from \`0x1000_0000\`, MSPM0L2228 code from \`0x0000_0000\`. Nothing is copied to RAM
 except initialised variables.
 
 The ESP32 cannot do that directly: its flash is an external chip on SPI, far too slow to sit on the CPU bus. Instead
 a **flash cache with an MMU** maps 64 KB pages of flash into two address ranges (on the original ESP32, read-only
-data at ¬0x3F40_0000¬ and code at ¬0x400D_0000¬). The first access to a page reads it over SPI into cache RAM;
+data at \`0x3F40_0000\` and code at \`0x400D_0000\`). The first access to a page reads it over SPI into cache RAM;
 later accesses hit the cache. Two consequences:
 
 - A cache miss costs many microseconds. Timing of flash-resident code is not constant.
 - While firmware erases or writes flash, the cache is disabled. Any code or constant that must run then
-  (interrupt handlers especially) has to live in internal RAM. ESP-IDF marks such functions ¬IRAM_ATTR¬, which
-  places them at ¬0x4008_0000¬ onwards.
+  (interrupt handlers especially) has to live in internal RAM. ESP-IDF marks such functions \`IRAM_ATTR\`, which
+  places them at \`0x4008_0000\` onwards.
 
 ### One-time-programmable memory
 
@@ -651,7 +651,7 @@ An **eFuse** bit starts at 0 and can be burned to 1 once. There is no erase. Chi
 change or be forged: the ESP32 keeps its flash-encryption key, secure-boot key digest and the counters that enable
 those features in eFuses, with further fuses that block software from reading the key blocks back. The MSPM0 family
 keeps boot configuration (debug access policy, bootloader options, write protection) in a separate flash region called
-NONMAIN at ¬0x41C0_0000¬; it is flash rather than fuses, but can be write-protected so that it behaves as permanent.`,
+NONMAIN at \`0x41C0_0000\`; it is flash rather than fuses, but can be write-protected so that it behaves as permanent.`,
 
       { t: 'widget', name: 'memory-map', props: { platform: 'generic' }, title: 'A generic MCU address space',
         caption: 'For each region, say whether a write there is a plain store, an erase/program sequence, or impossible.' },
@@ -691,16 +691,16 @@ This append-and-rotate scheme is the core of every flash key-value store, includ
         md: `- Changes every boot or more often, and loss on power-off is acceptable → **SRAM** (optionally a no-init section to survive reset).
 - Changes occasionally, must survive power loss → **flash with wear levelling** (a vendor NVS/EEPROM-emulation library), not a hand-rolled single page.
 - Never changes after manufacture and must not be forgeable → **eFuse/OTP** or a write-protected flash region.
-- Constant for a firmware version → ¬const¬ data in **flash** alongside the code.` },
+- Constant for a firmware version → \`const\` data in **flash** alongside the code.` },
 
       { t: 'exercise',
-        prompt: `A flash page currently holds the byte ¬0xC3¬ at some address. Without erasing, firmware programs ¬0x5A¬ to the same address. What byte is read back? Answer in hex.`,
+        prompt: `A flash page currently holds the byte \`0xC3\` at some address. Without erasing, firmware programs \`0x5A\` to the same address. What byte is read back? Answer in hex.`,
         hints: [
           'Program can only change a 1 to a 0.',
           'The result is the bitwise AND of the old and new values: write both in binary.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?42h?\\s*$'], nudge: 'Write 0xC3 and 0x5A in binary and AND them.' },
-        solution: `¬0xC3 = 1100 0011¬, ¬0x5A = 0101 1010¬. AND → ¬0100 0010 = 0x42¬. Neither the old value nor the new one.` },
+        solution: `\`0xC3 = 1100 0011\`, \`0x5A = 0101 1010\`. AND → \`0100 0010 = 0x42\`. Neither the old value nor the new one.` },
 
       `## Harder application
 

@@ -784,7 +784,7 @@ export class GdbSession {
       const t = arg.match(/^(extended-remote|remote)\s+(\S+)$/);
       if (!t) throw new GdbError('[sim] Use: target extended-remote :3333');
       const port = t[2].replace(/^localhost/, '');
-      if (port !== ':3333') return `${t[2]}: Connection timed out.\n[sim] OpenOCD's GDB server listens on port 3333 (see the left pane; 4444 is its telnet console, 6666 its Tcl port).`;
+      if (port !== ':3333') return `${t[2]}: Connection timed out.\n[sim] OpenOCD's GDB server listens on port 3333 (see terminal 1; 4444 is its telnet console, 6666 its Tcl port).`;
       if (this.connected) return '[sim] Already connected.';
       this.connected = true; this.flags.add('connect');
       this.ocd.push("Info : accepting 'gdb' connection on tcp/3333");
@@ -915,7 +915,7 @@ export function scenarioInfo(name) {
     const callLine = lineOf(prog, 'total = checksum');
     return {
       title: 'Guided first session',
-      brief: 'The board is connected through a debug probe and OpenOCD is already running (left). The flash is erased. Bring the program up and stop inside checksum().',
+      brief: 'The board is connected through a debug probe and OpenOCD is already running in terminal 1. The flash is erased. Bring the program up and stop inside checksum().',
       steps: [
         ['connect', 'Connect GDB to OpenOCD', 'target extended-remote :3333'],
         ['reset', 'Reset the core and halt it', 'monitor reset halt'],

@@ -1018,8 +1018,8 @@ int main(void)
       explain: [
         { lines: '17', md: '`data + len` points one element past the end. C allows you to *form* and compare this address, but not to dereference it.' },
         { lines: '19', md: '`*data++` reads the byte at the current address, then advances the pointer by one element. On a Cortex-M this is a single load instruction with post-increment.' },
-        { lines: '32', md: 'Casting both pointers to `char *` measures the distance in bytes: one `uint32_t` step is 4 bytes.' },
-        { lines: '33', md: '`2[words]` is `*(2 + words)`. It is legal and you should never write it; it is here only to show that indexing is addition.' },
+        { lines: '33', md: 'Casting both pointers to `char *` measures the distance in bytes: one `uint32_t` step is 4 bytes.' },
+        { lines: '34', md: '`2[words]` is `*(2 + words)`. It is legal and you should never write it; it is here only to show that indexing is addition.' },
       ] }),
     `## On hardware: there is no bounds check
 

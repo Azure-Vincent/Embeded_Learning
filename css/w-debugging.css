@@ -2,14 +2,14 @@
 
 /* ---- debug-session ---- */
 .debug-session .dbg-banner { margin: 0 0 12px; }
-.debug-session .dbg-panes { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 12px; align-items: start; }
+.debug-session .dbg-panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 12px; align-items: start; }
 .debug-session .dbg-pane { min-width: 0; }
 .debug-session .dbg-title { font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
-.debug-session .w-term { height: 24em; max-height: none; tab-size: 8; font-size: .8rem; }
+.debug-session .w-term { height: 24em; max-height: none; tab-size: 6; font-size: .8rem; }
 .debug-session .dbg-ocd { height: 26.6em; }
 .debug-session .dbg-cmd { font-weight: 600; }
-.debug-session .dbg-inrow { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
-.debug-session .dbg-inrow .w-term-in { margin-top: 0; flex: 1; min-width: 0; }
+.debug-session .dbg-inrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.debug-session .dbg-inrow .w-term-in { margin-top: 0; flex: 1; min-width: 12em; }
 .debug-session .dbg-prompt { color: var(--muted); min-width: 4.6em; }
 .debug-session.dbg-running .dbg-prompt { color: var(--warn); }
 .debug-session .dbg-quick { margin-top: 10px; }
@@ -70,11 +70,12 @@
 .firmware-inspector .w-task .w-msg { margin-top: 6px; }
 
 /* ---- disasm-lab ---- */
-.disasm-lab .dis-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 18px; align-items: start; }
+.disasm-lab .dis-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: start; margin-top: 14px; }
 .disasm-lab .dis-scroll { overflow-x: auto; background: var(--sunk); border-radius: var(--r); padding: 6px 4px; }
 .disasm-lab .dis-list { border-collapse: collapse; font-size: .82rem; width: 100%; }
 .disasm-lab .dis-list th { text-align: left; font-weight: 500; color: var(--muted); padding: 2px 10px; font-family: var(--sans); font-size: .76rem; }
-.disasm-lab .dis-list td { padding: 2px 10px; white-space: nowrap; vertical-align: top; }
+.disasm-lab .dis-list td { padding: 2px 10px; white-space: nowrap; vertical-align: top; border: 0; }
+.disasm-lab .dis-list th { border: 0; background: none; }
 .disasm-lab .dis-list td:first-child, .disasm-lab .dis-bytes { color: var(--muted); }
 .disasm-lab .dis-mn { font-weight: 600; }
 .disasm-lab .dis-data .dis-ins { color: var(--copper); }

@@ -462,7 +462,7 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
       s('rect', { x: x + (bw > 3 ? 0.5 : 0), y: y(b.bits), width: Math.max(bw - (bw > 3 ? 1 : 0), 0.8), height: Math.max(y(0) - y(b.bits), b.bits === 0 ? 1.5 : 0), class: 'fwi-bar', 'pointer-events': 'none' }));
     });
     svg.append(s('text', { x: L, y: H - 5, 'font-size': 11 }, '0x0'), s('text', { x: W - 4, y: H - 5, 'font-size': 11, 'text-anchor': 'end' }, 'file offset 0x' + hexN(bytes.length, 1)),
-      s('text', { x: 4, y: 12, 'font-size': 10 }, 'bits'));
+      s('text', { x: 2, y: y(4) + 4, 'font-size': 10, transform: `rotate(-90 9 ${y(4)})`, 'text-anchor': 'middle' }, 'bits per byte'));
     body.append(
       h('div', { class: 'row' }, h('label', {}, 'Block size ', h('select', { 'aria-label': 'Entropy block size', onchange: (e) => { st.block = +e.target.value; render(); } },
         [32, 64, 128, 256].map((n) => h('option', { value: n, selected: n === st.block }, n + ' bytes')))),

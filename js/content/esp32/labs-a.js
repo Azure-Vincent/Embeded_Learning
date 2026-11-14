@@ -47,6 +47,18 @@ const sch = {
   motor: (x, y, label = '') => sch.wire(`${x},${y} ${x},${y + 6}`) + `<circle cx="${x}" cy="${y + 20}" r="14" fill="var(--surface)"/>` + sch.txt(x, y + 24, 'M', 'middle', 'font-weight="600"') + sch.wire(`${x},${y + 34} ${x},${y + 40}`) + (label ? sch.txt(x - 20, y + 24, label, 'end') : ''),
 };
 
+// Line reference for a code `explain` entry, found by anchor text so it survives edits to the code.
+const at = (code, a, z) => {
+  const L = code.split('\n');
+  const hit = (l, p) => (p instanceof RegExp ? p.test(l) : l.includes(p));
+  const i = L.findIndex((l) => hit(l, a));
+  if (i < 0) throw new Error('labs-a: explain anchor not found: ' + a);
+  if (z === undefined) return String(i + 1);
+  const j = L.findIndex((l, k) => k >= i && hit(l, z));
+  if (j < 0) throw new Error('labs-a: explain end anchor not found: ' + z);
+  return `${i + 1}-${j + 1}`;
+};
+
 const idfRef = (path, title, note) => ({ title, url: `https://github.com/espressif/esp-idf/blob/v6.1/${path}`, ...(note ? { note } : {}) });
 
 const PORTING = `**Other boards.** The pin numbers here are for the original ESP32 DevKit (ESP32-WROOM-32 module). On an ESP32-S3 or ESP32-C3 board the GPIO numbers that are safe differ: the strapping pins, the pins wired to the module's flash, and the USB D+/D− pins are in different places (USB is GPIO20/19 on the S3 and GPIO19/18 on the C3). Open your board's pinout and the *Strapping pins* and *Pin definitions* sections of the chip datasheet, pick a free GPIO that is none of those, and change the \`#define\` at the top of the file. Nothing else in the code depends on the pin number unless this project says so.`;
@@ -388,14 +400,14 @@ It is chosen when a pin can sink more than it can source (true of some chips; ch
     `Follow one call from C to copper, using the complete program from step 6.`,
     { t: 'code', lang: 'c', status: 'reviewed', code: P1_FINAL, caption: 'The final program again, annotated',
       explain: [
-        { lines: '14', md: '`pin_bit_mask` is a 64-bit mask, one bit per GPIO number, so one call can configure several pins. `1ULL << 18` is bit 18. Writing `LED_GPIO` here instead of the shift is a classic bug: 18 is binary 10010, which selects GPIO1 and GPIO4.' },
-        { lines: '15', md: '`GPIO_MODE_INPUT_OUTPUT` makes the driver set the pin\'s bit in the output-enable register (through `GPIO_ENABLE_W1TS_REG`) and set the input-enable bit in the pad\'s IO_MUX register. Push-pull is the default; open-drain is a separate mode that sets the pad-driver bit in the pin\'s `GPIO_PINn_REG`.' },
-        { lines: '16-17', md: 'The pull resistors are bits in the pad\'s IO_MUX register (some pads are also controlled through the RTC IO block; the driver handles that). An actively driven output does not need a pull.' },
-        { lines: '18', md: 'No interrupt: the interrupt-type field of `GPIO_PINn_REG` is cleared.' },
-        { lines: '20', md: '`gpio_config` also selects the GPIO function in IO_MUX and routes the "simple GPIO output" signal to the pad through the GPIO matrix output-select register for this pin. `ESP_ERROR_CHECK` aborts with a file and line number if the call returns anything but `ESP_OK`.' },
-        { lines: '25', md: '`gpio_set_level` writes `1 << 18` to `GPIO_OUT_W1TS_REG` or `GPIO_OUT_W1TC_REG` (for pins 32 and above there is a second register set). One bus write; the pin transistor switches a few nanoseconds later.' },
-        { lines: '26', md: '`gpio_get_level` reads `GPIO_IN_REG` and shifts out bit 18. `ESP_LOGI` formats into a buffer and sends it to UART0, which the USB-serial chip forwards to your PC. At 115200 baud a 40-character line takes about 3.5 ms to leave the chip.' },
-        { lines: '27', md: '`pdMS_TO_TICKS(500)` converts milliseconds to scheduler ticks. With the default 100 Hz tick that is 50 ticks. The task is moved to the Blocked list; the tick interrupt moves it back when the count is reached.' },
+        { lines: at(P1_FINAL, '.pin_bit_mask'), md: '`pin_bit_mask` is a 64-bit mask, one bit per GPIO number, so one call can configure several pins. `1ULL << 18` is bit 18. Writing `LED_GPIO` here instead of the shift is a classic bug: 18 is binary 10010, which selects GPIO1 and GPIO4.' },
+        { lines: at(P1_FINAL, '.mode'), md: '`GPIO_MODE_INPUT_OUTPUT` makes the driver set the pin\'s bit in the output-enable register (through `GPIO_ENABLE_W1TS_REG`) and set the input-enable bit in the pad\'s IO_MUX register. Push-pull is the default; open-drain is a separate mode that sets the pad-driver bit in the pin\'s `GPIO_PINn_REG`.' },
+        { lines: at(P1_FINAL, '.pull_up_en', '.pull_down_en'), md: 'The pull resistors are bits in the pad\'s IO_MUX register (some pads are also controlled through the RTC IO block; the driver handles that). An actively driven output does not need a pull.' },
+        { lines: at(P1_FINAL, '.intr_type'), md: 'No interrupt: the interrupt-type field of `GPIO_PINn_REG` is cleared.' },
+        { lines: at(P1_FINAL, 'gpio_config(&led_cfg)'), md: '`gpio_config` also selects the GPIO function in IO_MUX and routes the "simple GPIO output" signal to the pad through the GPIO matrix output-select register for this pin. `ESP_ERROR_CHECK` aborts with a file and line number if the call returns anything but `ESP_OK`.' },
+        { lines: at(P1_FINAL, 'gpio_set_level'), md: '`gpio_set_level` writes `1 << 18` to `GPIO_OUT_W1TS_REG` or `GPIO_OUT_W1TC_REG` (for pins 32 and above there is a second register set). One bus write; the pin transistor switches a few nanoseconds later.' },
+        { lines: at(P1_FINAL, 'ESP_LOGI'), md: '`gpio_get_level` reads `GPIO_IN_REG` and shifts out bit 18. `ESP_LOGI` formats into a buffer and sends it to UART0, which the USB-serial chip forwards to your PC. At 115200 baud a 40-character line takes about 3.5 ms to leave the chip.' },
+        { lines: at(P1_FINAL, 'vTaskDelay'), md: '`pdMS_TO_TICKS(500)` converts milliseconds to scheduler ticks. With the default 100 Hz tick that is 50 ticks. The task is moved to the Blocked list; the tick interrupt moves it back when the count is reached.' },
       ] },
     `**What is portable.** The three C calls work unchanged on every ESP32-family chip. The register *names* \`GPIO_OUT_W1TS_REG\` and \`GPIO_OUT_W1TC_REG\` also exist on the S3 and C3, but their addresses, the IO_MUX layout and the number of pins differ. Look them up in the *IO MUX and GPIO Matrix* chapter of the Technical Reference Manual for your chip rather than copying addresses between chips.`,
   ],
@@ -871,17 +883,17 @@ Fixes: keep the poll at one tick or more; or express the stable time in millisec
   walkthrough: [
     { t: 'code', lang: 'c', status: 'reviewed', code: P2_FINAL, caption: 'Version 4, annotated',
       explain: [
-        { lines: '18-27', md: 'The handler runs in interrupt context, called by the GPIO driver\'s shared ISR. That shared ISR reads the GPIO interrupt status register, finds which pins are pending, clears their status bits through the write-1-to-clear register and calls each registered handler.' },
-        { lines: '21', md: '`esp_timer_get_time()` returns microseconds since boot from a 64-bit hardware timer. It is safe to call from an ISR.' },
-        { lines: '23', md: 'Copies 8 bytes into the queue\'s storage. If that makes a higher-priority task ready, `woken` is set.' },
-        { lines: '24-26', md: 'Requests a context switch on the way out of the interrupt, so `button_task` runs immediately instead of at the next tick. Without it, the response is delayed by up to one tick (10 ms).' },
-        { lines: '37', md: '`portMAX_DELAY` blocks indefinitely. The task is on the queue\'s wait list and consumes no CPU time.' },
-        { lines: '42-44', md: 'Each received edge restarts the 30 ms wait. `pdMS_TO_TICKS(30)` is 3 ticks, so the actual quiet period is between 20 and 30 ms depending on where in a tick the last edge fell.' },
-        { lines: '47', md: 'Reads `GPIO_IN_REG` bit 19 (pins 32 and above are in a second register). This is the debounced value: the line has not moved for at least 20 ms.' },
-        { lines: '77', md: '`GPIO_INTR_ANYEDGE` sets the interrupt-type field of GPIO19\'s pin register so that both rising and falling edges set its bit in the interrupt status register.' },
-        { lines: '81', md: 'In ESP-IDF the stack depth is given in **bytes**. 4096 leaves room for the log formatting. Priority 5 is above `main` (1), so the button is handled promptly.' },
-        { lines: '83', md: 'Allocates one CPU interrupt for the whole GPIO peripheral and attaches the driver\'s dispatcher to it. The argument is a set of interrupt allocation flags; 0 is the default.' },
-        { lines: '84', md: 'Registers the handler in the dispatcher\'s table and enables the interrupt for this pin.' },
+        { lines: at(P2_FINAL, 'static void btn_isr', /^}$/), md: 'The handler runs in interrupt context, called by the GPIO driver\'s shared ISR. That shared ISR reads the GPIO interrupt status register, finds which pins are pending, clears their status bits through the write-1-to-clear register and calls each registered handler.' },
+        { lines: at(P2_FINAL, 'esp_timer_get_time'), md: '`esp_timer_get_time()` returns microseconds since boot from a 64-bit hardware timer. It is safe to call from an ISR.' },
+        { lines: at(P2_FINAL, 'xQueueSendFromISR'), md: 'Copies 8 bytes into the queue\'s storage. If that makes a higher-priority task ready, `woken` is set.' },
+        { lines: at(P2_FINAL, 'if (woken', /^    }$/), md: 'Requests a context switch on the way out of the interrupt, so `button_task` runs immediately instead of at the next tick. Without it, the response is delayed by up to one tick (10 ms).' },
+        { lines: at(P2_FINAL, 'portMAX_DELAY'), md: '`portMAX_DELAY` blocks indefinitely. The task is on the queue\'s wait list and consumes no CPU time.' },
+        { lines: at(P2_FINAL, 'pdMS_TO_TICKS(DEBOUNCE_MS)', /^        }$/), md: 'Each received edge restarts the 30 ms wait. `pdMS_TO_TICKS(30)` is 3 ticks, so the actual quiet period is between 20 and 30 ms depending on where in a tick the last edge fell.' },
+        { lines: at(P2_FINAL, 'int level = gpio_get_level'), md: 'Reads `GPIO_IN_REG` bit 19 (pins 32 and above are in a second register). This is the debounced value: the line has not moved for at least 20 ms.' },
+        { lines: at(P2_FINAL, 'GPIO_INTR_ANYEDGE'), md: '`GPIO_INTR_ANYEDGE` sets the interrupt-type field of GPIO19\'s pin register so that both rising and falling edges set its bit in the interrupt status register.' },
+        { lines: at(P2_FINAL, 'xTaskCreate'), md: 'In ESP-IDF the stack depth is given in **bytes**. 4096 leaves room for the log formatting. Priority 5 is above `main` (1), so the button is handled promptly.' },
+        { lines: at(P2_FINAL, 'gpio_install_isr_service'), md: 'Allocates one CPU interrupt for the whole GPIO peripheral and attaches the driver\'s dispatcher to it. The argument is a set of interrupt allocation flags; 0 is the default.' },
+        { lines: at(P2_FINAL, 'gpio_isr_handler_add'), md: 'Registers the handler in the dispatcher\'s table and enables the interrupt for this pin.' },
       ] },
     `**About \`IRAM_ATTR\`.** You will see ISRs in other code marked \`IRAM_ATTR\`. It places the function in internal RAM so that it can run while the flash cache is disabled (during flash writes). It is required when the interrupt is allocated with the \`ESP_INTR_FLAG_IRAM\` flag, and then everything the handler calls and reads must also be in RAM. With the default flags used here, the interrupt is simply postponed during flash operations, and the handler may live in flash.`,
   ],
@@ -1274,12 +1286,12 @@ The fix is the separate motor supply with a bulk capacitor and a common ground. 
   walkthrough: [
     { t: 'code', lang: 'c', status: 'reviewed', code: P3_MOTOR, caption: 'Version 4, annotated',
       explain: [
-        { lines: '10', md: 'Low-speed mode is available on every ESP32-family chip. In this mode register changes are latched by an explicit update, which the driver performs for you.' },
-        { lines: '20-27', md: 'Converts a percentage to a compare value. `ledc_set_duty` stores it in the driver; `ledc_update_duty` writes the channel\'s duty register and sets the bit that loads it at the next counter overflow, so every PWM period is complete.' },
-        { lines: '31-37', md: '`ledc_timer_config` selects the source clock, computes the fractional divider that gives 20 kHz with a 1024-step counter (80 MHz / (20 000 × 1024) ≈ 3.9) and writes the timer\'s configuration register. `LEDC_AUTO_CLK` lets the driver pick a source clock that can reach the request.' },
-        { lines: '40-47', md: '`ledc_channel_config` binds channel 1 to timer 1, writes `hpoint` (the counter value at which the output goes high) and the initial duty, and routes the channel\'s output signal to GPIO23 through the GPIO matrix. From here on the pin is driven by the LEDC peripheral, not by `GPIO_OUT_REG`.' },
-        { lines: '45', md: 'Starting at duty 0 matters: the motor must not jump when the channel is first connected to the pin.' },
-        { lines: '50-54', md: 'The soft start limits the start-up current surge. The 400 ms per step is slow enough to observe; a product would ramp in a few hundred milliseconds in total.' },
+        { lines: at(P3_MOTOR, '#define PWM_MODE'), md: 'Low-speed mode is available on every ESP32-family chip. In this mode register changes are latched by an explicit update, which the driver performs for you.' },
+        { lines: at(P3_MOTOR, 'static void motor_set_percent', /^}$/), md: 'Converts a percentage to a compare value. `ledc_set_duty` stores it in the driver; `ledc_update_duty` writes the channel\'s duty register and sets the bit that loads it at the next counter overflow, so every PWM period is complete.' },
+        { lines: at(P3_MOTOR, 'const ledc_timer_config_t', 'ledc_timer_config(&timer_cfg)'), md: '`ledc_timer_config` selects the source clock, computes the fractional divider that gives 20 kHz with a 1024-step counter (80 MHz / (20 000 × 1024) ≈ 3.9) and writes the timer\'s configuration register. `LEDC_AUTO_CLK` lets the driver pick a source clock that can reach the request.' },
+        { lines: at(P3_MOTOR, 'const ledc_channel_config_t', 'ledc_channel_config(&ch_cfg)'), md: '`ledc_channel_config` binds channel 1 to timer 1, writes `hpoint` (the counter value at which the output goes high) and the initial duty, and routes the channel\'s output signal to GPIO23 through the GPIO matrix. From here on the pin is driven by the LEDC peripheral, not by `GPIO_OUT_REG`.' },
+        { lines: at(P3_MOTOR, '.duty       = 0'), md: 'Starting at duty 0 matters: the motor must not jump when the channel is first connected to the pin.' },
+        { lines: at(P3_MOTOR, 'soft start', /^        }$/), md: 'The soft start limits the start-up current surge. The 400 ms per step is slow enough to observe; a product would ramp in a few hundred milliseconds in total.' },
       ] },
     `**What changed on the pin.** In projects 1 and 2 the pad's output came from the GPIO output register. \`ledc_channel_config\` changed the GPIO matrix output selection for the pad to the LEDC channel's signal. If you later call \`gpio_set_level\` on that pin it has no effect until you route the pin back with \`gpio_config\` (or stop the channel).
 
@@ -1694,15 +1706,15 @@ Both need microsecond timing that a FreeRTOS task with a 10 ms tick cannot produ
   walkthrough: [
     { t: 'code', lang: 'c', status: 'reviewed', code: P4_FINAL, caption: 'Version 2, annotated',
       explain: [
-        { lines: '22-45', md: 'The `#if` picks the scheme at compile time from capability macros that the calibration header defines per chip. Curve fitting needs the channel because its correction is per channel; line fitting does not. Both read factory values from eFuse and build a conversion function.' },
-        { lines: '51-55', md: '`adc_oneshot_read` selects the channel in the SAR ADC\'s multiplexer, starts one conversion, waits for the done flag and returns the code. On chips where ADC2 is shared with Wi-Fi, the driver takes a lock here, which is why a read can fail with a timeout on ADC2 while Wi-Fi is busy.' },
-        { lines: '56', md: 'Averaging in the raw domain before conversion is deliberate: the calibration function is applied once, to the best estimate of the code.' },
-        { lines: '59-63', md: 'With a calibration handle the result is in millivolts at the pin. The fallback is labelled rough because it assumes an ideal converter.' },
-        { lines: '68-71', md: 'All integer arithmetic: 10 mV per degree means 1 mV is a tenth of a degree, so subtracting the 500 mV offset gives tenths directly. No floating point, and the value is signed.' },
-        { lines: '76', md: 'Translates a GPIO number into (unit, channel) using the chip\'s pin table, so the program is not tied to one chip\'s channel numbering. It returns an error if the pin has no ADC function.' },
-        { lines: '78-81', md: 'Creates the driver instance for that ADC unit and powers up the converter. Only one instance per unit may exist.' },
-        { lines: '83-87', md: 'Stores the attenuation for this channel; the driver writes it to the attenuation field for that pad when it converts. `ADC_BITWIDTH_DEFAULT` selects the chip\'s maximum width (12 bits on the ESP32, S3 and C3).' },
-        { lines: '96-99', md: 'Splits tenths of a degree into whole and fractional parts by hand. The extra minus sign handles values such as −0.4 °C, where the whole part is 0.' },
+        { lines: at(P4_FINAL, 'static bool cali_init', /^}$/), md: 'The `#if` picks the scheme at compile time from capability macros that the calibration header defines per chip. Curve fitting needs the channel because its correction is per channel; line fitting does not. Both read factory values from eFuse and build a conversion function.' },
+        { lines: at(P4_FINAL, 'for (int i = 0; i < SAMPLES', /^    }$/), md: '`adc_oneshot_read` selects the channel in the SAR ADC\'s multiplexer, starts one conversion, waits for the done flag and returns the code. On chips where ADC2 is shared with Wi-Fi, the driver takes a lock here, which is why a read can fail with a timeout on ADC2 while Wi-Fi is busy.' },
+        { lines: at(P4_FINAL, 'int raw_mean'), md: 'Averaging in the raw domain before conversion is deliberate: the calibration function is applied once, to the best estimate of the code.' },
+        { lines: at(P4_FINAL, 'if (s_cali != NULL)', /^    }$/), md: 'With a calibration handle the result is in millivolts at the pin. The fallback is labelled rough because it assumes an ideal converter.' },
+        { lines: at(P4_FINAL, 'static int tmp36_decidegrees', /^}$/), md: 'All integer arithmetic: 10 mV per degree means 1 mV is a tenth of a degree, so subtracting the 500 mV offset gives tenths directly. No floating point, and the value is signed.' },
+        { lines: at(P4_FINAL, 'adc_oneshot_io_to_channel'), md: 'Translates a GPIO number into (unit, channel) using the chip\'s pin table, so the program is not tied to one chip\'s channel numbering. It returns an error if the pin has no ADC function.' },
+        { lines: at(P4_FINAL, 'const adc_oneshot_unit_init_cfg_t', 'adc_oneshot_new_unit'), md: 'Creates the driver instance for that ADC unit and powers up the converter. Only one instance per unit may exist.' },
+        { lines: at(P4_FINAL, 'const adc_oneshot_chan_cfg_t', 'adc_oneshot_config_channel'), md: 'Stores the attenuation for this channel; the driver writes it to the attenuation field for that pad when it converts. `ADC_BITWIDTH_DEFAULT` selects the chip\'s maximum width (12 bits on the ESP32, S3 and C3).' },
+        { lines: at(P4_FINAL, 'int t10 = tmp36', 'ESP_LOGI(TAG, "%d mV'), md: 'Splits tenths of a degree into whole and fractional parts by hand. The extra minus sign handles values such as −0.4 °C, where the whole part is 0.' },
       ] },
     `**What happens on the pin.** Configuring the channel also puts the pad into analog mode: its digital input buffer and pull resistors are disconnected so they do not load the signal. During a conversion a small sampling capacitor is connected to the pin for a short time. A source with high output impedance cannot charge it fully in that time, which shows up as low or noisy readings; this is why a 10 kΩ divider works and a 1 MΩ divider needs a buffer amplifier or a capacitor at the pin.`,
   ],
@@ -1779,7 +1791,525 @@ int mean = sum / 32;`,
   ],
 };
 
-const LABS = [p1, p2, p3, p4];
+/* =====================================================================================
+ * Project 5: I2C sensor integration (BME280, register-level driver)
+ * ===================================================================================== */
+const P5_SCAN = String.raw`#include <stdio.h>
+#include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/i2c_master.h"
+#include "esp_err.h"
+#include "esp_log.h"
+
+#define I2C_SDA_GPIO 21
+#define I2C_SCL_GPIO 22
+
+static const char *TAG = "p5";
+
+void app_main(void)
+{
+    const i2c_master_bus_config_t bus_cfg = {
+        .i2c_port          = I2C_NUM_0,
+        .sda_io_num        = I2C_SDA_GPIO,
+        .scl_io_num        = I2C_SCL_GPIO,
+        .clk_source        = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    i2c_master_bus_handle_t bus;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+
+    while (1) {
+        int found = 0;
+        for (uint16_t addr = 0x08; addr < 0x78; addr++) {
+            if (i2c_master_probe(bus, addr, 50) == ESP_OK) {
+                ESP_LOGI(TAG, "device answers at 0x%02X", (unsigned)addr);
+                found++;
+            }
+        }
+        ESP_LOGI(TAG, "scan complete: %d device(s)", found);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}`;
+
+const P5_ID = String.raw`    /* after i2c_new_master_bus(), instead of the scan loop */
+    const i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = 0x76,              /* the address YOUR scan reported */
+        .scl_speed_hz    = 100000,
+    };
+    i2c_master_dev_handle_t dev;
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &dev_cfg, &dev));
+
+    const uint8_t reg = 0xD0;                 /* "id" register */
+    uint8_t id = 0;
+    ESP_ERROR_CHECK(i2c_master_transmit_receive(dev, &reg, 1, &id, 1, 100));
+    ESP_LOGI(TAG, "chip id 0x%02X", (unsigned)id);`;
+
+const P5_HOST = String.raw`#include <stdint.h>
+#include <stdio.h>
+
+typedef struct { uint16_t t1; int16_t t2; int16_t t3; } bme280_cal_t;
+
+/* Returns temperature in hundredths of a degree Celsius. */
+static int32_t bme280_temp_centi(int32_t adc_t, const bme280_cal_t *c)
+{
+    int32_t var1 = (((adc_t >> 3) - ((int32_t)c->t1 << 1)) * (int32_t)c->t2) >> 11;
+    int32_t d    = (adc_t >> 4) - (int32_t)c->t1;
+    int32_t var2 = (((d * d) >> 12) * (int32_t)c->t3) >> 14;
+    int32_t t_fine = var1 + var2;
+    return (t_fine * 5 + 128) >> 8;
+}
+
+int main(void)
+{
+    /* Known input -> known output. Check these against the worked example in your datasheet. */
+    const bme280_cal_t cal = { .t1 = 27504, .t2 = 26435, .t3 = -1000 };
+    const uint8_t raw[3] = { 0x7E, 0xED, 0x00 };            /* temp_msb, temp_lsb, temp_xlsb */
+    int32_t adc_t = ((int32_t)raw[0] << 12) | ((int32_t)raw[1] << 4) | (raw[2] >> 4);
+    int32_t t = bme280_temp_centi(adc_t, &cal);
+    printf("adc_t=%d  T=%d.%02d C\n", (int)adc_t, (int)(t / 100), (int)(t % 100));
+    return t == 2508 ? 0 : 1;
+}`;
+
+const P5_FINAL = String.raw`#include <stdio.h>
+#include <stdint.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/i2c_master.h"
+#include "esp_err.h"
+#include "esp_log.h"
+
+#define I2C_SDA_GPIO   21
+#define I2C_SCL_GPIO   22
+#define I2C_FREQ_HZ    100000
+#define I2C_TIMEOUT_MS 100
+
+#define BME280_ADDR        0x76     /* 0x77 if the board ties SDO high */
+#define BME280_REG_CALIB_T 0x88     /* dig_T1..dig_T3, 6 bytes, little-endian */
+#define BME280_REG_ID      0xD0
+#define BME280_REG_RESET   0xE0
+#define BME280_REG_CTRL_HUM  0xF2
+#define BME280_REG_STATUS  0xF3
+#define BME280_REG_CTRL_MEAS 0xF4
+#define BME280_REG_DATA    0xF7     /* press[3], temp[3], hum[2] */
+
+#define BME280_ID_VALUE    0x60
+#define BME280_RESET_CMD   0xB6
+#define STATUS_MEASURING   (1U << 3)
+#define STATUS_IM_UPDATE   (1U << 0)
+#define OSRS_X1            1U
+#define MODE_FORCED        1U
+
+typedef struct { uint16_t t1; int16_t t2; int16_t t3; } bme280_cal_t;
+
+static const char *TAG = "p5";
+static i2c_master_dev_handle_t s_dev;
+static bme280_cal_t s_cal;
+
+static esp_err_t reg_read(uint8_t reg, uint8_t *buf, size_t len)
+{
+    return i2c_master_transmit_receive(s_dev, &reg, 1, buf, len, I2C_TIMEOUT_MS);
+}
+
+static esp_err_t reg_write(uint8_t reg, uint8_t value)
+{
+    const uint8_t frame[2] = { reg, value };
+    return i2c_master_transmit(s_dev, frame, sizeof(frame), I2C_TIMEOUT_MS);
+}
+
+/* Poll the status register until the given bits are clear. */
+static esp_err_t wait_status_clear(uint8_t mask)
+{
+    for (int i = 0; i < 50; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+        uint8_t status;
+        esp_err_t err = reg_read(BME280_REG_STATUS, &status, 1);
+        if (err != ESP_OK) return err;
+        if ((status & mask) == 0) return ESP_OK;
+    }
+    return ESP_ERR_TIMEOUT;
+}
+
+static int32_t bme280_temp_centi(int32_t adc_t, const bme280_cal_t *c)
+{
+    int32_t var1 = (((adc_t >> 3) - ((int32_t)c->t1 << 1)) * (int32_t)c->t2) >> 11;
+    int32_t d    = (adc_t >> 4) - (int32_t)c->t1;
+    int32_t var2 = (((d * d) >> 12) * (int32_t)c->t3) >> 14;
+    int32_t t_fine = var1 + var2;
+    return (t_fine * 5 + 128) >> 8;
+}
+
+static esp_err_t bme280_init(void)
+{
+    uint8_t id;
+    esp_err_t err = reg_read(BME280_REG_ID, &id, 1);
+    if (err != ESP_OK) return err;
+    if (id != BME280_ID_VALUE) {
+        ESP_LOGE(TAG, "unexpected chip id 0x%02X", (unsigned)id);
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    err = reg_write(BME280_REG_RESET, BME280_RESET_CMD);
+    if (err != ESP_OK) return err;
+    err = wait_status_clear(STATUS_IM_UPDATE);        /* calibration copied from NVM */
+    if (err != ESP_OK) return err;
+
+    uint8_t c[6];
+    err = reg_read(BME280_REG_CALIB_T, c, sizeof(c));
+    if (err != ESP_OK) return err;
+    s_cal.t1 = (uint16_t)(c[0] | (c[1] << 8));
+    s_cal.t2 = (int16_t)(c[2] | (c[3] << 8));
+    s_cal.t3 = (int16_t)(c[4] | (c[5] << 8));
+    ESP_LOGI(TAG, "dig_T1=%u dig_T2=%d dig_T3=%d", (unsigned)s_cal.t1, (int)s_cal.t2, (int)s_cal.t3);
+
+    return reg_write(BME280_REG_CTRL_HUM, OSRS_X1);   /* takes effect at the next ctrl_meas write */
+}
+
+static esp_err_t bme280_measure(int32_t *adc_t, int32_t *adc_p, int32_t *adc_h)
+{
+    /* osrs_t = x1 (bits 7:5), osrs_p = x1 (bits 4:2), mode = forced (bits 1:0) */
+    esp_err_t err = reg_write(BME280_REG_CTRL_MEAS, (OSRS_X1 << 5) | (OSRS_X1 << 2) | MODE_FORCED);
+    if (err != ESP_OK) return err;
+    err = wait_status_clear(STATUS_MEASURING);
+    if (err != ESP_OK) return err;
+
+    uint8_t d[8];
+    err = reg_read(BME280_REG_DATA, d, sizeof(d));    /* one burst: a consistent set */
+    if (err != ESP_OK) return err;
+    *adc_p = ((int32_t)d[0] << 12) | ((int32_t)d[1] << 4) | (d[2] >> 4);
+    *adc_t = ((int32_t)d[3] << 12) | ((int32_t)d[4] << 4) | (d[5] >> 4);
+    *adc_h = ((int32_t)d[6] << 8)  |  (int32_t)d[7];
+    return ESP_OK;
+}
+
+void app_main(void)
+{
+    const i2c_master_bus_config_t bus_cfg = {
+        .i2c_port          = I2C_NUM_0,
+        .sda_io_num        = I2C_SDA_GPIO,
+        .scl_io_num        = I2C_SCL_GPIO,
+        .clk_source        = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    i2c_master_bus_handle_t bus;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+
+    const i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = BME280_ADDR,
+        .scl_speed_hz    = I2C_FREQ_HZ,
+    };
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &dev_cfg, &s_dev));
+
+    ESP_ERROR_CHECK(bme280_init());
+
+    while (1) {
+        int32_t adc_t, adc_p, adc_h;
+        esp_err_t err = bme280_measure(&adc_t, &adc_p, &adc_h);
+        if (err == ESP_OK) {
+            int t = (int)bme280_temp_centi(adc_t, &s_cal);
+            ESP_LOGI(TAG, "T = %d.%02d C   (raw T 0x%05X, raw P 0x%05X, raw H 0x%04X)",
+                     t / 100, (t < 0 ? -t : t) % 100, (unsigned)adc_t, (unsigned)adc_p, (unsigned)adc_h);
+        } else {
+            ESP_LOGW(TAG, "measurement failed: %s", esp_err_to_name(err));
+        }
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}`;
+
+const P5_FIG = sch.open(520, 250, 'Schematic: ESP32 connected to a BME280 over I2C with pull-up resistors on SDA and SCL')
+  + sch.box(20, 30, 130, 190, 'ESP32 DevKit', [[55, '3V3'], [115, 'GPIO21 SDA'], [150, 'GPIO22 SCL'], [200, 'GND']])
+  + sch.box(382, 30, 110, 190, 'BME280 board', [[55, 'VIN'], [115, 'SDA'], [150, 'SCL'], [200, 'GND']], 'l')
+  + sch.wire('162,55 370,55', 'stroke="var(--sig3)"') + sch.wire('162,200 370,200')
+  + sch.wire('162,115 370,115', 'stroke="var(--sig1)"') + sch.wire('162,150 370,150', 'stroke="var(--sig2)"')
+  + sch.dot(225, 55) + sch.resV(225, 55, 'Rp', -12) + sch.wire('225,105 225,115') + sch.dot(225, 115)
+  + sch.dot(295, 55) + sch.resV(295, 55, 'Rp', -12) + sch.wire('295,105 295,150') + sch.dot(295, 150)
+  + sch.txt(266, 44, 'Rp = 4.7 kΩ each (omit if the board has them)', 'middle', 'font-size="10"')
+  + sch.gnd(266, 200) + sch.dot(266, 200)
+  + sch.close;
+
+const p5 = {
+  id: 'esp-p5', title: 'Project 5: I2C sensor integration', kind: 'Project', minutes: 240,
+  summary: 'Bring up a BME280 in stages: scan the bus, read its identity register, then write a register-level driver from the datasheet and prove the arithmetic on your PC before trusting a reading.',
+  skills: ['esp-pa-i2c-bringup', 'esp-pa-datasheet-driver'],
+  objectives: [
+    'Wire an I2C device with correct pull-ups and explain what the pull-ups do.',
+    'Bring up a new device in stages (bus scan, identity register, configuration, data), each of which proves something specific.',
+    'Read a datasheet register map and turn it into named constants and two small access functions.',
+    'Explain a register read on the wire: start, address + write, register pointer, repeated start, address + read, data, NACK, stop.',
+    'Assemble multi-byte raw values with the correct byte order and signedness, and apply a compensation formula.',
+    'Test conversion code on a PC with known inputs before running it on the target.',
+  ],
+  hardware: [
+    'ESP32 DevKit and breadboard.',
+    '1 × BME280 breakout board (temperature, pressure, humidity) with header pins. Buy one whose listing or silkscreen states its supply voltage. Boards marked 3.3 V connect directly; boards with a regulator and level shifter marked "5 V" usually also accept 3.3 V on VIN, but check the seller\'s schematic. Many boards sold as BME280 carry a BMP280 (no humidity); step 3 detects that.',
+    '2 × 4.7 kΩ resistors for the SDA and SCL pull-ups, unless the breakout already has them (most do; look for two small resistors marked 472 or 103 near the header, or measure SDA to VIN with the board unpowered).',
+    '4 jumper wires, kept under about 20 cm.',
+    'A printed or on-screen copy of the Bosch BME280 datasheet. You will need three sections by name: *Memory map*, *Register description*, and *Compensation formulas* (including the trimming-parameter table).',
+    'Multimeter. A logic analyser with an I2C decoder is strongly recommended for this project.',
+  ],
+  software: [
+    'ESP-IDF v6.1; copy the project skeleton to `p5_i2c`.',
+    'A C compiler on your PC (gcc or clang) for the host-side test in step 5.',
+    'PulseView (sigrok) or your analyser\'s software, if you have a logic analyser.',
+  ],
+  background: [
+    `## The bus in one paragraph
+
+I2C uses two wires, **SDA** (data) and **SCL** (clock), shared by every device on the bus. No device ever drives a line high: each can only pull it low or let go, and a **pull-up resistor** on each line returns it to 3.3 V. That makes it safe for several devices to share a wire and is why a missing pull-up means a dead bus. The controller starts a transaction with a START condition, sends a 7-bit device address and a read/write bit, and the addressed device answers by pulling SDA low for one clock (**ACK**). Bytes follow, each acknowledged, until a STOP.
+
+## Registers
+
+Almost every I2C sensor presents itself as a small array of 8-bit **registers**, each with an address. To write a register you send \`[register address, value]\`. To read, you first write the register address (setting the device's internal pointer), then issue a **repeated start** and read; the pointer increments after each byte, so several consecutive registers can be read in one burst. The datasheet's memory map is the list of those registers. Writing a driver means turning that table into code.`,
+    { t: 'widget', name: 'i2c-visualizer', props: { device: 'tmp102' }, caption: 'Step through a register read on a simulated sensor: start, address, ACK, register pointer, repeated start, data, NACK, stop. Then switch on the missing-pull-up fault.' },
+    `## What this project takes as given, and what you must look up
+
+The following BME280 facts are used in the code. Confirm each one in your copy of the datasheet as you meet it; finding them is part of the exercise.
+
+| Fact | Value | Datasheet section |
+|---|---|---|
+| I2C address | 0x76 with SDO low, 0x77 with SDO high | I2C interface |
+| \`id\` register | address 0xD0, reads 0x60 (a BMP280 reads 0x58) | Memory map, Register description |
+| \`reset\` register | address 0xE0, write 0xB6 to reset | Register description |
+| \`ctrl_hum\` | 0xF2; humidity oversampling in bits 2:0; applied on the next write to \`ctrl_meas\` | Register description |
+| \`status\` | 0xF3; bit 3 = measuring, bit 0 = im_update | Register description |
+| \`ctrl_meas\` | 0xF4; osrs_t bits 7:5, osrs_p bits 4:2, mode bits 1:0 (00 sleep, 01 forced, 11 normal) | Register description |
+| Data | 0xF7–0xFE: pressure msb/lsb/xlsb, temperature msb/lsb/xlsb, humidity msb/lsb | Memory map |
+| Temperature trimming | dig_T1 (unsigned 16-bit) at 0x88, dig_T2 and dig_T3 (signed 16-bit) at 0x8A and 0x8C, least significant byte first | Trimming parameter readout |
+
+Everything else is deliberately left for you to take from the datasheet: the pressure and humidity trimming addresses and formulas, measurement times, the IIR filter and standby settings, and the electrical limits.`,
+    { t: 'callout', kind: 'decision', md: `**Why write the driver by hand when libraries exist?** Because in security and competition work you will meet devices with no library, libraries with bugs, and code you must audit. Reading a register map and checking a transaction on the wire are the skills that transfer. Once you can do that, using a vendor driver is an informed choice; Bosch publishes one, and it is a good reference to compare yours against.` },
+    { t: 'callout', kind: 'decision', md: `**Why these pins and this speed?** GPIO21 and GPIO22 are the conventional I2C pins on ESP32 DevKits, are not strapping pins, and are free. Any two free GPIOs work because the I2C signals are routed through the GPIO matrix. 100 kHz (standard mode) is the most forgiving speed for breadboard wiring; move to 400 kHz only after everything works and your pull-ups are strong enough.` },
+    `${PORTING} For I2C, any two free pins that are not strapping, flash or USB pins will do.`,
+  ],
+  diagram: [
+    { t: 'ascii', caption: 'Wiring. Breakout pin names vary: VIN may be labelled VCC or 3V3, and SCL/SDA may be labelled SCK/SDI.', text: String.raw`
+From                    To                       Why
+----------------------  -----------------------  ---------------------------------------------
+DevKit 3V3              BME280 VIN (VCC)         supply; keeps SDA/SCL pulled to 3.3 V, not 5 V
+DevKit GND              BME280 GND               common reference
+DevKit GPIO21           BME280 SDA (SDI)         data, open-drain, bidirectional
+DevKit GPIO22           BME280 SCL (SCK)         clock, driven by the ESP32
+Rp 4.7 kohm             SDA to 3V3               pull-up  } omit both if the breakout
+Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups fitted
+(if present) CSB        3V3 or leave as fitted   CSB high selects I2C rather than SPI
+(if present) SDO        GND -> address 0x76      3V3 would give 0x77; do not leave it floating
+` },
+    { t: 'figure', svg: P5_FIG, caption: 'Both lines idle high through the pull-ups. Either end can only pull a line low.' },
+    { t: 'widget', name: 'i2c-visualizer', props: { device: 'scan' }, caption: 'What a bus scan looks like on the wire: an address byte, then ACK from a device that exists or NACK from silence.' },
+  ],
+  steps: [
+    { title: 'Wire it and check the idle bus with a multimeter', blocks: [
+      `Wire the four connections with USB unplugged. Then power up with **no firmware change** (whatever is on the board is fine, as long as it does not drive GPIO21/22) and measure:
+
+- VIN to GND at the sensor header: 3.3 V.
+- SDA to GND and SCL to GND: **both close to 3.3 V**.`,
+      { t: 'predict', q: 'You measure SDA at 3.3 V but SCL at about 0.3 V and drifting. Nothing is transmitting. What is the most likely cause?',
+        choices: [
+          { t: 'SCL has no pull-up: the breakout lacks one, or the external resistor is in the wrong row', ok: true, why: 'An idle I2C line is held high only by its pull-up. A low, drifting voltage means nothing is pulling it anywhere. No communication is possible until both lines idle high.' },
+          { t: 'The sensor is holding the clock low because it is busy', why: 'A device stretching the clock holds SCL firmly at 0 V, and only during a transaction. Here nothing has addressed it, and the voltage is drifting rather than held.' },
+          { t: 'This is normal; SCL is only high during transfers', why: 'It is the reverse: both lines rest high and are pulled low to signal. The START condition is defined as SDA falling while SCL is high.' },
+        ],
+        reveal: 'Checking the idle levels takes ten seconds and rules out the most common I2C fault before any code runs.' },
+      { t: 'exercise', prompt: 'With VDD = 3.3 V and a 4.7 kΩ pull-up, how much current flows through the resistor while a device holds the line low (assume the low level is 0 V)? Answer in mA.',
+        hints: ['Ohm\'s law across the pull-up.'],
+        answer: { type: 'number', value: 0.70, tol: 0.03, unit: 'mA' },
+        solution: `3.3 V / 4700 Ω ≈ **0.70 mA**. The I2C specification requires every device to sink at least 3 mA in standard mode, so 4.7 kΩ is comfortably within reach. It also explains the lower bound on pull-ups: about (3.3 − 0.4) V / 3 mA ≈ 1 kΩ. The upper bound is set by speed: the pull-up must charge the bus capacitance within the allowed rise time.` },
+    ] },
+    { title: 'Scan the bus', blocks: [
+      `A scan addresses every possible device and records which addresses are acknowledged. It needs no knowledge of the sensor, so it tests only wiring, power and pull-ups.`,
+      { t: 'code', lang: 'c', status: 'reviewed', code: P5_SCAN, caption: 'main/main.c, version 1: bus scan' },
+      `**You should see** \`device answers at 0x76\` (or \`0x77\`) and \`scan complete: 1 device(s)\`, repeated every three seconds. Note the address. Unplug the SDA jumper: the next scan should find nothing, and the driver may log timeout errors. Plug it back in.`,
+      { t: 'exercise', prompt: `**Debugging exercise A.** A scan finds no devices. The multimeter shows VIN = 3.3 V, SDA idle at 3.3 V, SCL idle at 3.3 V, and continuity from each DevKit pin to the breakout header. A logic analyser shows clock pulses on the wire connected to the breakout's **SDA** pin and data on the wire to its **SCL** pin. What is wrong?`,
+        hints: ['Which signal should have regular pulses?'],
+        answer: { type: 'text', accept: ['swap', 'cross', 'revers', 'exchang'], nudge: 'Compare which signal is on which sensor pin with the wiring table.' },
+        solution: `SDA and SCL are **swapped**. Everything a multimeter can check is fine, since both lines idle high and are continuous, which is why this fault survives a static inspection. The sensor sees a "clock" that changes at irregular times and never recognises its address. Swap the two jumpers at one end. Without an analyser, swapping the wires is a legitimate 20-second experiment once the static checks pass.` },
+    ] },
+    { title: 'Read the identity register', blocks: [
+      `An ACK proves that *something* is at 0x76. The identity register proves *what*. Open the datasheet's memory map and find the register named \`id\`. Confirm its address and the value it should contain.`,
+      { t: 'predict', q: 'To read register 0xD0 the controller must first tell the sensor which register it wants. How many bytes does the ESP32 put on the bus before the sensor sends the ID byte back, counting address bytes?',
+        choices: [
+          { t: 'Three: address+write, the register number 0xD0, then (after a repeated start) address+read', ok: true, why: 'The register pointer can only be set by a write, so the read is two phases joined by a repeated start: [0xEC] [0xD0] then [0xED], after which the sensor sends the data byte. 0xEC and 0xED are the 7-bit address 0x76 shifted left with the R/W bit appended.' },
+          { t: 'One: address+read, and the sensor sends the ID', why: 'A bare read returns whatever the sensor\'s register pointer currently selects. Nothing has told it to point at 0xD0.' },
+          { t: 'Two: address+read and then the register number', why: 'After address+read the controller is the receiver; it cannot send the register number in that direction.' },
+        ],
+        reveal: '`i2c_master_transmit_receive` performs exactly this sequence. The controller ends the read by sending NACK after the last byte it wants, then STOP.' },
+      { t: 'code', lang: 'c', status: 'reviewed', code: P5_ID, caption: 'Version 2 (fragment): add a device handle and read one register' },
+      `**You should see** \`chip id 0x60\`. If you see \`0x58\`, your board carries a BMP280: temperature and pressure work with the same registers, but there is no humidity. Any other value means you are talking to a different device, or the read is malformed.`,
+      { t: 'exercise', prompt: `**Debugging exercise B.** A colleague copies the address from a different vendor's library and gets a NACK on every transaction, though the scan found the device. Their configuration is below. What is the mistake?`,
+        code: String.raw`const i2c_device_config_t dev_cfg = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    .device_address  = 0xEC,
+    .scl_speed_hz    = 100000,
+};`,
+        hints: ['A 7-bit address cannot be larger than 0x7F.', 'Write 0xEC in binary and drop the last bit.'],
+        answer: { type: 'text', accept: ['8.?bit', 'shift', '0x76', 'r/?w'], nudge: 'Relate 0xEC to 0x76.' },
+        solution: `\`0xEC\` is the **8-bit form** of the address: 0x76 shifted left one place with the R/W bit (0 = write) in bit 0. Some datasheets and libraries quote addresses that way ("write address 0xEC, read address 0xED"). ESP-IDF, like most APIs, wants the 7-bit address 0x76 and adds the R/W bit itself. Whenever an address is above 0x7F, it is in 8-bit form: shift it right by one.` },
+    ] },
+    { title: 'Turn the register map into code', blocks: [
+      `Now build the driver's foundation. From the *Memory map* and *Register description* sections, write a \`#define\` for each register you will use and for each bit field, and two functions: \`reg_read(reg, buf, len)\` and \`reg_write(reg, value)\`. Compare with the constants at the top of the complete program in step 6 only after you have tried.
+
+Then answer from the datasheet, in your notebook:
+
+1. What mode is the sensor in after power-up or reset, and does it measure anything in that mode?
+2. Which register holds the mode bits, and what value starts a single ("forced") measurement?
+3. Why must \`ctrl_hum\` be written *before* \`ctrl_meas\`?`,
+      { t: 'exercise', prompt: 'Using the bit positions from the table in the background section, what single byte written to `ctrl_meas` selects temperature oversampling ×1 (field value 001), pressure oversampling ×1 (001) and forced mode (01)? Give it in hex.',
+        hints: ['Place 001 in bits 7:5, 001 in bits 4:2 and 01 in bits 1:0.', 'Binary 001 001 01.'],
+        answer: { type: 'text', accept: ['^\\s*(0x)?25\\s*$'], nudge: 'Write the eight bits out, then group them into two hex digits.' },
+        solution: `\`001\` \`001\` \`01\` → binary 0010 0101 → **0x25**. In code this is \`(1 << 5) | (1 << 2) | 1\`, which states the intent better than the bare number.` },
+      { t: 'exercise', prompt: `**Debugging exercise C.** This driver reads the ID correctly, then prints exactly the same raw temperature, \`0x80000\`, every time, however the sensor is warmed. No I2C errors are reported. What did the author leave out?`,
+        code: String.raw`ESP_ERROR_CHECK(reg_read(BME280_REG_ID, &id, 1));          /* 0x60: fine */
+while (1) {
+    uint8_t d[3];
+    ESP_ERROR_CHECK(reg_read(0xFA, d, 3));                  /* temp_msb, temp_lsb, temp_xlsb */
+    int32_t adc_t = ((int32_t)d[0] << 12) | ((int32_t)d[1] << 4) | (d[2] >> 4);
+    ESP_LOGI(TAG, "raw T 0x%05X", (unsigned)adc_t);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+}`,
+        hints: ['Look up the reset value of the temperature data registers in the memory map.', 'What mode is the sensor in after power-up?'],
+        answer: { type: 'text', accept: ['mode', 'sleep', 'ctrl_meas', 'forced', 'normal', 'start', 'trigger'], nudge: 'Nothing has asked the sensor to measure.' },
+        solution: `The sensor powers up in **sleep mode** and has never been told to measure. \`0x80000\` is the reset value of the temperature registers (msb 0x80, the rest 0x00). The bus works and every read succeeds, so there is no error to see. The author must write \`ctrl_meas\` with a mode other than sleep, wait for the measurement to finish, and then read. A constant value that matches a register's documented reset value is a strong sign that the device was never configured.` },
+    ] },
+    { title: 'Prove the arithmetic on your PC first', blocks: [
+      `The sensor returns a raw 20-bit number that means nothing by itself. Each device carries individual calibration constants ("trimming parameters") in its memory, and the datasheet gives the formula that combines them with the raw value. Getting a shift or a sign wrong produces a plausible-looking but wrong temperature, which is the worst kind of bug to find on hardware.
+
+So test the formula where it is easy: on your PC, with known inputs and a known answer. The function below is the 32-bit integer temperature formula from the datasheet's *Compensation formulas* section, with a test case. Compile and run it:
+
+\`\`\`
+gcc -Wall -Wextra -std=c11 bme_test.c -o bme_test && ./bme_test
+\`\`\``,
+      { t: 'code', lang: 'c', status: 'host-tested', code: P5_HOST, caption: 'bme_test.c: runs on your PC, not on the ESP32. Compiled and run with gcc for this course; it prints T=25.08 C and exits 0.' },
+      `**You should see** \`adc_t=519888  T=25.08 C\`. Check the constants and the expected result against the worked example in your datasheet.`,
+      { t: 'exercise', prompt: `**Debugging exercise D.** In the test program, change the struct so that \`t2\` and \`t3\` are \`uint16_t\`, as someone would if they declared all three calibration words the same way. Initialise \`t3\` with the same bit pattern (\`(uint16_t)-1000\`, which is 64536). Predict whether the result is still 25.08 °C, then run it. Why does it change?`,
+        hints: ['What value does `(int32_t)c->t3` have when `t3` is a `uint16_t` holding 64536?', 'Sign extension happens when a *signed* 16-bit value is widened.'],
+        solution: `It is no longer 25.08 °C. With \`uint16_t\`, the bit pattern 0xFC18 widens to +64 536 instead of −1000, so \`var2\` becomes a large positive term instead of a small negative correction, and the result is wrong by an amount that grows as the temperature moves away from the calibration point. On the bench near room temperature the error can be small enough to pass a casual look. The datasheet's trimming table gives the type of every parameter; copy the signedness as carefully as the address. The host test catches this in seconds.` },
+      { t: 'callout', kind: 'why', md: `This is the general method for any conversion code: separate the pure arithmetic from the hardware access, and test the arithmetic on a PC against a vector from the datasheet. The bus code is then the only thing left to debug on the board.` },
+    ] },
+    { title: 'Assemble the driver and take real measurements', blocks: [
+      `Put the pieces together: verify the ID, reset, read the temperature trimming parameters, configure, then loop: trigger one forced measurement, wait until the status register says it is done, burst-read all eight data bytes, convert.`,
+      { t: 'code', lang: 'c', status: 'reviewed', code: P5_FINAL, caption: 'main/main.c, version 3: register-level BME280 driver (temperature compensated; pressure and humidity raw)' },
+      `**You should see** one line with three calibration constants (dig_T1 is typically in the high twenty-thousands; the others vary per device), then every two seconds a line such as \`T = 23.41 C   (raw T 0x7F2A0, raw P 0x53E10, raw H 0x6B40)\`.
+
+Check it:
+- The temperature should be within a degree or two of project 4's sensor. Boards often read slightly high because the breakout and the DevKit warm it.
+- Breathe gently on the sensor: the raw humidity value should rise within a second or two, and the temperature a little.
+- If raw H is always \`0x8000\`, humidity measurement is skipped: either the chip is a BMP280 or \`ctrl_hum\` was not applied.`,
+      { t: 'callout', kind: 'mistake', md: `**Reading the data registers one at a time.** The sensor updates its data registers when a conversion ends. If you read the msb in one transaction and the lsb in another, a new result can arrive in between and you combine halves of two different readings. A single burst read from 0xF7 guarantees a consistent set; the datasheet says so in the section on data readout.` },
+    ] },
+    { title: 'Look at it on the wire', blocks: [
+      `If you have a logic analyser: channel 0 on SDA, channel 1 on SCL, ground to GND, sample at 2 MHz or more, add the I2C protocol decoder and capture one measurement cycle.
+
+**You should see**, decoded:
+1. \`Start, 0x76 Write, ACK, 0xF4, ACK, 0x25, ACK, Stop\`: the trigger.
+2. One or more status polls: \`Start, 0x76 Write, ACK, 0xF3, ACK, Repeated start, 0x76 Read, ACK, <status>, NACK, Stop\`.
+3. The burst read: \`... 0xF7, ACK, Repeated start, 0x76 Read, ACK,\` eight data bytes each followed by ACK except the last, which is followed by **NACK**, then \`Stop\`.
+
+Measure the SCL period with the cursors: 10 µs at 100 kHz. Look at the shape of a rising edge at the highest sample rate you have: it is a curve, because the pull-up is charging the bus capacitance. That curve is what limits I2C speed.`,
+      { t: 'widget', name: 'logic-analyzer', props: { capture: 'i2c-read' }, caption: 'No analyser? Practise decoding a simulated I2C read by hand.' },
+      { t: 'widget', name: 'protocol-debug', props: { scenario: 'no-pullups' }, caption: 'Diagnose a simulated bus with the pull-ups missing.' },
+    ] },
+  ],
+  walkthrough: [
+    { t: 'code', lang: 'c', status: 'reviewed', code: P5_FINAL, caption: 'Version 3, annotated',
+      explain: [
+        { lines: at(P5_FINAL, '#define BME280_ADDR', '#define MODE_FORCED'), md: 'The register map as constants. Every number here comes from a named table in the datasheet; nothing in the rest of the file uses a bare register address.' },
+        { lines: at(P5_FINAL, 'static esp_err_t reg_read', /^}$/), md: 'One call, two phases on the wire: START, address+W, the register number, REPEATED START, address+R, `len` bytes with ACK after each except the last (NACK), STOP. The driver loads these as commands into the I2C peripheral\'s command registers and its TX FIFO; the peripheral then clocks them out and raises an interrupt when done.' },
+        { lines: at(P5_FINAL, 'static esp_err_t reg_write', /^}$/), md: 'A register write is a single write transaction of two bytes: the register number, then the value.' },
+        { lines: at(P5_FINAL, 'static esp_err_t wait_status_clear', /^}$/), md: 'Polls a status bit instead of waiting a fixed time. It delays first, so the sensor has time to set the bit after the triggering write, and gives up after about 500 ms so that a dead sensor cannot hang the task.' },
+        { lines: at(P5_FINAL, 'static int32_t bme280_temp_centi', /^}$/), md: 'The function proved on the PC in step 5, unchanged. `t_fine` is also an input to the pressure and humidity formulas, which is why temperature is always converted first.' },
+        { lines: at(P5_FINAL, 'uint8_t id;', 'return ESP_ERR_NOT_FOUND'), md: 'Refusing to continue on an unexpected ID prevents writing configuration meant for one chip into a different one.' },
+        { lines: at(P5_FINAL, 'reg_write(BME280_REG_RESET', 'wait_status_clear(STATUS_IM_UPDATE)'), md: 'A soft reset puts every register in its documented reset state, so the driver does not depend on what earlier firmware left behind. The sensor then copies its calibration from non-volatile memory, signalled by the `im_update` bit.' },
+        { lines: at(P5_FINAL, 'uint8_t c[6]', 's_cal.t3 ='), md: 'Six bytes, three 16-bit words, least significant byte first. The casts set the signedness: `dig_T1` is unsigned, the other two are signed.' },
+        { lines: at(P5_FINAL, 'reg_write(BME280_REG_CTRL_HUM'), md: 'Sets humidity oversampling ×1. The sensor latches this register only when `ctrl_meas` is next written, which happens in every measurement.' },
+        { lines: at(P5_FINAL, 'osrs_t = x1', 'reg_write(BME280_REG_CTRL_MEAS'), md: 'Writing mode = forced starts one conversion of temperature, pressure and humidity, after which the sensor returns to sleep by itself. That suits a slow sampling loop and keeps the sensor\'s self-heating low.' },
+        { lines: at(P5_FINAL, 'uint8_t d[8]', '*adc_h ='), md: 'Temperature and pressure are 20-bit values spread over three registers, with the lowest four bits in the top half of the `xlsb` register; humidity is 16 bits. The casts to `int32_t` before shifting prevent the shift from happening in a narrower type.' },
+        { lines: at(P5_FINAL, 'const i2c_master_bus_config_t', 'i2c_new_master_bus'), md: 'Creates the bus: assigns the pins through the GPIO matrix in open-drain mode, enables the weak internal pull-ups as a fallback, and sets up the peripheral. `glitch_ignore_cnt` sets the input filter that ignores pulses shorter than that many clock cycles.' },
+        { lines: at(P5_FINAL, 'const i2c_device_config_t', 'i2c_master_bus_add_device'), md: 'A device handle stores the address and the SCL frequency. The frequency is applied by programming the peripheral\'s SCL high and low period registers before each transaction to that device.' },
+      ] },
+    `**The internal pull-ups are not enough.** They are tens of kΩ, which with typical breadboard capacitance gives rise times too slow for reliable 100 kHz operation and far too slow for 400 kHz. They are enabled here only so that a bus with no resistors fails less confusingly. Real pull-ups are the 4.7 kΩ resistors on the breakout or on your breadboard.`,
+  ],
+  testing: [
+    `| Check | How | You should see |
+|---|---|---|
+| Idle levels | DC volts SDA–GND and SCL–GND, no traffic | both about 3.3 V |
+| Pull-up value | Board unpowered: resistance SDA to VIN, SCL to VIN | a few kΩ (often 4.7 k or 10 k). Megohms means none fitted |
+| Presence | Version 1 | one device, at 0x76 or 0x77 |
+| Identity | Version 2 | \`chip id 0x60\` (0x58 = BMP280) |
+| Arithmetic | Host test | \`T=25.08 C\`, exit status 0 |
+| Live data | Version 3 | plausible room temperature, changing in the second decimal place between readings |
+| Response | Warm the sensor with a fingertip | temperature rises within seconds, then recovers |
+| Fault handling | Pull the SDA jumper while running | \`measurement failed: …\` warnings, no crash; readings resume when it is replaced |
+| Timing | Logic analyser on SCL | 10 µs period (100 kHz) |
+
+To estimate bus rise time without an oscilloscope: with the board unpowered, measure the pull-up resistance, estimate capacitance at roughly 10–20 pF per device pin plus about 1 pF per centimetre of jumper, and use t_r ≈ 0.85 × R × C. Compare it with the maximum rise time for your bus speed in the I2C specification's timing table.`,
+    { t: 'callout', kind: 'hw', md: `A logic analyser shows you 0s and 1s after its own threshold, so slow edges look clean on it. If the decoder shows the right bytes but the sensor NACKs intermittently, suspect rise time and view the lines on an oscilloscope, or simply lower the pull-up value or the bus speed and see whether the fault goes away.` },
+  ],
+  troubleshooting: [
+    { symptom: 'Scan finds nothing; driver logs timeouts', cause: 'No pull-ups, sensor unpowered, SDA/SCL swapped, or no common ground.', fix: 'Measure idle levels (both 3.3 V), VIN at the header, then swap SDA and SCL.' },
+    { symptom: 'Scan finds a device at every address', cause: 'SDA is stuck low (shorted to ground or held by a confused device), so every address appears acknowledged.', fix: 'Measure SDA idle. Power-cycle the sensor; check for solder bridges on the header.' },
+    { symptom: 'Device found by the scan but every register access is NACKed', cause: 'Address given in 8-bit form, or the device handle uses the other address (0x77 vs 0x76).', fix: 'Use the 7-bit address the scan reported.' },
+    { symptom: 'ID reads 0x58', cause: 'The board carries a BMP280, not a BME280.', fix: 'Temperature and pressure will work; humidity will not. Accept 0x58 in your ID check if that is acceptable, or return the board.' },
+    { symptom: 'Raw values constant at 0x80000 / 0x8000', cause: 'Sensor still in sleep mode, or that measurement is skipped (oversampling field 0).', fix: 'Write `ctrl_hum`, then `ctrl_meas` with non-zero oversampling and forced or normal mode.' },
+    { symptom: 'Temperature plausible at room temperature but wrong when heated or cooled', cause: 'Signedness or byte order of the trimming parameters, or a shift error in the formula.', fix: 'Run the host test; compare the printed dig_T values with what a known-good driver reports for the same board.' },
+    { symptom: 'Temperature reads 1–3 °C high', cause: 'Self-heating of the board and heat from the ESP32 and regulator.', fix: 'Use forced mode with a slow sample rate; move the sensor away on longer (but still short) wires.' },
+    { symptom: 'Works at 100 kHz, fails intermittently at 400 kHz', cause: 'Rise time too long: pull-ups too weak for the bus capacitance.', fix: 'Shorten wires or reduce the pull-ups (not below about 1 kΩ at 3.3 V).' },
+    { symptom: 'Humidity setting has no effect', cause: '`ctrl_hum` written after `ctrl_meas`, so it is never latched.', fix: 'Write `ctrl_hum` first, then `ctrl_meas`.' },
+  ],
+  challenge: `**Finish the driver from the datasheet.** No solution is given.
+
+1. Read the remaining trimming parameters. Their addresses, sizes and signedness are in the datasheet's trimming-parameter table. Note that the humidity parameters are not laid out as simple 16-bit words: two of them share a register. Document the layout in a comment before writing the code.
+2. Implement the pressure and humidity compensation from the *Compensation formulas* section. Decide between the integer and floating-point versions and justify the choice for this chip.
+3. **Before running on the board**, extend the host test with at least one test vector per quantity. If the datasheet gives none for a quantity, generate vectors by running Bosch's reference driver from its public repository on your PC, and say so in your notes.
+4. Add a sanity check that rejects readings outside the sensor's specified operating range, and make the driver recover from a bus error by resetting and re-initialising the sensor rather than aborting.
+5. In your notebook, list three things in your driver that you verified against the datasheet and how, and one thing you could not verify without equipment you do not have.`,
+  quiz: [
+    { kind: 'concept', q: 'Why can several I2C devices share the SDA wire without damaging each other, even if two transmit at once?',
+      choices: [
+        { t: 'Because no device drives the line high: each only pulls low or releases, and a resistor provides the high level', ok: true, why: 'With open-drain outputs the worst case is two devices both pulling low, which is harmless. A push-pull bus would short 3.3 V to ground when two devices disagreed.' },
+        { t: 'Because the controller disables every other device before transmitting', why: 'There is no enable signal in I2C. Devices are selected by address within the data stream, and all of them stay connected to the wire.' },
+        { t: 'Because each device has a series resistor that limits fault current', why: 'Some designs add series resistors, but safety on a shared line comes from how the outputs are built, not from limiting a fault.' },
+      ] },
+    { kind: 'code', q: 'What does this call put on the bus?', code: String.raw`const uint8_t reg = 0xF7;
+uint8_t d[8];
+i2c_master_transmit_receive(dev, &reg, 1, d, 8, 100);`,
+      choices: [
+        { t: 'START, address+W, 0xF7, repeated START, address+R, eight bytes read with ACKs and a final NACK, STOP', ok: true, why: 'The write phase sets the register pointer, the repeated start turns the bus around without releasing it, and the sensor auto-increments through 0xF7–0xFE.' },
+        { t: 'Eight separate read transactions, one for each register', why: 'One call is one transaction. The sensor advances its own register pointer after each byte; the controller does not re-address it.' },
+        { t: 'START, address+R, 0xF7, then eight bytes', why: 'After address+R the controller is receiving. The register number has to be sent in a write phase first.' },
+      ] },
+    { kind: 'circuit', q: 'A breakout already has 10 kΩ pull-ups and you add 4.7 kΩ pull-ups on the breadboard as well. What is the effective pull-up on each line?',
+      choices: [
+        { t: 'About 3.2 kΩ', ok: true, why: 'They are in parallel: (10 × 4.7) / (10 + 4.7) ≈ 3.2 kΩ. That is still acceptable at 3.3 V (about 1 mA when low), but adding several modules each with its own pull-ups can bring the total too low.' },
+        { t: '14.7 kΩ', why: 'That would be the two in series. Both resistors connect the same line to the same rail, side by side.' },
+        { t: '4.7 kΩ, because the smaller one dominates', why: 'The smaller one contributes more, but current flows through both, so the combination is lower than either.' },
+      ] },
+    { kind: 'concept', q: 'What would happen if the driver read `temp_msb`, `temp_lsb` and `temp_xlsb` in three separate transactions while the sensor runs in normal (continuous) mode?',
+      choices: [
+        { t: 'Occasionally the bytes would come from two different conversions, giving a reading that jumps by a large, wrong amount', ok: true, why: 'If a new result is stored between your reads, you combine the high byte of one value with the low bytes of the next. Near a point where the high byte changes, the error is large. A burst read avoids it.' },
+        { t: 'Nothing; registers do not change during a read', why: 'The sensor protects a set of registers only within one burst read. Between separate transactions it is free to update them.' },
+        { t: 'The sensor would NACK the second and third reads', why: 'Each is a valid transaction and is acknowledged. That is what makes the problem silent.' },
+      ] },
+    { kind: 'code', q: 'A driver assembles a signed calibration word like this, with `c[4] = 0x18` and `c[5] = 0xFC`. What value results?', code: String.raw`uint16_t t3 = (uint16_t)(c[4] | (c[5] << 8));
+int32_t  x  = (int32_t)t3;`,
+      choices: [
+        { t: '64536, where −1000 was intended', ok: true, why: 'The bit pattern 0xFC18 is −1000 as a signed 16-bit value but 64536 unsigned. Widening an unsigned type fills the upper bits with zeros. Storing it as `int16_t` first makes the widening sign-extend.' },
+        { t: '−1000', why: 'That would be the result if the 16-bit value were held in a signed type before being widened. Check the declared type of `t3`.' },
+        { t: '6396 (0x18FC)', why: 'That swaps the byte order. The code places `c[5]` in the high byte, giving 0xFC18.' },
+      ] },
+    { kind: 'arch', q: 'During bring-up of an unfamiliar I2C chip, the bus scan passes but the identity register returns an unexpected value. What is the right next step?',
+      choices: [
+        { t: 'Stop and find out what the device is before writing any configuration to it', ok: true, why: 'An ACK only shows that something is at that address. Writing register values intended for one chip into another can put it into an unknown state or, for some devices, change non-volatile settings.' },
+        { t: 'Carry on; if the address matches, the chip must be compatible', why: 'Addresses are 7 bits and widely reused. Different chips, and different revisions of one chip, share addresses.' },
+        { t: 'Remove the identity check, since it is only informational', why: 'The check is the one piece of evidence about what you are talking to. Removing it hides the problem and keeps the consequences.' },
+      ] },
+  ],
+};
+
+const LABS = [p1, p2, p3, p4, p5];
 
 /* ---------- section-level material contributed by these projects ---------- */
 const glossary = [

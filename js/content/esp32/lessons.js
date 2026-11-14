@@ -2482,6 +2482,560 @@ A device stores a two-part setting: \`mode\` and \`limit\`, which must always be
   ],
 });
 
-// @@NEXT@@
+// ───────────────────────────────────────────────────────────── 15. Wi-Fi and Bluetooth
+lessons.push({
+  id: 'esp-l-wireless', title: 'Wi-Fi and Bluetooth', minutes: 55,
+  summary: 'Station mode as a set of events, reconnection, power, BLE GATT concepts, and the security basics.',
+  skills: ['esp-wifi-sta', 'esp-ble-gatt'],
+  blocks: [
+    `## It connected on my desk
 
-export default { skills, lessons, labs: [], glossary: [], troubleshooting: [], refs: [] };
+A sensor connects to Wi-Fi at boot, then publishes a reading every minute. On the desk it runs for days. Installed, it works until the access point restarts for a firmware update at 3 a.m., and never reports again, though it is still powered and its LED still blinks.
+
+The code called \`esp_wifi_connect()\` once, at start-up, and treated the connection as a permanent fact. A wireless link is a state that changes without asking you. The ESP-IDF Wi-Fi API is built around that: you do not "connect and continue", you **react to events**.`,
+
+    `## The pieces
+
+| Component | Role |
+|---|---|
+| \`esp_wifi\` | The Wi-Fi driver: radio, scanning, association, WPA2/WPA3 |
+| \`esp_netif\` | The network interface layer joining the driver to the TCP/IP stack (lwIP); runs the DHCP client |
+| \`esp_event\` | The default **event loop**: a task that calls your handlers when something happens |
+| \`nvs_flash\` | Wi-Fi stores calibration and, by default, credentials in NVS, so NVS must be initialised first |
+
+In **station** (STA) mode the ESP32 joins an existing access point. (It can also be an access point itself, or both.) The sequence of events for a successful connection is:
+
+1. \`WIFI_EVENT_STA_START\`: the driver is running. Now call \`esp_wifi_connect()\`.
+2. \`WIFI_EVENT_STA_CONNECTED\`: associated and authenticated with the access point. There is **no IP address yet**.
+3. \`IP_EVENT_STA_GOT_IP\`: DHCP finished. Only now can sockets work.
+
+And at any later time: \`WIFI_EVENT_STA_DISCONNECTED\`, with a reason code. Your handler decides what happens next. If it does nothing, the device stays offline for ever, which is the opening problem.`,
+
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Station mode with reconnection', code: R`#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_wifi.h"
+#include "esp_event.h"
+#include "esp_netif.h"
+#include "esp_log.h"
+#include "nvs_flash.h"
+
+#define WIFI_SSID "your-ssid"        /* for a bench test only: see the security note */
+#define WIFI_PASS "your-password"
+
+static const char *TAG = "wifi";
+
+static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+        esp_wifi_connect();
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t *)data;
+        ESP_LOGW(TAG, "disconnected, reason %d; retrying", (int)d->reason);
+        esp_wifi_connect();
+    } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
+        ESP_LOGI(TAG, "got ip " IPSTR, IP2STR(&e->ip_info.ip));
+    }
+}
+
+void app_main(void)
+{
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(err);
+
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+
+    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+    ESP_ERROR_CHECK(esp_wifi_init(&init));
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &on_event, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &on_event, NULL, NULL));
+
+    wifi_config_t cfg = {
+        .sta = {
+            .ssid     = WIFI_SSID,
+            .password = WIFI_PASS,
+        },
+    };
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
+    ESP_ERROR_CHECK(esp_wifi_start());
+}`, explain: [
+      { lines: '15-27', md: 'One handler for all three events. It runs in the event loop task, so it may log and call Wi-Fi functions but must not block for long: every other event waits behind it.' },
+      { lines: '19-22', md: 'The line that fixes the opening problem. The reason code says why (wrong password, access point gone, beacon timeout ...). A product should back off between retries; hammering reconnect in a tight loop wastes power and floods the log.' },
+      { lines: '23-25', md: 'The interface has an address. This is the earliest moment network code can run.' },
+      { lines: '31-36', md: 'NVS first: the Wi-Fi driver needs it.' },
+      { lines: '38-40', md: 'Start the TCP/IP stack, create the default event loop, and create a network interface bound to the station.' },
+      { lines: '42-43', md: 'Allocates the driver with default buffer sizes taken from sdkconfig. This is where tens of kilobytes of RAM go.' },
+      { lines: '45-48', md: 'Subscribe to all Wi-Fi events and to the got-IP event.' },
+      { lines: '50-58', md: 'Set station mode and credentials, then start. `esp_wifi_start` returns at once; everything after it happens through events.' },
+    ] },
+
+    { t: 'callout', kind: 'note', md: `**Old tutorials.** Before ESP-IDF v4.1 the network layer was \`tcpip_adapter\` (\`tcpip_adapter_init()\`), the handler was registered with \`esp_event_loop_init(callback, ...)\`, and events were named \`SYSTEM_EVENT_STA_GOT_IP\`. All of that is gone; \`esp_netif\` and \`esp_event\` replaced it. Code in that style will not build.` },
+
+    `## Using the connection
+
+Once you have an IP address, ESP-IDF offers BSD sockets and higher-level clients. An HTTPS GET with \`esp_http_client\` is a few lines: fill an \`esp_http_client_config_t\` with the \`url\`, call \`esp_http_client_init\`, \`esp_http_client_perform\`, read \`esp_http_client_get_status_code\`, then \`esp_http_client_cleanup\`. For telemetry, MQTT (\`esp-mqtt\`) keeps one connection open to a broker and publishes small messages to topics, which suits devices better than repeated HTTP requests.
+
+Network calls block, sometimes for many seconds. Run them in their own task with a generous stack (TLS needs several kilobytes), never in the event handler, and start them only after \`IP_EVENT_STA_GOT_IP\`.`,
+
+    `## Power and the hardware consequences
+
+The radio draws short bursts of high current when transmitting (hundreds of milliamps; see the datasheet's RF power consumption table). Two consequences:
+
+- **Supply.** A weak USB port, a thin cable or an undersized regulator lets the 3.3 V rail dip during a burst, and the brownout detector resets the chip, typically at the moment Wi-Fi starts. Bulk capacitance close to the module and an adequate regulator are part of the design.
+- **Energy.** Station mode uses modem power save by default (\`WIFI_PS_MIN_MODEM\`): the radio sleeps between access-point beacons. That saves power at the cost of latency. \`esp_wifi_set_ps()\` changes it. Battery devices usually go further and deep-sleep between reports, reconnecting each time.
+
+And from the pin lesson: on the ESP32, ADC2 is unavailable while Wi-Fi runs.`,
+
+    `## Bluetooth Low Energy in concepts
+
+BLE is not "wireless serial". It is a small database protocol.
+
+- **Roles.** A **peripheral** advertises its presence; a **central** (usually a phone) scans and connects. After connecting, the device that holds the data is the **GATT server** and the one that reads it is the **client**. A sensor is normally peripheral and server.
+- **Data model (GATT).** The server exposes **services**, each a group of **characteristics**. A characteristic is one value with a UUID and **properties**: read, write, notify. A heart-rate sensor has a Heart Rate service containing a measurement characteristic the phone subscribes to; with **notify**, the peripheral pushes each new value.
+- **Advertising.** Before connection the peripheral broadcasts small packets with its name and services. Advertising data is public.
+
+ESP-IDF offers two BLE host stacks, **NimBLE** (smaller, BLE only) and Bluedroid (larger; also Bluetooth Classic on the original ESP32). For BLE-only products NimBLE is the usual choice, selected in menuconfig. Designing a BLE device means designing its GATT table first: which characteristics, which properties, which require an encrypted link. Only the original ESP32 supports Bluetooth Classic; the S3, C3 and C6 are BLE only.
+
+**Coexistence.** Wi-Fi and Bluetooth share one 2.4 GHz radio and antenna, time-sliced by a coexistence arbiter. Both work together, each with reduced throughput and more latency than alone.`,
+
+    { t: 'callout', kind: 'security', md: `**Three basics.**
+
+1. **Credentials do not belong in source code.** The \`#define\` above ends up in the binary, in version control and in every device. Products obtain credentials at set-up through **provisioning** (ESP-IDF's \`wifi_provisioning\` component over BLE or a temporary access point) and store them in NVS, which, as you saw, is itself readable unless encrypted.
+2. **TLS without certificate verification is not security.** An HTTPS or MQTT-over-TLS connection that does not verify the server's certificate is encrypted to whoever answers, including an attacker in the middle. Supply a CA certificate, or attach ESP-IDF's certificate bundle (\`.crt_bundle_attach = esp_crt_bundle_attach\`), and never ship an option that skips verification.
+3. **BLE characteristics are readable by any nearby device** unless they require pairing and encryption. Mark sensitive characteristics accordingly and test with a generic BLE scanner app on a phone you own.
+
+Experiment only on networks and devices that are yours.` },
+
+    { t: 'callout', kind: 'mistake', md: `**Starting network work right after \`esp_wifi_start()\`.** The call returns immediately; association and DHCP take seconds. A request made at that point fails with a DNS or connection error. Wait for the got-IP event: have the handler set an event-group bit or give a semaphore, and have the network task block on it.` },
+
+    { t: 'predict', q: 'The password in the example is wrong. With the handler as written, what does the serial log show?',
+      choices: [
+        { t: 'One error, then silence', why: 'Look at what the handler does on every disconnect event. It does not stop after the first.' },
+        { t: 'A repeating stream of "disconnected ... retrying" lines, with no "got ip"', ok: true, why: 'Each failed authentication produces a disconnected event, and the handler immediately tries again, for ever.' },
+        { t: 'A panic, because authentication failure is fatal', why: 'A failed connection is an ordinary event delivered to the handler, not an exception.' },
+      ],
+      reveal: `Authentication failure arrives as \`WIFI_EVENT_STA_DISCONNECTED\` with a reason code indicating the handshake or authentication failed, and the handler retries without limit or delay. The device never gets an address, the log scrolls, and the radio stays busy. A better policy: count retries, back off (1 s, 2 s, 4 s ... capped), and treat an authentication-type reason differently from "access point not found", for instance by re-entering provisioning after several failures.` },
+
+    { t: 'exercise', prompt: `Modify the example so that a separate task, \`report_task\`, waits until the device has an IP address before doing its (blocking) network work, and waits again after any disconnection. Use an event group. Describe the changes to the handler and write the task's waiting logic.`,
+      hints: [
+        `An event group is a set of bits that tasks can wait on. You need one bit meaning "connected with an IP address".`,
+        `Set the bit on got-IP with \`xEventGroupSetBits\`; clear it on disconnect with \`xEventGroupClearBits\`.`,
+        `In the task: \`xEventGroupWaitBits(group, BIT, pdFALSE, pdTRUE, portMAX_DELAY)\`. Pass \`pdFALSE\` for clear-on-exit so the bit continues to reflect the link state.`,
+      ],
+      solution: `\`\`\`c
+#include "freertos/event_groups.h"
+
+#define GOT_IP_BIT BIT0
+static EventGroupHandle_t s_net;
+
+/* in on_event: */
+/*   on WIFI_EVENT_STA_DISCONNECTED: */  xEventGroupClearBits(s_net, GOT_IP_BIT);
+/*   on IP_EVENT_STA_GOT_IP:         */  xEventGroupSetBits(s_net, GOT_IP_BIT);
+
+static void report_task(void *arg)
+{
+    while (1) {
+        xEventGroupWaitBits(s_net, GOT_IP_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+        /* blocking network work: one HTTP request or MQTT publish */
+        vTaskDelay(pdMS_TO_TICKS(60000));
+    }
+}
+
+/* in app_main, before esp_wifi_start(): */
+s_net = xEventGroupCreate();
+xTaskCreate(report_task, "report", 8192, NULL, 5, NULL);
+\`\`\`
+
+The task blocks with no CPU use while offline and resumes by itself when the link returns. The network call can still fail if the link drops mid-request, so its error must be handled too: the bit only says the link was up when you looked. The 8192-byte stack allows for TLS.` },
+
+    `## Harder: a battery budget
+
+A coin-cell-class sensor must report once every 10 minutes for a year. Compare two designs: staying associated in modem sleep, and deep sleep with a full reconnect for each report. For each, list what consumes energy (sleep current, the reconnect and DHCP time at full radio power, TLS handshake) and what you would need from the datasheet to put numbers on it. Then consider BLE advertising of the reading instead of Wi-Fi: which role and GATT design would you use, what receives the data, and what did you give up? There is no universal answer; the exercise is to see that the radio protocol is a system design decision.`,
+
+    { t: 'refs', items: [
+      { title: 'ESP-IDF Wi-Fi Driver guide', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/wifi.html', note: 'Event sequences and disconnect reason codes' },
+      { title: 'ESP-IDF Event Loop Library', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/esp_event.html' },
+      { title: 'ESP-IDF ESP HTTP Client', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/protocols/esp_http_client.html' },
+      { title: 'ESP-IDF Bluetooth API and NimBLE host', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/bluetooth/index.html' },
+      { title: 'ESP-IDF RF Coexistence', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/coexist.html' },
+      { title: 'ESP-IDF Wi-Fi Provisioning', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/wifi_provisioning.html' },
+    ] },
+  ],
+  quiz: [
+    { q: 'After `WIFI_EVENT_STA_CONNECTED`, a socket connection attempt fails. Why?', kind: 'arch', choices: [
+      { t: 'The station is associated but DHCP has not yet assigned an IP address', ok: true, why: 'Association and addressing are separate steps. Network traffic is possible only after the got-IP event.' },
+      { t: 'Sockets are not supported in station mode', why: 'Station mode is the normal mode for client sockets. The attempt was simply made one step too early.' },
+      { t: 'The event loop must be deleted before using sockets', why: 'The event loop keeps running for the life of the connection; it is how you learn about later disconnects.' },
+    ] },
+    { q: 'An ESP32 resets with a brownout message exactly when Wi-Fi starts. What is the most likely cause?', kind: 'circuit', choices: [
+      { t: 'The 3.3 V supply sags during radio transmit current bursts', ok: true, why: 'Transmit bursts draw far more current than idle. A weak source, cable or regulator lets the rail dip below the brownout threshold.' },
+      { t: 'The Wi-Fi password is wrong', why: 'A wrong password yields disconnect events with a reason code. It does not affect the supply voltage.' },
+      { t: 'The application binary is too large', why: 'An oversized image is caught at build time and has no connection with supply voltage at run time.' },
+    ] },
+    { q: 'In BLE terms, a temperature sensor that a phone connects to and subscribes to is normally…', kind: 'concept', choices: [
+      { t: 'A peripheral acting as GATT server, sending notifications', ok: true, why: 'It advertises (peripheral), holds the data (server), and pushes new values to the subscribed client.' },
+      { t: 'A central acting as GATT client', why: 'That describes the phone: it scans, initiates the connection and reads the data.' },
+      { t: 'A broadcaster with no GATT table', why: 'A pure broadcaster cannot be connected to or subscribed to; the scenario describes a connection.' },
+    ] },
+    { q: 'Firmware makes HTTPS requests with certificate verification skipped "because it works". What is the actual exposure?', kind: 'security', choices: [
+      { t: 'Anyone who can intercept the connection can impersonate the server and read or alter the traffic', ok: true, why: 'Encryption without authentication protects the data only from passive observers, not from an active attacker who terminates the TLS session.' },
+      { t: 'None; the traffic is still encrypted', why: 'It is encrypted to whoever answered. Without verification the device cannot know that this is the intended server.' },
+      { t: 'Only that the connection is slower', why: 'Skipping verification saves a little time. The cost is the loss of server authentication.' },
+    ] },
+    { q: 'Why should long work not be done inside a Wi-Fi event handler?', kind: 'arch', choices: [
+      { t: 'Handlers run in the single event loop task, so a slow one delays every other event', ok: true, why: 'Events are dispatched one after another. A handler that blocks for seconds stalls disconnect and IP events behind it.' },
+      { t: 'Handlers run in interrupt context', why: 'Default event loop handlers run in a task and may call ordinary APIs. The limitation is that they share one task.' },
+      { t: 'Handlers have no access to global variables', why: 'They are ordinary C functions with normal access to program state.' },
+    ] },
+  ],
+});
+
+// ───────────────────────────────────────────────────────────── 16. Serial debugging and crash analysis
+lessons.push({
+  id: 'esp-l-debug', title: 'Serial debugging, panics and crash analysis', minutes: 45,
+  summary: 'Reading the boot log, decoding a Guru Meditation backtrace, and knowing why the chip last reset.',
+  skills: ['esp-panic-decode', 'esp-logging'],
+  blocks: [
+    `## A wall of hex
+
+Your firmware runs for a minute and then the monitor fills with \`Guru Meditation Error\`, a table of registers and a line of hexadecimal pairs, and the board reboots. It is tempting to scroll past and start adding print statements.
+
+That dump is the most precise bug report you will ever get: the CPU is telling you which instruction failed, what address it touched, and the chain of calls that led there. Reading it takes five minutes to learn.`,
+
+    `## The serial log, stage by stage
+
+Everything on the console comes from one of three stages, and knowing which stage printed the last line localises a failure:
+
+1. **ROM.** First line after reset: the reset reason and boot mode, for example \`rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)\` on an ESP32. A boot value indicating download mode means a strapping pin was low.
+2. **Second-stage bootloader.** Lines tagged \`boot:\`: the partition table and the image being loaded.
+3. **Application.** ESP-IDF start-up lines, then your \`ESP_LOGx\` output.
+
+\`idf.py monitor\` is more than a terminal. It has the ELF file of your build, so it **decodes code addresses** it sees into function names and source lines, colours log levels, and can reset the chip (Ctrl-T Ctrl-R) or rebuild and flash (Ctrl-T Ctrl-A). Exit with Ctrl-]. If the output is unreadable garbage, the baud rate is wrong; if a crash decodes to nonsense, the monitor's ELF does not match the firmware on the chip.`,
+
+    `## Anatomy of a panic
+
+When the CPU hits a fault it cannot handle, ESP-IDF's panic handler prints the state and resets. On an Xtensa chip (ESP32, S3) it looks like this (illustrative values):`,
+
+    { t: 'ascii', text: `Guru Meditation Error: Core  0 panic'ed (LoadProhibited). Exception was unhandled.
+
+Core  0 register dump:
+PC      : 0x400d5a3f  PS      : 0x00060630  A0      : 0x800d5b10  A1      : 0x3ffb4f50
+...
+EXCVADDR: 0x00000004  LBEG    : 0x00000000  LEND    : 0x00000000  LCOUNT  : 0x00000000
+
+Backtrace: 0x400d5a3c:0x3ffb4f50 0x400d5b0d:0x3ffb4f70 0x400d5c21:0x3ffb4f90 0x40088b11:0x3ffb4fb0`, caption: 'An illustrative Xtensa panic. Four facts matter: the cause, PC, EXCVADDR and the backtrace.' },
+
+    `- **Cause** (in parentheses). \`LoadProhibited\` / \`StoreProhibited\`: a read or write through a bad pointer. \`InstrFetchProhibited\`: a jump to a bad address, typically a NULL or corrupted function pointer. \`IllegalInstruction\`: executing data, often after stack corruption. \`IntegerDivideByZero\`. On RISC-V chips (C3, C6) the names differ (\`Load access fault\`, \`Store access fault\`, \`Illegal instruction\`).
+- **PC**: the address of the failing instruction.
+- **EXCVADDR**: the data address that was accessed. A small value such as \`0x00000004\` is the signature of a **NULL pointer**: a field at offset 4 of a struct whose pointer is NULL.
+- **Backtrace**: pairs of \`PC:SP\`, innermost call first. The PCs are the call chain.
+
+Use the memory map from the first lesson to sanity-check addresses: \`0x400Dxxxx\` and above is application code in flash, \`0x4008xxxx\` is IRAM, \`0x3FFBxxxx\` is data RAM. A PC that is not in a code region at all means the CPU jumped into the weeds.
+
+To turn the addresses into source lines, let the monitor do it, or run the toolchain's \`addr2line\` on the ELF by hand:
+
+\`\`\`sh
+xtensa-esp32-elf-addr2line -pfiaC -e build/myapp.elf 0x400d5a3c 0x400d5b0d 0x400d5c21
+\`\`\`
+
+(For RISC-V targets the tool is \`riscv32-esp-elf-addr2line\`.) The output is a function name, file and line for each address. Read it innermost first: the first line is where it died, the following lines are who called it.
+
+RISC-V chips do not print a \`Backtrace:\` line by default. They print the registers and a dump of stack memory, and \`idf.py monitor\` reconstructs the call chain from that using the ELF. Another reason to use the IDF monitor and not a plain terminal.`,
+
+    { t: 'callout', kind: 'why', md: `**Keep the ELF for every build you ship.** The \`.bin\` on the device has no symbols. The \`.elf\` from the *same build* is the only thing that maps addresses back to source. A crash log from the field is useless without it, and an ELF from a rebuild may not match. Archive \`build/<project>.elf\` alongside each released binary.` },
+
+    `## Other fatal messages
+
+| You see | Meaning |
+|---|---|
+| \`abort() was called at PC 0x...\` | Software called \`abort()\`: a failed \`ESP_ERROR_CHECK\` (the lines above name the error, file and line), a failed \`assert\`, or heap corruption detected |
+| \`***ERROR*** A stack overflow in task NAME has been detected\` | That task's stack is too small |
+| \`Interrupt wdt timeout on CPU0\` | Interrupts blocked too long: a long critical section or ISR |
+| \`Task watchdog got triggered\` | A task hogged a core (warning or reset, depending on configuration) |
+| \`Brownout detector was triggered\` | Supply voltage dipped |
+| \`Cache disabled but cached memory region accessed\` | An IRAM-registered ISR touched code or data in flash during a flash operation |
+
+**Core dumps.** For crashes you cannot watch, ESP-IDF can save the state of all tasks to a flash partition (or print it on the UART) at the moment of the panic. Enable it in menuconfig, add a \`coredump\` partition, and after the next crash run \`idf.py coredump-info\` for a summary of every task's backtrace, or \`idf.py coredump-debug\` to open it in GDB. It is the embedded equivalent of a post-mortem debugger session and is how field failures are diagnosed.`,
+
+    { t: 'callout', kind: 'security', md: `**Diagnostics are also disclosures.** A verbose log, a panic dump and a core dump reveal addresses, task names, sometimes buffer contents and keys. Useful to you, and to anyone else with a serial cable. For a product, decide deliberately what the console prints, and whether core dumps are stored encrypted. The security section returns to this.` },
+
+    { t: 'callout', kind: 'mistake', md: `**Debugging by adding prints and reflashing, while ignoring the backtrace.** Each cycle costs minutes and the added logging changes timing and stack use, which can hide the very bug you are chasing. Decode the dump first. In most cases it names the exact line, and the question becomes "why was this pointer NULL", not "where does it crash".` },
+
+    { t: 'predict', q: 'A panic shows cause `InstrFetchProhibited`, `PC: 0x00000000`, and a backtrace whose second entry decodes to `dispatch_command` in your code. What most likely happened?',
+      choices: [
+        { t: '`dispatch_command` called through a function pointer that was NULL', ok: true, why: 'The CPU tried to fetch an instruction from address 0. The caller in the backtrace is the function that made the bad call.' },
+        { t: '`dispatch_command` read a NULL data pointer', why: 'Reading data through a bad pointer is a load fault with a normal PC inside the function. Here the program counter itself is the bad address.' },
+        { t: 'The flash chip is faulty', why: 'A flash fault would not produce a clean jump to exactly address zero from one particular function.' },
+      ],
+      reveal: `\`InstrFetchProhibited\` with PC = 0 means the processor jumped to address 0 and could not fetch code there. The first backtrace entry is the bogus address; the second is the caller. Look in \`dispatch_command\` for a call through a table of function pointers or a callback field, and find which entry was never set. The defence is a check before the call: an unknown command should produce an error reply, not an indirect call.` },
+
+    { t: 'exercise', prompt: `Using the ESP32 memory map (DRAM \`0x3FFAE000–0x40000000\`, IRAM \`0x40080000–0x400AA000\`, IROM \`0x400D0000–0x40400000\`), interpret this illustrative panic: cause \`StoreProhibited\`, \`PC: 0x400d2b14\`, \`EXCVADDR: 0x00000010\`. Which region was executing, what kind of bug is it, and what is the single most likely mistake in the source? Answer the bug type in two words.`,
+      hints: [
+        `Place the PC in a region first. Is this application code, RAM code, or not code at all?`,
+        `\`StoreProhibited\` is a failed **write**. Look at the address being written: is \`0x10\` a plausible address for a variable?`,
+        `A write to a small offset from zero is a write to a field of a struct through a pointer whose value is zero.`,
+      ],
+      solution: `The PC is in **IROM**: ordinary application code in flash, so the program counter is sane and the fault is in what that instruction did. It attempted to **write** to address \`0x10\`, which is not RAM. That is a **NULL pointer** dereference: something like \`cfg->timeout = 5;\` where \`timeout\` is 16 bytes into the struct and \`cfg\` is NULL. The usual origins are an allocation or handle-creation call whose failure was not checked, or a handle used before initialisation (a queue or driver handle that is still NULL because the init order is wrong). Decode \`0x400d2b14\` with addr2line to get the line, then ask where that pointer was supposed to be set.`,
+      answer: { type: 'text', accept: ['null\\s*-?\\s*pointer', 'null\\s+deref', 'nullptr'], nudge: 'What does a write to an address just above zero tell you about the pointer that was used?' } },
+
+    `## Harder: a crash you plant yourself
+
+In any working project, add a function that writes through a NULL struct pointer, call it three levels deep from a task you created, and trigger it from a button or after ten seconds. Before running it, write down what you expect: the cause, the approximate EXCVADDR (compute the field offset), the order of functions in the backtrace, and the reset reason reported at the next boot. Then flash, capture the dump, decode it with \`addr2line\` by hand without the monitor's help, and compare each prediction with what you see. Repeat with a 2 kB local array in a task with a 2048-byte stack and predict which message appears instead. Planting known faults is how you learn to trust, and to read, the tools before a real crash arrives.`,
+
+    { t: 'refs', items: [
+      { title: 'ESP-IDF Fatal Errors', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/fatal-errors.html' },
+      { title: 'ESP-IDF Monitor', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/tools/idf-monitor.html' },
+      { title: 'ESP-IDF Core Dump', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/core_dump.html' },
+      { title: 'ESP-IDF Logging library', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/log.html' },
+    ] },
+  ],
+  quiz: [
+    { q: 'A panic reports `LoadProhibited` with `EXCVADDR: 0x00000008`. What is the most likely bug?', kind: 'code', choices: [
+      { t: 'Reading a struct field through a NULL pointer', ok: true, why: 'A read from an address a few bytes above zero is a field offset added to a pointer whose value is zero.' },
+      { t: 'A stack overflow', why: 'ESP-IDF reports a detected stack overflow with its own message naming the task. A tiny fault address points at a zero-valued pointer.' },
+      { t: 'A wrong baud rate', why: 'A baud mismatch garbles the text you see but cannot cause a CPU exception.' },
+    ] },
+    { q: 'Why does a crash log from a deployed device need the ELF file from exactly that build?', kind: 'concept', choices: [
+      { t: 'Only that ELF maps the addresses in the dump to the functions and lines that were actually at those addresses', ok: true, why: 'Any change in code or compiler options moves functions, so a different build decodes the same addresses to the wrong places.' },
+      { t: 'The ELF contains the device\'s log history', why: 'The ELF is a build product on the PC. It holds code, data and symbols, not anything recorded at run time.' },
+      { t: 'The device cannot boot without it', why: 'Only the binary images are flashed. The ELF never leaves the development machine.' },
+    ] },
+    { q: 'The log ends with `abort() was called at PC ...`, preceded by `ESP_ERROR_CHECK failed: esp_err_t 0x105 (ESP_ERR_NOT_FOUND) ... file "main.c" line 42`. What is the correct reading?', kind: 'code', choices: [
+      { t: 'A function called on line 42 returned an error, and the macro deliberately aborted', ok: true, why: 'This is a software-initiated stop with the cause, file and line already printed. Look at what line 42 called and why it could fail.' },
+      { t: 'The CPU executed an illegal instruction on line 42', why: 'An illegal instruction is a hardware exception with its own panic cause. Here the program chose to stop.' },
+      { t: 'The flash is corrupted near address 0x105', why: '0x105 is the numeric error code, not an address in memory or flash.' },
+    ] },
+    { q: 'Monitor output is a stream of unreadable characters from the moment of reset, on an otherwise working board. What do you check first?', kind: 'concept', choices: [
+      { t: 'That the monitor\'s baud rate matches the console baud rate', ok: true, why: 'Consistent garbage from the first character is the signature of a bit-time mismatch.' },
+      { t: 'The partition table', why: 'A bad partition table produces readable error text from the bootloader, not unreadable bytes.' },
+      { t: 'The task stack sizes', why: 'Stack problems appear later, during application execution, and are reported in readable text.' },
+    ] },
+    { q: 'On an ESP32-C3 the panic output has no `Backtrace:` line. How do you get the call chain?', kind: 'arch', choices: [
+      { t: 'Use `idf.py monitor`, which reconstructs it from the printed stack dump and the ELF', ok: true, why: 'RISC-V targets print registers and stack memory by default; the IDF monitor does the unwinding on the host.' },
+      { t: 'It is impossible on RISC-V chips', why: 'The information is in the stack dump. It needs host-side processing, which the IDF tooling provides.' },
+      { t: 'Switch the project to the Xtensa toolchain', why: 'The toolchain must match the CPU in the chip. A C3 cannot run Xtensa code.' },
+    ] },
+  ],
+});
+
+// ───────────────────────────────────────────────────────────── Glossary
+const glossary = [
+  { term: 'ESP-IDF', def: 'Espressif IoT Development Framework: the official SDK for ESP32-family chips, comprising a CMake build system, a FreeRTOS port, drivers and network stacks.' },
+  { term: 'idf.py', def: 'The ESP-IDF command-line front end. Wraps CMake, Ninja, esptool and the monitor: `set-target`, `menuconfig`, `build`, `flash`, `monitor`, `size`.' },
+  { term: 'sdkconfig', def: 'The generated file holding every Kconfig option for one build. Visible to C code as `CONFIG_...` macros through `sdkconfig.h`.' },
+  { term: 'sdkconfig.defaults', def: 'A hand-maintained file of only the options a project deliberately changes. Used to regenerate `sdkconfig`, and the file to keep in version control.' },
+  { term: 'menuconfig', def: 'The text-mode configuration editor started by `idf.py menuconfig`. Edits `sdkconfig`.' },
+  { term: 'Component', def: 'The unit of code in ESP-IDF: a directory with a `CMakeLists.txt` calling `idf_component_register`. Every driver, the application\'s `main` and third-party libraries are components.' },
+  { term: 'Target', def: 'The chip a project is built for (`esp32`, `esp32s3`, `esp32c3` ...), chosen with `idf.py set-target`. Determines the toolchain and default configuration.' },
+  { term: 'SoC', def: 'System on chip. Here, the ESP32 silicon itself: CPU cores, RAM, ROM, radio and peripherals in one package, usually without program flash.' },
+  { term: 'Module', def: 'A small shielded PCB carrying an ESP32 chip together with SPI flash, crystal and antenna, for example ESP32-WROOM-32E or ESP32-S3-WROOM-1.' },
+  { term: 'Dev board', def: 'A development board carrying a module plus USB connection, regulator, buttons and headers. LED pin, USB-UART chip and button wiring are board-specific.' },
+  { term: 'Xtensa', def: 'The CPU architecture of the ESP32, ESP32-S2 and ESP32-S3.' },
+  { term: 'RISC-V', def: 'The open CPU architecture used by the ESP32-C3, C6 and H2.' },
+  { term: 'Strapping pin', def: 'A GPIO sampled at reset to select boot behaviour. On the ESP32: GPIO0, 2, 5, 12 and 15. Normal GPIOs afterwards, but external circuits must not disturb them during reset.' },
+  { term: 'Download mode', def: 'The ROM serial bootloader state in which esptool can write flash. Entered by holding GPIO0 low at reset.' },
+  { term: 'Auto-reset circuit', def: 'Two transistors on a dev board that let the USB-UART chip\'s DTR and RTS lines drive EN and GPIO0, so tools can enter download mode without button presses.' },
+  { term: 'EN pin', def: 'The chip-enable (reset) pin. Pulling it low resets the ESP32; the dev board\'s EN or RST button does this.' },
+  { term: 'Mask ROM', def: 'Read-only memory in the chip holding the first-stage bootloader and utility functions. It cannot be changed.' },
+  { term: 'Second-stage bootloader', def: 'The small program in flash that the ROM loads. It reads the partition table, selects an app, and (when enabled) verifies and decrypts it.' },
+  { term: 'Partition table', def: 'A table in flash (default offset `0x8000`) listing named regions with type, subtype, offset and size.' },
+  { term: 'Factory app', def: 'The application partition used when there is no OTA data; in the default table, 1 MB at `0x10000`.' },
+  { term: 'OTA', def: 'Over-the-air update. Uses two or more app partitions and an `otadata` partition recording which one to boot.' },
+  { term: 'esptool', def: 'Espressif\'s tool for talking to the ROM bootloader: writing, reading and erasing flash, reading chip information.' },
+  { term: 'ELF file', def: 'The linked executable with symbols and debug information (`build/<project>.elf`). Needed to decode crash addresses; not what is flashed.' },
+  { term: 'IRAM', def: 'Instruction RAM: internal RAM holding code that must run when the flash cache is disabled or with minimal latency.' },
+  { term: 'IRAM_ATTR', def: 'Function attribute that places the function\'s code in IRAM instead of flash.' },
+  { term: 'DRAM', def: 'Data RAM: internal RAM holding globals, the heap and task stacks. `DRAM_ATTR` forces constant data there instead of flash.' },
+  { term: 'IROM / DROM', def: 'The address ranges through which code and read-only data stored in flash are seen by the CPU, via the cache.' },
+  { term: 'Flash cache', def: 'The mechanism that maps external SPI flash into the address space. Disabled during flash writes and erases, when flash-resident code and data are unreachable.' },
+  { term: 'GPIO matrix', def: 'The signal router that connects almost any peripheral signal to almost any pad. Flexible, with a small delay.' },
+  { term: 'IO MUX', def: 'The direct pad multiplexer connecting particular peripheral signals to fixed pads with the least delay.' },
+  { term: 'Input-only pins', def: 'On the original ESP32, GPIO34–39: no output driver and no internal pull resistors.' },
+  { term: 'ADC attenuation', def: 'A programmable divider in front of the ADC that sets its input range. `ADC_ATTEN_DB_12` gives the widest range.' },
+  { term: 'ADC calibration', def: 'Conversion of raw ADC codes to millivolts using per-chip reference data from eFuse. Line fitting on ESP32/S2, curve fitting on S3/C3/C6.' },
+  { term: 'eFuse', def: 'One-time-programmable bits in the chip holding factory calibration, MAC address, and security configuration and keys.' },
+  { term: 'LEDC', def: 'The LED Control peripheral: the ESP32\'s general PWM generator, organised as timers and channels.' },
+  { term: 'Duty resolution', def: 'The width in bits of an LEDC timer. Sets the number of duty steps, and trades against the maximum PWM frequency.' },
+  { term: 'gptimer', def: 'The ESP-IDF driver for general-purpose hardware timers. Alarm callbacks run in interrupt context.' },
+  { term: 'esp_timer', def: 'High-resolution software timers multiplexed onto one hardware timer. Callbacks run in a task by default; `esp_timer_get_time()` gives microseconds since boot.' },
+  { term: 'ISR service', def: 'The shared GPIO interrupt dispatcher installed by `gpio_install_isr_service`, which calls per-pin handlers added with `gpio_isr_handler_add`.' },
+  { term: 'esp_err_t', def: 'The integer error type returned by most ESP-IDF functions. `ESP_OK` is zero; `esp_err_to_name` gives the text.' },
+  { term: 'ESP_ERROR_CHECK', def: 'A macro that logs the error and calls `abort()` if its argument is not `ESP_OK`.' },
+  { term: 'app_main', def: 'The application entry point, called from the main task after the scheduler has started. It may return.' },
+  { term: 'Main task', def: 'The FreeRTOS task that calls `app_main`. Its stack size is set by `CONFIG_ESP_MAIN_TASK_STACK_SIZE`.' },
+  { term: 'Tick', def: 'The periodic scheduler interrupt. 100 Hz (10 ms) by default on ESP-IDF; delays are quantised to it.' },
+  { term: 'Core affinity', def: 'Whether a task may run on either core of a dual-core chip or is pinned to one with `xTaskCreatePinnedToCore`.' },
+  { term: 'SMP', def: 'Symmetric multiprocessing: one scheduler running tasks on two cores at once, as on the ESP32 and ESP32-S3.' },
+  { term: 'Stack high-water mark', def: 'The minimum free stack a task has ever had, from `uxTaskGetStackHighWaterMark`. In bytes on ESP-IDF.' },
+  { term: 'Task watchdog (TWDT)', def: 'A watchdog that reports or resets when subscribed tasks, by default the idle tasks, do not check in within the timeout.' },
+  { term: 'Interrupt watchdog (IWDT)', def: 'A watchdog that panics when interrupts are blocked, or an ISR runs, for too long.' },
+  { term: 'Brownout detector', def: 'A circuit that resets the chip when the supply voltage falls below a threshold, to avoid running with corrupted state.' },
+  { term: 'Reset reason', def: 'Why the chip last restarted (power-on, software, panic, watchdog, brownout ...), from the ROM boot line and `esp_reset_reason()`.' },
+  { term: 'NVS', def: 'Non-volatile storage: ESP-IDF\'s wear-levelled key-value store in a flash partition, with namespaces and typed values.' },
+  { term: 'Namespace (NVS)', def: 'A named group of NVS keys, at most 15 characters, that keeps different components\' keys apart.' },
+  { term: 'Wear levelling', def: 'Spreading erase cycles across flash sectors so that no single sector wears out early.' },
+  { term: 'esp_netif', def: 'The network interface abstraction between drivers (Wi-Fi, Ethernet) and the TCP/IP stack.' },
+  { term: 'Event loop', def: 'The `esp_event` task that delivers system events such as Wi-Fi and IP changes to registered handlers, one at a time.' },
+  { term: 'Station mode (STA)', def: 'Wi-Fi mode in which the ESP32 joins an existing access point as a client.' },
+  { term: 'Provisioning', def: 'Delivering Wi-Fi credentials to a device at set-up time, over BLE or a temporary access point, instead of compiling them in.' },
+  { term: 'GATT', def: 'Generic Attribute Profile: the BLE data model of services containing characteristics, each a value with properties such as read, write and notify.' },
+  { term: 'NimBLE', def: 'The smaller of the two BLE host stacks available in ESP-IDF; BLE only.' },
+  { term: 'Coexistence', def: 'Time-sharing of the single 2.4 GHz radio between Wi-Fi, Bluetooth and, on some chips, 802.15.4.' },
+  { term: 'USB Serial/JTAG', def: 'A fixed-function USB block on chips such as the S3, C3 and C6 providing a serial console, flashing and JTAG over one cable.' },
+  { term: 'Guru Meditation Error', def: 'The heading of an ESP-IDF panic report for an unhandled CPU exception. Followed by the cause, register dump and backtrace.' },
+  { term: 'Backtrace', def: 'The chain of return addresses at the time of a crash, printed as `PC:SP` pairs on Xtensa and decoded with the ELF file.' },
+  { term: 'EXCVADDR', def: 'The Xtensa register holding the data address whose access caused an exception. Near zero indicates a NULL pointer.' },
+  { term: 'addr2line', def: 'A toolchain utility that converts code addresses to function, file and line using an ELF file.' },
+  { term: 'Core dump', def: 'A saved snapshot of all tasks\' state at a panic, stored in flash or sent over UART for later analysis with `idf.py coredump-info`.' },
+  { term: 'PSRAM', def: 'External pseudo-static RAM on some modules, adding megabytes of slower RAM and occupying extra pins (GPIO16/17 on ESP32 modules that have it).' },
+];
+
+// ───────────────────────────────────────────────────────────── Troubleshooting
+const troubleshooting = [
+  { symptom: 'esptool: "Failed to connect ... No serial data received"', area: 'Flashing',
+    causes: 'The chip did not enter download mode: the auto-reset circuit failed or is absent, GPIO0 is held high by external circuitry, the wrong serial port was chosen, or the USB cable is charge-only.',
+    fix: 'Hold BOOT, tap EN, release BOOT, then retry. Confirm the port appears and disappears with the cable (`ls /dev/tty*`). Try a known data cable. Disconnect anything wired to GPIO0, GPIO2, EN and the UART0 pins.' },
+  { symptom: 'Serial port does not appear, or "Permission denied" opening it on Linux', area: 'Flashing',
+    causes: 'Missing driver for the board\'s USB-UART chip, a charge-only cable, or the user is not in the group that owns serial devices.',
+    fix: 'Check `dmesg` after plugging in to see whether a device enumerates and which driver binds. Add your user to the group that owns the device node (often `dialout`) and log in again.' },
+  { symptom: 'Flashing reports success but the board prints nothing or loops with ROM errors', area: 'Flashing',
+    causes: 'The project is built for a different target (for example ESP32 images on an S3: different CPU and bootloader offset), or the flash size, mode or frequency setting does not match the module.',
+    fix: 'Run `idf.py set-target` for the actual chip and rebuild. Check the flash settings under "Serial flasher config" in menuconfig against the module datasheet. `esptool flash-id` reports the detected flash.' },
+  { symptom: 'Board sits at "waiting for download" after every reset', area: 'Boot',
+    causes: 'GPIO0 is low at reset: a stuck BOOT button, or an external circuit pulling the pin down.',
+    fix: 'Measure GPIO0 during reset; it must be high for normal boot. Move whatever is connected to it to a non-strapping pin.' },
+  { symptom: 'ESP32 fails to boot (flash read errors) only when a part is connected to GPIO12', area: 'Boot',
+    causes: 'GPIO12 (MTDI) is a strapping pin selecting the flash supply voltage. Held high at reset on a module with 3.3 V flash, it selects 1.8 V and the flash cannot be read.',
+    fix: 'Do not pull GPIO12 high at reset. Use another pin, or make sure the external circuit leaves it low until after boot.' },
+  { symptom: 'Continuous reset loop: the same boot messages repeat every second or so', area: 'Boot',
+    causes: 'The application crashes or aborts early in every boot: a failed `ESP_ERROR_CHECK` during initialisation, a stack overflow in `app_main`, use of a flash pin, or a brownout as soon as the radio starts.',
+    fix: 'Read the lines just before each restart: they name the cause (`abort()`, Guru Meditation, brownout). Check the `rst:` reason in the ROM line. Fix that cause; do not disable the detector that reported it.' },
+  { symptom: '"Brownout detector was triggered" and a reset, often when Wi-Fi starts or a motor switches', area: 'Power',
+    causes: 'The 3.3 V rail dips under load: weak USB port, long or thin cable, undersized regulator, too little bulk capacitance, or a load powered from the board\'s 3.3 V pin.',
+    fix: 'Power from a supply that can deliver the peak current, shorten the cable, add bulk capacitance near the module, and power motors, servos and LED strips from their own supply with a common ground.' },
+  { symptom: 'Guru Meditation: LoadProhibited or StoreProhibited with EXCVADDR near zero', area: 'Crash',
+    causes: 'A NULL pointer dereference: an unchecked allocation or handle creation, or a handle used before it was initialised.',
+    fix: 'Decode the backtrace (monitor or `addr2line` with the matching ELF) to find the line, then trace where the pointer should have been set. Check return values of create and open functions and the initialisation order.' },
+  { symptom: 'Guru Meditation: InstrFetchProhibited or IllegalInstruction with a strange PC', area: 'Crash',
+    causes: 'A call through a NULL or corrupted function pointer, or a return address overwritten by a buffer overflow on the stack.',
+    fix: 'Use the second backtrace entry to find the caller. Check function-pointer tables and callbacks for unset entries, and look for writes past the end of local arrays in the functions involved.' },
+  { symptom: '"A stack overflow in task X has been detected"', area: 'Crash',
+    causes: 'The task\'s stack is too small for its call depth and locals: large local arrays, `printf`-family formatting, TLS, or deep recursion.',
+    fix: 'Increase the stack size given to `xTaskCreate` (bytes on ESP-IDF), move large buffers to static or heap storage, and measure the margin with `uxTaskGetStackHighWaterMark`. For `app_main`, raise the main task stack size in menuconfig.' },
+  { symptom: '"Task watchdog got triggered" naming IDLE0 or IDLE1', area: 'Watchdog',
+    causes: 'A task is running without ever blocking, starving the idle task on that core: a busy-wait loop, a polling loop with no delay, or a delay shorter than one tick that rounds to zero.',
+    fix: 'Look at "Tasks currently running" in the report for the culprit. Make it block (`vTaskDelay` of at least one tick, or wait on a queue or semaphore). Do not silence the report by feeding the watchdog from the loop.' },
+  { symptom: 'Guru Meditation: "Interrupt wdt timeout on CPU0/1"', area: 'Watchdog',
+    causes: 'Interrupts were disabled or an ISR ran for too long: a long critical section, blocking or heavy work inside an ISR, or logging from an ISR.',
+    fix: 'Shorten critical sections to a few instructions. Move ISR work to a task via a queue or notification. Remove `printf`/`ESP_LOGx` from interrupt handlers.' },
+  { symptom: 'Rare panic: "Cache disabled but cached memory region accessed"', area: 'Crash',
+    causes: 'An interrupt handler registered as IRAM-safe (or a callback with a cache-safe option enabled) reached code or constant data stored in flash while a flash write or erase was in progress.',
+    fix: 'Mark the handler and everything it calls `IRAM_ATTR`, and constants it reads `DRAM_ATTR`; or keep the handler trivial; or register it without the IRAM flag and accept delay during flash operations.' },
+  { symptom: 'I2C transfers fail with ESP_ERR_NOT_FOUND / NACK', area: 'I2C',
+    causes: 'No device acknowledged the address: wrong address (often an 8-bit address used where 7-bit is expected, or address-select pins strapped differently), SDA and SCL swapped, device unpowered, or no common ground.',
+    fix: 'Measure the device\'s supply. Scan all addresses with `i2c_master_probe` to see what answers. Convert 8-bit addresses by shifting right one bit. Check the address-select pins against the datasheet.' },
+  { symptom: 'I2C transfers fail with ESP_ERR_TIMEOUT, or the bus scan is very slow', area: 'I2C',
+    causes: 'A line is stuck low or cannot rise: missing pull-ups, a short, a device holding SDA low after an interrupted transfer, or pull-ups too weak for the bus capacitance and speed.',
+    fix: 'With the bus idle, both lines should measure near 3.3 V. Fit external pull-ups (a few kilohms). Power-cycle the device to release a stuck SDA. Lower `scl_speed_hz` or shorten the wiring.' },
+  { symptom: 'SPI device returns only 0x00 or 0xFF', area: 'SPI',
+    causes: 'The device is not driving MISO: CS is not reaching it or is the wrong pin, MISO is unconnected or swapped with MOSI, the device is unpowered or held in reset.',
+    fix: 'Check each of the four signals at the device\'s pins. Confirm `spics_io_num` and that CS goes low during a transaction with a logic analyser or by slowing the clock and probing.' },
+  { symptom: 'SPI data is wrong but consistent, often shifted by one bit', area: 'SPI',
+    causes: 'Clock mode (CPOL/CPHA) does not match the device, `length` was given in bytes instead of bits, or the clock is too fast for the wiring or the GPIO-matrix routing.',
+    fix: 'Take the mode from the device datasheet\'s timing diagram. Set `length` to 8 × bytes. Reduce `clock_speed_hz` to 1 MHz while debugging.' },
+  { symptom: 'GPIO input reads random values', area: 'GPIO',
+    causes: 'The input is floating: no pull resistor enabled, or the pin is one of GPIO34–39 on the ESP32, which have no internal pulls.',
+    fix: 'Enable the internal pull-up or pull-down, or add an external resistor. On GPIO34–39 an external resistor is the only option.' },
+  { symptom: 'Board crashes or resets as soon as a GPIO in the range 6–11 is configured (ESP32)', area: 'GPIO',
+    causes: 'Those pads are connected to the module\'s SPI flash; reconfiguring them cuts the chip off from its own program.',
+    fix: 'Choose different pins. On PSRAM modules also avoid GPIO16 and 17. For other chips consult the module datasheet for the flash and PSRAM pins.' },
+  { symptom: 'ADC readings stop working or return errors once Wi-Fi is started', area: 'ADC',
+    causes: 'The channel is on ADC2, which Wi-Fi uses on the ESP32 (and S2/S3).',
+    fix: 'Move the signal to an ADC1 pin (GPIO32–39 on the ESP32) and check the return value of `adc_oneshot_read`.' },
+  { symptom: 'ADC voltage is off by several percent, or differs between boards', area: 'ADC',
+    causes: 'Raw codes converted with an assumed 3.3 V reference; no calibration; signal near the ends of the range; high source impedance.',
+    fix: 'Use the calibration driver (`adc_cali_raw_to_voltage`). Keep the signal mid-range for the chosen attenuation. Add about 100 nF at the pin for high-impedance sources and average several readings.' },
+  { symptom: 'LEDC: error that the requested frequency and duty resolution cannot be achieved', area: 'PWM',
+    causes: 'Frequency × 2^resolution exceeds what the timer\'s clock source can provide.',
+    fix: 'Reduce `duty_resolution` or `freq_hz`. Compute the available counts per period as source clock ÷ frequency and choose the largest power of two below it.' },
+  { symptom: 'Wi-Fi never connects: repeated disconnect events', area: 'Wi-Fi',
+    causes: 'Wrong SSID or password, the access point is 5 GHz only (the ESP32 family discussed here is 2.4 GHz for Wi-Fi), an unsupported security mode, weak signal, or the access point rejecting new clients.',
+    fix: 'Log the `reason` field of the disconnect event and look it up in the Wi-Fi guide. Confirm a 2.4 GHz network. Test near the access point, and with a phone hotspot to rule out the router.' },
+  { symptom: 'Wi-Fi connects but network requests fail immediately', area: 'Wi-Fi',
+    causes: 'The request was made before an IP address was assigned, or DNS is unavailable on that network.',
+    fix: 'Start network work only after `IP_EVENT_STA_GOT_IP`. Log the assigned address and gateway. Check the return codes of the client library.' },
+  { symptom: 'Build fails: app partition is too small for the binary', area: 'Build',
+    causes: 'The application image exceeds the size of the app partition in the partition table (1 MB by default).',
+    fix: 'Inspect `idf.py size-components`, lower the log level, enable size optimisation, remove unused components; or choose a larger-app partition table or a custom `partitions.csv` that fits the flash chip.' },
+  { symptom: 'Build fails with "header not found" in your own component', area: 'Build',
+    causes: 'The component does not declare the component that provides that header.',
+    fix: 'Add the providing component to `REQUIRES` or `PRIV_REQUIRES` in the component\'s `idf_component_register` call.' },
+  { symptom: 'Code from a tutorial does not compile: unknown header or function', area: 'Build',
+    causes: 'The tutorial targets an older ESP-IDF (legacy ADC, timer or I2C drivers, `tcpip_adapter`, old event loop) or Arduino APIs.',
+    fix: 'Check which IDF version the tutorial used. Port to the current driver using the migration guides in the ESP-IDF documentation, or find the equivalent example in the `examples/` directory of your installed version.' },
+  { symptom: 'Settings from an earlier firmware reappear after reflashing', area: 'Storage',
+    causes: '`idf.py flash` does not erase the NVS partition, so stored keys persist across firmware versions.',
+    fix: 'Run `idf.py erase-flash` and flash again during development. In products, keep a schema version in NVS and migrate or reset on mismatch.' },
+  { symptom: 'Monitor shows garbage characters', area: 'Debugging',
+    causes: 'Baud rate mismatch between the monitor and the console, or another device driving the UART0 lines.',
+    fix: 'Match the monitor baud to the console setting in menuconfig. Disconnect anything on the UART0 pins. Note that the ROM\'s own first lines may use a different rate from the application on some boards.' },
+  { symptom: 'ESP_LOGD / ESP_LOGV output never appears', area: 'Debugging',
+    causes: 'Those levels are above the compile-time maximum log level, so the calls were removed from the binary; or the run-time level for that tag is lower.',
+    fix: 'Raise the maximum (and default) log level in menuconfig and rebuild, or call `esp_log_level_set` for the tag if the level is compiled in.' },
+];
+
+// ───────────────────────────────────────────────────────────── References
+// docs.espressif.com and www.espressif.com URLs follow Espressif's standard documentation layout but could not be
+// load-tested from the authoring environment (see docs/FACTS.md, UNVERIFIED item 9); github.com URLs were reachable.
+const refs = [
+  { org: 'Espressif', title: 'ESP-IDF Programming Guide (stable, ESP32)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/', note: 'Switch the chip selector at the top left for S3, C3 or C6' },
+  { org: 'Espressif', title: 'ESP-IDF source and examples', url: 'https://github.com/espressif/esp-idf', note: 'The examples/ directory matches the API of each release tag' },
+  { org: 'Espressif', title: 'ESP-IDF Get Started', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/get-started/index.html' },
+  { org: 'Espressif', title: 'ESP-IDF Build System', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/build-system.html' },
+  { org: 'Espressif', title: 'ESP-IDF Migration Guides', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/migration-guides/index.html', note: 'What changed between major versions, per driver' },
+  { org: 'Espressif', title: 'Partition Tables', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/partition-tables.html' },
+  { org: 'Espressif', title: 'Application Startup Flow', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/startup.html' },
+  { org: 'Espressif', title: 'GPIO & RTC GPIO', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html' },
+  { org: 'Espressif', title: 'ADC Oneshot Mode Driver', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/adc_oneshot.html' },
+  { org: 'Espressif', title: 'ADC Calibration Driver', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/adc_calibration.html' },
+  { org: 'Espressif', title: 'LED Control (LEDC)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/ledc.html' },
+  { org: 'Espressif', title: 'General Purpose Timer (GPTimer)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gptimer.html' },
+  { org: 'Espressif', title: 'ESP Timer (High Resolution Timer)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/esp_timer.html' },
+  { org: 'Espressif', title: 'Universal Asynchronous Receiver/Transmitter (UART)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/uart.html' },
+  { org: 'Espressif', title: 'Inter-Integrated Circuit (I2C)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/i2c.html' },
+  { org: 'Espressif', title: 'SPI Master Driver', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/spi_master.html' },
+  { org: 'Espressif', title: 'Interrupt Allocation', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/intr_alloc.html' },
+  { org: 'Espressif', title: 'FreeRTOS (IDF)', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/freertos_idf.html' },
+  { org: 'Espressif', title: 'Watchdogs', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/wdts.html' },
+  { org: 'Espressif', title: 'Non-Volatile Storage Library', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/storage/nvs_flash.html' },
+  { org: 'Espressif', title: 'Wi-Fi Driver', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/wifi.html' },
+  { org: 'Espressif', title: 'Bluetooth API', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/bluetooth/index.html' },
+  { org: 'Espressif', title: 'Error Handling', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/error-handling.html' },
+  { org: 'Espressif', title: 'Logging library', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/log.html' },
+  { org: 'Espressif', title: 'Fatal Errors', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/fatal-errors.html' },
+  { org: 'Espressif', title: 'IDF Monitor', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/tools/idf-monitor.html' },
+  { org: 'Espressif', title: 'Core Dump', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/core_dump.html' },
+  { org: 'Espressif', title: 'esptool documentation', url: 'https://docs.espressif.com/projects/esptool/en/latest/esp32/' },
+  { org: 'Espressif', title: 'esptool source', url: 'https://github.com/espressif/esptool' },
+  { org: 'Espressif', title: 'ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'Pin definitions, strapping pins, electrical and ADC characteristics' },
+  { org: 'Espressif', title: 'ESP32 Technical Reference Manual', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf', note: 'Register-level description of every peripheral' },
+  { org: 'Espressif', title: 'ESP32-S3 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf' },
+  { org: 'Espressif', title: 'ESP32-S3 Technical Reference Manual', url: 'https://www.espressif.com/sites/default/files/documentation/esp32-s3_technical_reference_manual_en.pdf' },
+  { org: 'Espressif', title: 'ESP Hardware Design Guidelines', url: 'https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32/index.html', note: 'Power supply, strapping pins, flash, RF layout' },
+  { org: 'Espressif', title: 'Arduino core for ESP32', url: 'https://github.com/espressif/arduino-esp32' },
+  { org: 'NXP', title: 'UM10204: I2C-bus specification and user manual', url: 'https://www.nxp.com/docs/en/user-guide/UM10204.pdf' },
+  { org: 'FreeRTOS', title: 'FreeRTOS Kernel source', url: 'https://github.com/FreeRTOS/FreeRTOS-Kernel' },
+];
+
+export default { skills, lessons, labs: [], glossary, troubleshooting, refs };

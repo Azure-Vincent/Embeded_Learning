@@ -338,7 +338,7 @@ printf("%d %d\n", a + b, c);`, kind: 'code', choices: [
     { q: 'A parser computes `payload_len = total_len - HEADER_LEN` where both are `size_t` and `HEADER_LEN` is 8. What is the required check, and where?', kind: 'security', choices: [
       { t: '`total_len >= HEADER_LEN`, before the subtraction', ok: true, why: 'With a shorter message the unsigned subtraction wraps to a number near SIZE_MAX, which then passes for a length.' },
       { t: '`payload_len >= 0`, after the subtraction', why: 'An unsigned result is always at least zero, so this test cannot fail and protects nothing.' },
-      { t: '`payload_len < total_len`, after the subtraction', why: 'It is possible to detect the wrap afterwards for unsigned types, but this form also rejects nothing useful when the header length is zero and is easy to get wrong; the direct precondition is clearer and always correct.' },
+      { t: '`payload_len < total_len`, after the subtraction', why: 'A test placed after the subtraction relies on the reader recognising a wrap idiom, and by then the wrapped value exists and may already have been used. State the precondition instead.' },
       { t: 'No check is needed because the protocol specification says messages are at least 8 bytes', why: 'The specification binds honest senders. The parser receives bytes from whoever is connected.' },
     ] },
     { q: 'Why can `uint16_t w, h; uint32_t area = w * h;` misbehave on a 32-bit target for `w = h = 65535`?', kind: 'arch', choices: [

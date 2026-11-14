@@ -158,13 +158,14 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
         h('td', { class: 'dis-ins' }, h('span', { class: 'dis-mn' }, l.text.split(' ')[0]), ' ' + l.text.split(' ').slice(1).join(' ')),
         revealed ? h('td', { class: 'dis-note' }, notes[l.addr] || '') : null))));
 
-    const left = h('div', { class: 'dis-left' }, h('div', { class: 'dis-scroll', tabindex: 0, role: 'region', 'aria-label': 'Disassembly listing' }, table),
+    const top = h('div', { class: 'dis-top' }, h('div', { class: 'dis-scroll', tabindex: 0, role: 'region', 'aria-label': 'Disassembly listing' }, table),
       h('p', { class: 'w-note' }, st.arch === 'thumb'
         ? 'Each Thumb instruction here is 16 bits (bl is 32), shown as one hexadecimal word. ".word" lines are data in the literal pool, shown byte by byte in memory order.'
-        : 'Every instruction is 32 bits, shown byte by byte in memory order (little-endian). Names such as li, mv, beqz, j and ret are shorthands the disassembler prints for common forms of real instructions.'),
+        : 'Every instruction is 32 bits, shown byte by byte in memory order (little-endian). Names such as li, mv, beqz, j and ret are shorthands the disassembler prints for common forms of real instructions.'));
+    const left = h('div', { class: 'dis-left' },
       revealed ? h('div', {}, h('h4', {}, 'Original C'), h('pre', { class: 'w-mono dis-c' }, fn.c)) :
         h('p', { class: 'w-note' }, 'The C source is hidden until you answer the first question. ', h('button', { class: 'btn small ghost', type: 'button', disabled: !c.tries[0], title: c.tries[0] ? '' : 'Attempt the first question first', onclick: () => { c.shown = true; render(); } }, 'Show it anyway')),
-      h('details', { class: 'dis-cheat', open: !revealed }, h('summary', {}, `Calling convention: ${st.arch === 'thumb' ? 'Arm AAPCS' : 'RISC-V ILP32'}`),
+      h('details', { class: 'dis-cheat', open: true }, h('summary', {}, `Calling convention: ${st.arch === 'thumb' ? 'Arm AAPCS' : 'RISC-V ILP32'}`),
         h('dl', { class: 'w-kv' }, CHEATS[st.arch].flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]))));
 
     const right = h('div', { class: 'dis-right' });
@@ -202,7 +203,7 @@ export default function mount(el, props = {}, ctx = { complete() {}, isDone: () 
     });
     if (allDone) right.append(h('p', { class: 'w-msg ok' }, 'All questions for this function answered. Try the same function on the other architecture: the C is identical, the idioms are not.'));
 
-    el.append(h('div', { class: 'dis-grid' }, left, right),
+    el.append(top, h('div', { class: 'dis-grid' }, right, left),
       h('p', { class: 'w-note' }, `These listings are llvm-objdump output for tools/fwimages/src/disasm_funcs.c, compiled with ${TOOLCHAIN} at -Oz for ${st.arch === 'thumb' ? 'thumbv6m (Cortex-M0+)' : 'riscv32, rv32im without compressed instructions'}. Other compilers, versions and optimisation levels produce different code for the same C; production RISC-V firmware (for example for an ESP32-C3) normally also uses 16-bit compressed instructions. Nothing here was run on hardware. With GNU tools the same view comes from ${st.arch === 'thumb' ? 'arm-none-eabi-objdump -d file.elf' : 'riscv32-unknown-elf-objdump -d file.elf (or riscv64-unknown-elf-objdump)'}, and Ghidra shows it next to a decompilation.`));
   }
   render();

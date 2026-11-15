@@ -153,7 +153,7 @@ The method, for any ID you meet:
       { t: 'predict', q: 'A JTAG chain has two devices. You connect a probe and OpenOCD reports an IDCODE of 0x00000000 for every scan, however many devices you declare. What is the most likely cause?',
         choices: [
           { t: 'Neither device implements an IDCODE register, so both select BYPASS', why: 'A device without IDCODE selects BYPASS, which contributes a single 0 bit, but a chip with a debug port almost always implements IDCODE. All zeros for the entire scan suggests no data is coming back at all.' },
-          { t: 'TDO is not reaching the probe: stuck low, open, or target unpowered', ok: true, why: 'All-zero data means the probe is sampling a line that never goes high. All ones (0xFFFFFFFF) is the same fault with the line floating or pulled high.' },
+          { t: 'TDO is not reaching the probe: stuck low, open, or the target is unpowered', ok: true, why: 'All-zero data means the probe is sampling a line that never goes high. All ones (0xFFFFFFFF) is the same fault with the line floating or pulled high.' },
           { t: 'The clock is too slow for the TAP state machine to advance', why: 'JTAG is fully static: it works at any clock rate below the maximum. Slowing down is a fix for marginal wiring, never a cause of failure.' },
         ],
         reveal: `All zeros or all ones is a wiring or power symptom, not a protocol one. Check target power and VTref, ground, and continuity of each signal. Then lower the adapter speed. Only after the electrical layer is good do chain descriptions and configuration files matter.` },
@@ -210,7 +210,7 @@ The settings are chip-specific and some are irreversible. For the MSPM0L2228 the
         { t: 'Whether the flash is erased, since erased flash reads as ones', why: 'Erased flash reads as 0xFF bytes, but the IDCODE comes from a hard-wired register that does not depend on flash contents.' },
       ] },
       { q: 'A product ships with firmware that turns the SWD pins into GPIO inputs during start-up. How much protection does that give?', kind: 'security', choices: [
-        { t: 'Little: a probe that connects under reset halts the core first', ok: true, why: 'The remap is done by firmware, and firmware has not executed yet when the chip comes out of reset under debugger control.' },
+        { t: 'Little: a probe that connects under reset halts the core before that code', ok: true, why: 'The remap is done by firmware, and firmware has not executed yet when the chip comes out of reset under debugger control.' },
         { t: 'Complete: once the pins are GPIO the debug port no longer exists', why: 'The debug logic is still in the chip and the pins are in their default debug role at every reset.' },
         { t: 'None, because pins configured as GPIO can still carry SWD packets', why: 'While remapped, the pins really are disconnected from the debug port. The weakness is the window before the remap, not after it.' },
       ] },
@@ -286,7 +286,7 @@ Probes differ in three ways:
       { t: 'predict', q: 'A board has an on-board DAPLink probe. You connect an external J-Link to the same target\'s SWD header and leave the board\'s USB plugged in. Both probes are idle. What is the likely result when the J-Link tries to connect?',
         choices: [
           { t: 'It works normally, because an idle probe does not drive anything', why: 'Whether an idle probe releases the lines depends on the probe and its firmware. Many keep driving SWCLK and reset, so "idle" cannot be assumed to mean "disconnected".' },
-          { t: 'A flaky or failed connection: two probes may drive the same lines', ok: true, why: 'Two outputs on SWCLK, SWDIO or reset contend. Boards that support an external probe provide jumpers or solder bridges to isolate the on-board one.' },
+          { t: 'A flaky or failed connection: two probes may be driving the same lines', ok: true, why: 'Two outputs on SWCLK, SWDIO or reset contend. Boards that support an external probe provide jumpers or solder bridges to isolate the on-board one.' },
           { t: 'The target is damaged immediately, because two outputs are shorted', why: 'Contention between two logic outputs at the same voltage is bad practice and causes malfunctions, but it rarely destroys anything at once. The realistic symptom is a flaky connection.' },
         ],
         reveal: `Check the board's schematic or user guide for how to disconnect the on-board probe (jumpers, a "debug out" mode, or cutting solder bridges). The same reasoning applies to the UART: an on-board USB serial bridge drives the target's RX pin, so an external adapter on that pin fights it.` },
@@ -474,7 +474,7 @@ pc (/32): 0x10000228
       { t: 'predict', q: 'A target is running. Without halting it, you type `mdw 0x20000000 4` in the telnet session. On a Cortex-M chip, what happens?',
         choices: [
           { t: 'An error, because memory can only be read while halted', why: 'That is true of the core\'s own registers, which live inside the processor. Memory is reached through the MEM-AP, a separate bus master.' },
-          { t: 'The four words are displayed, read while the program keeps running', ok: true, why: 'The MEM-AP accesses the bus independently of the core. Reads are interleaved with the program\'s own accesses.' },
+          { t: 'The four words are displayed, read while the program keeps on running', ok: true, why: 'The MEM-AP accesses the bus independently of the core. Reads are interleaved with the program\'s own accesses.' },
           { t: 'The target halts, the words are read, and it resumes automatically', why: 'OpenOCD does not halt a Cortex-M core for a plain memory read. The debug architecture was designed so that it need not.' },
         ],
         reveal: `Reading memory on a running Cortex-M is normal and useful: you can watch a variable change without stopping the control loop. The values are a snapshot of an instant, so multi-word structures can be caught half-updated. Core registers (\`reg\`) are different: they require the core to be halted.` },
@@ -553,7 +553,7 @@ The guided steps in the tool's own task list continue from there into GDB, which
         { t: 'It makes programming faster, because the bus is not shared', why: 'Speed is set by the flash and the probe. The reason is correctness and safety of the operation.' },
       ] },
       { q: 'OpenOCD prints "Error: unable to find a matching CMSIS-DAP device". Where is the fault?', kind: 'concept', choices: [
-        { t: 'Between the host and the probe: USB, permissions or interface file', ok: true, why: 'OpenOCD never got as far as the target. It could not open the probe itself.' },
+        { t: 'Between the host and the probe: USB, permissions or the interface file', ok: true, why: 'OpenOCD never got as far as the target. It could not open the probe itself.' },
         { t: 'In the target\'s flash contents, which hold the probe\'s identity', why: 'Nothing has been read from the target at this point. The message is about finding a USB device.' },
         { t: 'In the SWD wiring between the probe and the target\'s debug port pins', why: 'Wiring faults appear after the probe is opened, as failures to read the debug port.' },
       ] },
@@ -810,7 +810,7 @@ Try it in the simulated session below.`,
     ],
     quiz: [
       { q: 'Why can a debugger not use an ordinary software breakpoint on code executing from flash?', kind: 'arch', choices: [
-        { t: 'It replaces an instruction, and flash cannot be changed by a plain write', ok: true, why: 'Flash needs an erase-and-program sequence through the flash controller, so patching in a breakpoint instruction on the fly is not possible.' },
+        { t: 'It replaces an instruction, and flash cannot be changed by a plain memory write', ok: true, why: 'Flash needs an erase-and-program sequence through the flash controller, so patching in a breakpoint instruction on the fly is not possible.' },
         { t: 'Flash is too slow to execute a breakpoint instruction at full clock speed', why: 'Flash executes breakpoint instructions like any other. The obstacle is getting the instruction into flash in the first place.' },
         { t: 'The debug port cannot read flash addresses, only RAM and peripherals', why: 'The debug port reads flash without difficulty, which is how firmware is verified and dumped. Writing is the restriction.' },
       ] },
@@ -835,7 +835,7 @@ Try it in the simulated session below.`,
         { t: 'Reading variables through the debug port corrupted the stack', why: 'Reads through the debug port do not modify memory. Something on the chip that depends on time passed its limit.' },
       ] },
       { q: 'What does `monitor reset halt` do when typed in GDB connected to OpenOCD?', kind: 'concept', choices: [
-        { t: 'It passes `reset halt` to OpenOCD, which resets and halts the chip', ok: true, why: '`monitor` is a passthrough to the remote debug server\'s own command interpreter.' },
+        { t: 'It passes `reset halt` to OpenOCD, which resets the chip and halts it at once', ok: true, why: '`monitor` is a passthrough to the remote debug server\'s own command interpreter.' },
         { t: 'It resets GDB\'s own state without touching the target', why: 'GDB commands that manage its own state do not use the monitor prefix. This one is forwarded to the server.' },
         { t: 'It sets a breakpoint at the reset handler and then restarts the program', why: 'No breakpoint is involved. The halt comes from the debug logic catching the reset.' },
       ] },
@@ -1055,7 +1055,7 @@ The middle row is the lesson. On a chip with memory mapped at address zero, a nu
     ],
     quiz: [
       { q: 'In a Cortex-M exception frame, which stacked value tells you the instruction that was executing when the fault occurred?', kind: 'arch', choices: [
-        { t: 'The stacked PC, at offset 24 in the frame', ok: true, why: 'The core saves the address of the interrupted instruction as the return address of the exception.' },
+        { t: 'The stacked PC, at offset 24 in the exception frame', ok: true, why: 'The core saves the address of the interrupted instruction as the return address of the exception.' },
         { t: 'The LR register as seen inside the handler', why: 'Inside the handler LR holds EXC_RETURN, a special code describing how to return, not a code address.' },
         { t: 'The stacked R0, the first word of the frame', why: 'R0 is the first argument or scratch register of the interrupted code. It is data, often useful, but not a location in the program.' },
       ] },
@@ -1081,7 +1081,7 @@ The middle row is the lesson. On a chip with memory mapped at address zero, a nu
         { t: 'An illegal instruction at address 0x0000000c in the vector area', why: 'That would be reported with its own cause name and concerns the PC, not a data address.' },
       ] },
       { q: 'Why should a production fault handler avoid calling the normal `printf` path?', kind: 'code', choices: [
-        { t: 'The fault may be in the code, stack or heap that `printf` needs', ok: true, why: 'A handler must assume as little as possible is working. Recording raw values with minimal code is far more robust.' },
+        { t: 'The fault may be in the code, stack or heap that `printf` itself needs', ok: true, why: 'A handler must assume as little as possible is working. Recording raw values with minimal code is far more robust.' },
         { t: '`printf` cannot print hexadecimal addresses from inside a handler', why: 'It prints hexadecimal perfectly well. The concern is whether it can run at all in a damaged system.' },
         { t: 'Exception handlers are not allowed to call functions', why: 'Handlers call functions routinely. The issue is which functions are safe after a fault.' },
       ] },

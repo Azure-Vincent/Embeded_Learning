@@ -342,12 +342,12 @@ Each building block below provides specific properties and no others. The skill 
 | A message is accepted once | Counter, or a nonce chosen by the verifier | Anything, unless it is covered by the MAC, signature or AEAD tag |
 | Separate keys for separate purposes | Key derivation function (HKDF, NIST SP 800-108 constructions) | More entropy than the input secret had |`,
     { t: 'callout', kind: 'security', title: 'Use reviewed primitives; write the protocol',
-      md: `Do not implement a cipher or hash yourself in a design that matters. Use a maintained library (the recent example repositories mention wolfSSL as an optional choice; ESP-IDF ships mbedTLS) or the chip's hardware engine. Your design work is the protocol around the primitive: what is authenticated, with which key, and what makes a message fresh. That is also where most real weaknesses are.` },
+      md: `Do not implement a cipher or hash yourself in a design that matters. Use a maintained library (the 2024 and 2026 example repositories name wolfSSL as an optional choice; ESP-IDF ships mbedTLS) or the chip's hardware engine. Your design work is the protocol around the primitive: what is authenticated, with which key, and what makes a message fresh. That is also where most real weaknesses are.` },
     `## 1. Authentication and authorisation between devices
 
 **Authentication** answers "who sent this?". **Authorisation** answers "is that party allowed to do this?". They are separate checks, done in that order.
 
-*Design choices.* With a shared key, each side proves knowledge of it by computing a MAC over data the other side chose (challenge–response) or over a counter. With signatures, a device presents a certificate-like blob signed at provisioning and proves possession of the matching private key. Shared keys are cheaper on a small microcontroller; signatures avoid placing the same secret on both ends.
+*Design choices.* With a shared key, each side proves knowledge of it by computing a MAC over data the other side chose (challenge–response) or over a counter. With signatures, a device presents a certificate-like blob signed at provisioning and proves possession of the matching private key. Shared keys are cheaper on a small microcontroller; signatures avoid placing the same secret on both ends. A device that *creates* ECDSA signatures needs a secret per-signature value that is never repeated and never predictable: two signatures made with the same value reveal the private key. Use the library's signing function as provided (many derive that value deterministically from the key and the message) and never supply it yourself.
 
 *Bind everything that matters into the authenticated data:* both identities, the direction, the message type, the command and its parameters, and the freshness value. Anything outside the MAC can be changed by whoever relays the message.
 
@@ -364,11 +364,13 @@ Each building block below provides specific properties and no others. The skill 
 
 *The one rule of AEADs:* a (key, nonce) pair is used **once**. With AES-GCM, two messages under the same key and nonce reveal the XOR of their plaintexts and allow forgeries. NIST SP 800-38D states the uniqueness requirement and the limits on how many messages one key may protect.
 
-*How to get unique nonces on a microcontroller.* A counter is the reliable way: per key, per direction, incremented for every message, never reset. If the counter lives in RAM it restarts after a reset, so either persist it, or derive a fresh session key at every start-up from a value that never repeats. Random nonces depend on the quality of the random number generator and, at 96 bits, on staying well under the collision bound.
+*How to get unique nonces on a microcontroller.* A counter is the reliable way: per key, per direction, incremented for every message, never reset. If the counter lives in RAM it restarts after a reset, so either persist it, or derive a fresh session key at every start-up from a value that never repeats. Random nonces depend on the quality of the random number generator and on the number of messages: for AES-GCM with random 96-bit nonces, NIST SP 800-38D limits one key to 2^32 encryptions, which keeps the chance of any repeat negligible. A counter has no such limit until it runs out.
 
 *At rest.* The same AEAD protects stored data. Use the storage location (slot number, record index, version) as associated data, so that a valid ciphertext cannot be moved to another slot or replaced with an older copy of itself unnoticed.
 
-*Common mistakes.* Encryption without authentication (CBC or CTR with no MAC). A fixed nonce. A nonce counter that resets on power-up under a long-lived key. Using decrypted data before checking the tag. Storing the key beside the ciphertext with no additional protection, which is obfuscation.`,
+*Common mistakes.* Encryption without authentication (CBC or CTR with no MAC). A fixed nonce. A nonce counter that resets on power-up under a long-lived key. Using decrypted data before checking the tag. Storing the key beside the ciphertext with no additional protection, which is obfuscation. Shortening the tag to save bytes without working out what forgery probability that leaves.
+
+*Negative tests.* Flip one bit in the ciphertext, then in the tag, then in the associated data: each must fail, and no plaintext byte may be returned or acted on. Encrypt the same plaintext twice and require different outputs; do it again across a reset and compare the nonces. Move a stored record to another slot, and put an older copy back in its place: both must be rejected.`,
     { t: 'widget', name: 'crypto-lab', props: { tab: 'aead' }, title: 'AES-GCM: tamper, and reuse a nonce',
       caption: 'Encrypt, flip one ciphertext bit and watch decryption fail; then encrypt two messages with the same nonce and compare the ciphertexts. This runs real WebCrypto in your browser on data you type.' },
     `## 3. Freshness
@@ -381,7 +383,19 @@ A recorded message is authentic forever. **Freshness** is what stops yesterday's
 
 *Timestamps* work only where the receiver has a trustworthy clock, which most small devices lack.
 
-*Common mistakes.* The counter is not covered by the MAC. The comparison is "greater than or equal". The receiver updates its stored counter before the MAC is verified, so a forged message with a huge counter locks out the genuine sender. The counter is kept in RAM and returns to zero after a reset.`,
+*Common mistakes.* The counter is not covered by the MAC. The comparison is "greater than or equal". The receiver updates its stored counter before the MAC is verified, so a forged message with a huge counter locks out the genuine sender. The counter is kept in RAM and returns to zero after a reset.
+
+*Negative tests.* Deliver a valid message twice: the second is refused. Deliver messages 5 then 4: 4 is refused. Send a forged message with a huge counter, then the next genuine one: the genuine one is still accepted. Reset the receiver and replay the last message it accepted before the reset: refused.
+
+### Authentic is not the same as fresh
+
+These two properties are confused more often than any others in this lesson, so walk through one message, step by step. A controller sends \`open, counter = 41\` with a correct MAC, and an observer records the bytes.
+
+1. The actuator verifies the MAC: correct. It now knows the controller produced these bytes **at some time**. That is authenticity (and integrity).
+2. The actuator compares 41 with its stored 40: greater. It now also knows it has **not acted on this message before**. That is freshness. It stores 41 and opens.
+3. An hour later the observer sends the recorded bytes. Step 1 gives the same answer as before: the MAC is still correct, and always will be. Only step 2 differs: 41 is not greater than 41.
+
+Remove step 2 and the recording works for ever, although the cryptography is flawless. Remove step 1 and anyone can write \`counter = 42\` themselves. Encrypting the message changes neither outcome: the observer never needed to read it.`,
     { t: 'predict',
       q: `A receiver keeps \`last_seen\` and accepts a message when \`counter >= last_seen\`, then sets \`last_seen = counter\`. An observer records the most recent genuine message. Can the recording be used?`,
       choices: [
@@ -419,7 +433,7 @@ Three properties, three mechanisms:
 - **Old images do not come back** (anti-rollback): the device stores a minimum version in a place that can only move forward, compares strictly, and raises it only after the new image has been verified (and, in careful designs, after it has booted successfully).
 - **An interrupted update does not brick the device**: write to a second slot or keep the loader able to receive again; switch over as the last, small, atomic step.
 
-*Common mistakes.* A CRC or bare hash used as if it were authentication (anyone can compute either). The version field outside the signed data. Signature checked after the image has already been written over the running one. Length taken from the header and used for a copy before the signature check. A "force" or "factory" path that skips the checks. Verification at install time only.
+*Common mistakes.* A CRC or bare hash used as if it were authentication (anyone can compute either). Comparing only the first bytes of a hash, or accepting a signature "if the library did not return an error" without checking for the success value. The version field outside the signed data. Signature checked after the image has already been written over the running one. Length taken from the header and used for a copy before the signature check. A "force" or "factory" path that skips the checks. Verification at install time only.
 
 *Negative tests.* An image with one byte changed is refused. An image signed with a different key is refused. A correctly signed older version is refused. A correctly signed image for a different device model or deployment is refused. An image whose header length is larger than the slot is refused before anything is written. Power removed mid-update leaves a device that still boots.`,
     { t: 'widget', name: 'secure-boot-chain', props: { platform: 'generic' }, title: 'Tamper, swap a key, roll back',

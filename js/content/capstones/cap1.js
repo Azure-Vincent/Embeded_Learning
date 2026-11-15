@@ -70,16 +70,18 @@ Console TX/RX board default    UART0         left free`, caption: 'A pin is only
     { title: 'Milestone 1: block diagram and budgets', md: `Redraw the block diagram for your parts. Fill in the pin budget. Add a power budget: sum the worst-case current of every part on the 3.3 V rail from their datasheets and compare it with what your board's regulator can supply (check the regulator's datasheet). Add a task table: name, period or trigger, priority, what it blocks on, deadline.` },
     { title: 'Milestone 2: prove the riskiest link first', md: `Decide which single connection you are least sure of — usually sensor and display sharing a bus — and prove it with the smallest possible program. If both are on I2C, confirm their addresses differ and that a bus scan finds both.`,
       blocks: [{ t: 'widget', name: 'i2c-visualizer', props: { device: 'scan' }, caption: 'Simulation: what a bus scan looks like on the wire, including the missing pull-up fault you are most likely to meet.' }] },
-    { title: 'Milestone 3: inputs with defined behaviour', md: `Bring up the buttons with debouncing and the ADC with a conversion to engineering units. Decide and write down: what counts as a press, what a long press does, how many ADC samples you average and why. The ISR should do nothing except post an event.`,
-      code: String.raw`static QueueHandle_t s_events;
+    { title: 'Milestone 3: inputs with defined behaviour', md: `Bring up the buttons with debouncing and the ADC with a conversion to engineering units. Decide and write down: what counts as a press, what a long press does, how many ADC samples you average and why. The ISR should do nothing except post an event.
+
+In the handler below, \`arg\` is whatever pointer you passed when you attached the handler to the pin (\`gpio_install_isr_service(0)\` once, then \`gpio_isr_handler_add(pin, button_isr, (void *)pin)\` per button), so one handler serves both buttons. \`xQueueSendFromISR\` copies the pin number into the queue without ever blocking; if the queue is full the event is dropped, so check its return value in a counter if a lost press matters to your requirements. \`woken\` is set when the post made a higher-priority task ready, and \`portYIELD_FROM_ISR()\` then makes the scheduler switch to that task as the interrupt returns, not at the next tick.`,
+      code: String.raw`static QueueHandle_t s_events;   /* created in app_main with xQueueCreate(8, sizeof(uint32_t)) */
 
 static void IRAM_ATTR button_isr(void *arg)
 {
-    uint32_t pin = (uint32_t)arg;
+    uint32_t pin = (uint32_t)(uintptr_t)arg;
     BaseType_t woken = pdFALSE;
     xQueueSendFromISR(s_events, &pin, &woken);   /* never block, never print in an ISR */
     if (woken) portYIELD_FROM_ISR();
-}`, lang: 'c', status: 'reviewed' },
+}`, lang: 'c', status: 'idf-checked' },
     { title: 'Milestone 4: display and control logic', md: `Bring up the display, then write the control logic as an explicit state machine (for example IDLE, ALARM, CONFIG). Draw the states and transitions before coding them; every button event and sensor threshold should be an arrow on that drawing.`,
       blocks: [{ t: 'widget', name: 'state-machine', props: { machine: 'door-lock' }, caption: 'A different device, same technique: states, events and the C switch statement they become.' }] },
     { title: 'Milestone 5: integrate as tasks', md: `Move each concern into its own task and connect them with queues. Decide priorities from deadlines, not from importance. Add a way to observe the system from outside: a UART console command or a periodic log line that reports state, last reading, queue depths and each task's stack high-water mark.` },
@@ -103,9 +105,10 @@ static void IRAM_ATTR button_isr(void *arg)
 |---|---|---|
 | Sensor accuracy | Compare against a reference (second sensor, thermometer, known voltage) | Agreement within the tolerance you derived from the datasheet |
 | Display staleness | Change the input abruptly, time the screen | Update within your stated limit |
-| Button response | Press, long-press, press rapidly 20 times | Exactly one event per press, no missed or doubled events |
+| Button response | Press, long-press, press rapidly 20 times, reading an event counter from the console | Exactly one event per press: the counter equals the number of presses |
+| Threshold and hysteresis | Move the input slowly up through the threshold, hold it just above, then bring it slowly down | One actuator change on the way up, none while held, one on the way down at the lower value you stated |
 | Sensor fault | Unplug the sensor while running | The defined fault state within your stated time; recovery when reconnected |
-| Soak | Run for at least one hour | No reset, stack high-water marks stable, free heap not falling |
+| Soak | Run for at least one hour, logging uptime, free heap and stack high-water marks every minute | Uptime never restarts; minimum free heap and every high-water mark are the same at 60 minutes as at 10 minutes |
 | Reset safety | Hold reset, release, watch the actuator | The actuator never activates during boot |
 
 If you have no board yet, complete milestones 0, 1 and the design half of 4, and mark the remaining tests "not run" — do not describe expected results as observed ones.`,
@@ -148,14 +151,14 @@ If you have no board yet, complete milestones 0, 1 and the design half of 4, and
       'FR-4: an actuator responds to a configurable threshold with hysteresis.',
       'FR-5: a failed sensor read produces a defined, visible fault state and recovers when the sensor returns.',
       'FR-6: the actuator stays inactive from reset until the application has decided otherwise.',
-      'FR-7: the device runs for one hour without reset, stack overflow or falling free heap.',
+      'FR-7: the device runs for one hour without a reset or stack overflow, and its minimum free heap at 60 minutes equals the value at 10 minutes.',
     ],
   },
   rubric: [
-    { criterion: 'Requirements', points: 15, evidence: 'Numbered list; every item has a measurable outcome and a named test.' },
+    { criterion: 'Requirements', points: 15, evidence: 'Numbered list written before the build (dated or committed first); every item has a number or yes/no observation and a named test, including one timing and one fault requirement.' },
     { criterion: 'Block diagram and pin budget', points: 15, evidence: 'Diagram with real parts; pin table with each pin checked against chip and board documentation.' },
     { criterion: 'Power and timing budgets', points: 10, evidence: 'Current sum from datasheets vs regulator limit; task table with periods, priorities and deadlines.' },
-    { criterion: 'Working integration', points: 25, evidence: 'Demonstration or log of all functional requirements on the board.' },
+    { criterion: 'Working integration', points: 25, evidence: 'For each of FR-1 to FR-7: a console log excerpt, photo or capture taken from the board that shows the requirement being met; rows not run on hardware are marked so and score nothing here.' },
     { criterion: 'Firmware structure', points: 10, evidence: 'Source showing tasks, queues, checked return values and an explicit state machine.' },
     { criterion: 'Test results', points: 15, evidence: 'Completed test table with evidence per row, including the fault and soak tests.' },
     { criterion: 'Design reasoning', points: 10, evidence: 'Written answers to the four design questions, with the requirement that decided each.' },

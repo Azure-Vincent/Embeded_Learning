@@ -31,7 +31,7 @@ The brief: **an application with at least four tasks and one interrupt source, w
 
 - **Jitter**: the variation in when a periodic task actually starts, relative to when it should. Report minimum, maximum and distribution, never only the mean.
 - **Deadline adherence**: activations that finished before their deadline, out of all activations. One miss in a million is a different system from zero.
-- **Stack high-water mark**: the smallest amount of stack a task has ever had free. FreeRTOS reports it through \`uxTaskGetStackHighWaterMark\`; check the unit (words or bytes) in the documentation for your port.`,
+- **Stack high-water mark**: the smallest amount of stack a task has ever had free. FreeRTOS reports it through \`uxTaskGetStackHighWaterMark\`. The unit depends on the port: ESP-IDF's FreeRTOS reports **bytes** (and takes stack sizes in bytes), where standard FreeRTOS documentation speaks of words. State the unit beside every number you report.`,
     { t: 'callout', kind: 'hw', md: 'ESP-IDF runs FreeRTOS on two cores on the original ESP32 and the S3, and on one core on the C3 and C6. On a two-core chip, two tasks can truly run at once, so a "critical section by priority" argument that holds on one core is wrong. State which chip you used and whether you pinned tasks to a core.' },
     { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'preemptive' }, caption: 'Simulation: enter your task set (periods, run times, priorities) and see whether it is schedulable before you build it.' },
   ],
@@ -57,7 +57,9 @@ house     delay        ?        -         ?         measured: ?     delay`, capt
   ],
   steps: [
     { title: 'Milestone 0: timing requirements', md: `State each timing requirement as period, deadline and tolerated jitter, and say where the numbers come from (the physics of what you sample, human perception for the UI). State the acceptable miss rate. Check the tick rate configured in your project: a task cannot be released more precisely than one tick using tick-based delays, so decide whether your fastest task needs a hardware timer instead.` },
-    { title: 'Milestone 1: skeleton with a periodic task', md: `Create the tasks as empty loops that block correctly. Make the periodic task use an absolute-time delay so that its period does not drift with its own run time.`,
+    { title: 'Milestone 1: skeleton with a periodic task', md: `Create the tasks as empty loops that block correctly. Make the periodic task use an absolute-time delay so that its period does not drift with its own run time.
+
+In the code below, \`last\` holds the tick count of the previous release. \`vTaskDelayUntil\` blocks the task until \`last + 10 ms\` and then advances \`last\` by exactly that amount, so each release is computed from the previous *release*, not from when the body happened to finish. \`esp_timer_get_time()\` reads a 64-bit microsecond counter driven by a hardware timer, which is finer than the tick and so can measure how late a release was. Check the arithmetic against your configuration: ESP-IDF's default tick rate (\`CONFIG_FREERTOS_HZ\`) is 100 Hz, so a tick is 10 ms, \`pdMS_TO_TICKS(10)\` is a single tick, and no tick-based period can be shorter or finer than that without changing the setting.`,
       code: String.raw`static void sample_task(void *arg)
 {
     TickType_t last = xTaskGetTickCount();
@@ -68,7 +70,7 @@ house     delay        ?        -         ?         measured: ?     delay`, capt
         do_sample();
         record_finish(esp_timer_get_time());
     }
-}`, lang: 'c', status: 'reviewed' },
+}`, lang: 'c', status: 'idf-checked' },
     { title: 'Milestone 2: instrumentation before features', md: `Build the measuring equipment first. For each timed task record release time and finish time into a preallocated buffer or running min/max/histogram bins; never print from the timed path, because printing is slow and changes what you measure. Have the housekeeping task report the statistics. If you have a logic analyser, also toggle a GPIO at release and finish so you have a measurement the firmware cannot fool.` },
     { title: 'Milestone 3: ISR to task', md: `Add the interrupt source and hand off to a task with a queue or a direct task notification. Measure the latency from the interrupt to the task running. Keep the ISR to the hand-off only.`,
       blocks: [{ t: 'widget', name: 'rtos-scheduler', props: { scenario: 'isr-defer' }, caption: 'Simulation of deferred interrupt handling and what it costs in latency.' }] },
@@ -153,10 +155,10 @@ Present jitter as a histogram. A test with no numbers attached does not count as
   rubric: [
     { criterion: 'Timing requirements', points: 10, evidence: 'Period, deadline, jitter and miss-rate figures with their justification.' },
     { criterion: 'Architecture', points: 15, evidence: 'Task diagram and table; every queue, lock and ISR hand-off shown.' },
-    { criterion: 'Instrumentation', points: 15, evidence: 'Source for the measurement code; explanation of why it does not disturb what it measures.' },
+    { criterion: 'Instrumentation', points: 15, evidence: 'Source for the measurement code; the measured cost of one record call (or the argument that bounds it); if available, a logic-analyser figure that agrees with the firmware\'s own.' },
     { criterion: 'Measured results', points: 25, evidence: 'Jitter histogram, min/max, miss count, interrupt latency and stack marks from a 30-minute loaded run.' },
     { criterion: 'Induced fault and fix', points: 20, evidence: 'Before/after measurements of the timing fault and an explanation of the mechanism.' },
-    { criterion: 'Synchronisation correctness', points: 15, evidence: 'Justification of each primitive; timeouts on blocking calls; dual-core reasoning if applicable.' },
+    { criterion: 'Synchronisation correctness', points: 15, evidence: 'A table of every shared resource with the primitive that protects it and why; file and line of each blocking call with its timeout and what the task does on expiry; on a dual-core chip, the core each task runs on.' },
   ],
 };
 

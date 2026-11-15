@@ -70,6 +70,41 @@ ENTRYPOINT ["/work/build.sh"]`,
 - Host-specific tools that happen to be on one developer's PATH.
 
 The check is mechanical: build twice in fresh containers with the same secrets, and compare SHA-256 hashes of the outputs. Build once more on a second machine. Make that a routine job, not a one-off.`,
+    `## Worked example: find and remove a difference
+
+You can try the check on any PC with gcc, with no board. Save this as \`stamp.c\`:`,
+    { t: 'code', lang: 'c', status: 'host-tested', caption: 'stamp.c: one source file, built with and without a compiled-in timestamp',
+      code: String.raw`#include <stdio.h>
+
+int main(void) {
+#ifdef STAMP
+    printf("firmware built %s %s\n", __DATE__, __TIME__);
+#else
+    printf("firmware 1.4.0\n");
+#endif
+    return 0;
+}
+`,
+      explain: [
+        { lines: '5', md: '`__DATE__` and `__TIME__` are replaced by the compiler with the moment of compilation, so the string constant placed in the object file is different on every build.' },
+        { lines: '7', md: 'A version string that comes from the source (or from the commit) is the same on every build of that commit.' },
+      ] },
+    `Compile each variant twice, a second apart, and hash the object files:
+
+\`\`\`
+gcc -std=c11 -DSTAMP -c -o a1.o stamp.c; sleep 1; gcc -std=c11 -DSTAMP -c -o a2.o stamp.c
+gcc -std=c11         -c -o b1.o stamp.c; sleep 1; gcc -std=c11         -c -o b2.o stamp.c
+sha256sum a1.o a2.o b1.o b2.o
+\`\`\`
+
+You should see two **different** hashes for \`a1.o\` and \`a2.o\` and two **identical** hashes for \`b1.o\` and \`b2.o\` (that is what gcc 13 on Linux produced when this was checked; the hash values themselves depend on your compiler version, which is the point of pinning it). To find *where* two builds differ, compare them byte by byte with \`cmp -l a1.o a2.o\`, or dump the strings of each and \`diff\` them: the differing bytes are the time.
+
+Two more causes can be reproduced the same way:
+
+- **Build path.** Copy \`stamp.c\` into two different directories and compile with \`-g\` in each: the hashes differ, because debug information records the directory. Adding \`-ffile-prefix-map=$PWD=.\` to both builds makes them equal.
+- **A timestamp you cannot remove from the source.** With the environment variable \`SOURCE_DATE_EPOCH\` set to a fixed number of seconds, gcc uses that instant for \`__DATE__\` and \`__TIME__\`, and the two \`-DSTAMP\` builds become identical. Set it from the commit time, not from the clock.
+
+Both were checked with gcc 13; other compilers (including the TI Arm Clang used in the 2026 example) have their own options, so test rather than assume.`,
     { t: 'predict',
       q: `A team's secrets generator seeds a pseudo-random generator with the current time in seconds and derives all deployment keys from it. The build is perfectly reproducible given the secrets file. Is there a problem?`,
       choices: [

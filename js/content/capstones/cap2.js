@@ -31,12 +31,14 @@ size_t frame_encode(uint8_t seq, const uint8_t *payload, uint8_t len,
     return n;
 }
 
-/* Returns 1 and fills seq, payload and len on a good frame, 0 on bad CRC or short buffer. */
+/* Returns 1 and fills seq, payload and len on a good frame. Returns 0, writing nothing,
+   on a bad marker, a length that disagrees with n, a payload larger than payload_cap, or a bad CRC. */
 int frame_decode(const uint8_t *in, size_t n, uint8_t *seq,
-                 uint8_t *payload, uint8_t *len) {
+                 uint8_t *payload, size_t payload_cap, uint8_t *len) {
     if (n < 5 || in[0] != 0x7E) return 0;
     uint8_t l = in[2];
     if ((size_t)l + 5 != n) return 0;
+    if (l > payload_cap) return 0;          /* bound the copy before anything is copied */
     uint16_t want = ((uint16_t)in[n - 2] << 8) | in[n - 1];
     uint16_t got = crc16_ccitt(in + 1, (size_t)l + 2);
     if (want != got) return 0;
@@ -112,7 +114,7 @@ The brief: **one node (the controller) sends commands to at least one other node
   ],
   steps: [
     { title: 'Milestone 0: write the specification', md: `Before any code, write a two-page specification: physical layer (bus, speed, levels), frame format with every field's size and byte order, CRC parameters with a test vector, message types, the acknowledgement rule, timeout and retry values with the arithmetic behind them, and behaviour after a peer reset. The test of a specification is whether a classmate could build a compatible node from it alone.` },
-    { title: 'Milestone 1: frame encode/decode on the host', md: `Start from this helper. It was compiled with \`gcc -Wall -Wextra -std=c11\` and run on a host with a small test \`main\` (round trip, a one-bit corruption that must be rejected, and the standard check value: the CRC of the ASCII string \`123456789\` is \`0x29B1\`). It was not run on a microcontroller. Extend it with a type field and write your own host tests first.`, code: FRAME_C, lang: 'c', status: 'host-tested' },
+    { title: 'Milestone 1: frame encode/decode on the host', md: `Start from this helper. It was compiled with \`gcc -Wall -Wextra -std=c11\` and run on a host with a small test \`main\` (round trip, a one-bit corruption that must be rejected, a frame whose payload is larger than the caller's buffer, and the standard check value: the CRC of the ASCII string \`123456789\` is \`0x29B1\`). Read the order of the checks in \`frame_decode\`: marker, then length against what was received, then length against the destination buffer, then CRC, and only then the copy. Nothing from the wire is used as a size until it has been bounded. It was not run on a microcontroller. Extend it with a type field and write your own host tests first.`, code: FRAME_C, lang: 'c', status: 'host-tested' },
     { title: 'Milestone 2: a streaming receiver', md: `\`frame_decode\` assumes you already hold exactly one frame. A UART gives you one byte at a time, starting anywhere. Write the receiver as a state machine (WAIT_SOF, SEQ, LEN, PAYLOAD, CRC) fed one byte per call. Decide what it does on an impossible length, on a timeout in mid-frame, and when 0x7E appears inside a payload. Test it on the host by feeding it frames preceded by random garbage.`,
       blocks: [{ t: 'widget', name: 'state-machine', props: { machine: 'uart-parser' }, caption: 'Step a byte-at-a-time parser and see where bad input sends it.' }] },
     { title: 'Milestone 3: reliability layer', md: `Add stop-and-wait delivery: send, start a timer, wait for the matching ACK, retry a bounded number of times, then report failure to the application. On the receiving side, remember the last sequence number executed so a retransmitted command is acknowledged but not executed twice. Still on the host: connect two instances through a function that can drop or corrupt bytes on demand.` },
@@ -199,10 +201,10 @@ uint32_t link_port_now_ms(void);`, lang: 'c', status: 'pseudo' },
   rubric: [
     { criterion: 'Protocol specification', points: 20, evidence: 'Document with frame layout, CRC parameters and test vector, state diagrams, timeout arithmetic.' },
     { criterion: 'Host unit tests', points: 15, evidence: 'Test source and output covering encode/decode, streaming parser with garbage, duplicate and loss cases.' },
-    { criterion: 'Two-board operation', points: 20, evidence: 'Logic-analyser capture matching the specification; clean-throughput counters.' },
+    { criterion: 'Two-board operation', points: 20, evidence: 'Logic-analyser capture (or a byte dump from a serial tap) of one frame per type, annotated against the specification; counters from both nodes after the 10 000-command run.' },
     { criterion: 'Robustness', points: 20, evidence: 'Counter values before and after each fault test; exactly-once evidence from the remote counter.' },
     { criterion: 'Interoperability', points: 10, evidence: 'Results against an independent implementation, or a written list of specification ambiguities you found and fixed.' },
-    { criterion: 'Code quality', points: 15, evidence: 'Board-independent link layer, bounded lengths checked before use, no blocking in ISRs.' },
+    { criterion: 'Code quality', points: 15, evidence: 'The command line that compiles the link layer on a host with no board headers, and its output; file and line of every check that bounds a length before it is used; the body of each ISR, showing no blocking call.' },
   ],
 };
 

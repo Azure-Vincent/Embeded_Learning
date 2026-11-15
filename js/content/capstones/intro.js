@@ -18,7 +18,7 @@ const introLesson = {
   id: 'cap-intro',
   title: 'How to run an open-ended project',
   minutes: 40,
-  summary: 'Requirements first, iterate, test against the requirements, document — and how that maps to the skills matrix and competition readiness.',
+  summary: 'Requirements, design, test plan, build, verify: the five steps, worked through once on a miniature project before you apply them to a real one.',
   skills: ['cap-method'],
   blocks: [
     `## The problem these projects set
@@ -31,14 +31,83 @@ A capstone is deliberately under-specified so that *turning the brief into somet
 
     `## The method
 
-Four steps, repeated, smallest useful loop first.
+Five steps. The first three produce paper, and they come before any firmware.
 
-1. **Requirements first.** Turn the brief into a numbered list of statements that are each *testable*. "Fast" is not a requirement; "responds to a button within 50 ms" is. Split them into **functional** requirements (what it must do) and, where the brief has an adversary, **security** requirements (what an attacker must *not* be able to do). A security requirement is always of the form "an attacker who can *X* cannot *Y*".
-2. **Architecture and budgets.** Before code: a block diagram, a pin budget, a task/timing budget, a memory budget. You are deciding where every signal, every CPU-millisecond and every byte of RAM goes. Most integration failures are a budget you never wrote down — two peripherals wanting the same pin, two tasks wanting the same lock, an ISR that overruns its deadline.
-3. **Iterate in milestones.** Build the riskiest, most uncertain piece first as a thin vertical slice that actually runs, then grow it. "Blink an LED, then read one sensor, then add the bus, then the display" beats "wire everything and flash once". Each milestone ends with something you can demonstrate.
-4. **Test against the requirements, then document.** For every requirement from step 1, name the test that decides it and the observation that passes it. Then write down what you built and why — the diagram, the decisions, the test results. In a competition the documentation *is* part of the score; in a job it is the difference between a device and a liability.`,
+1. **Requirements.** Turn the brief into a numbered list of statements that are each *testable*. "Fast" is not a requirement; "responds to a button within 50 ms" is. Split them into **functional** requirements (what it must do) and, where the brief has an adversary, **security** requirements (what an attacker must *not* be able to do). A security requirement is easiest to test when it is written as "an attacker who can *X* cannot *Y*". Competition specifications often state a property instead ("the device releases the record only with the correct PIN"); before you can test such a line you have to rewrite it in the attacker form, using the adversary the brief describes.
+2. **Design and budgets.** A block diagram, a pin budget, a task/timing budget, a memory budget. You are deciding where every signal, every CPU-millisecond and every byte of RAM goes. Most integration failures are a budget you never wrote down: two peripherals wanting the same pin, two tasks wanting the same lock, an ISR that overruns its deadline.
+3. **Test plan.** For every requirement, one row: the procedure a tester follows, and the observation that counts as a pass. Write it *now*, before the build. If you cannot write the row, the requirement is not testable yet, or the design gives you no way to observe it (no log line, no test pin), and both are far cheaper to fix on paper.
+4. **Build in milestones.** Build the riskiest, most uncertain piece first as a thin slice that actually runs, then grow it. "Read one sensor and print it, then add the bus, then the display" beats "wire everything and flash once". Each milestone ends by running the test-plan rows it has made runnable.
+5. **Verify and document.** Run every row and record the result with its evidence (a log excerpt, a capture, a photo), including the failures. Fix, then re-run *all* rows, not only the one that failed. Then write down what you built and why: the diagram, the decisions, the results. In a competition the documentation is part of the score; in a job it is the difference between a device and a liability.
 
-    { t: 'callout', kind: 'note', md: `This maps directly onto the course skills matrix. Step 1 is the **competition** track skill "turn an open brief into requirements". Step 2 pulls in **hardware** and **architecture**. Step 3 is **programming** and **real-time**. Step 4 pulls in **security** (verifying a control) and the competition-readiness habit of writing the thing down. A capstone is graded across all five tracks at once, which is the point.` },
+The steps are a loop, not a waterfall. A measurement in step 4 will change a number in step 1; when it does, change the requirement on paper first, with the reason, and then the code.`,
+
+    { t: 'callout', kind: 'note', md: `In the skills matrix, every capstone exercises the **competition** skill "turn an open brief into requirements, milestones and a test plan", and each adds skills of its own from the hardware, programming and security work you have already done. The rubric of each capstone lists the evidence it expects for each.` },
+
+    `## Worked example: a night light, start to finish
+
+A miniature project, small enough to hold in your head, taken through all five steps. The brief: *"An LED that comes on when it gets dark, with a button to force it on."* The numbers below are illustrative. Nobody built this for the course; the point is the shape of each artefact.
+
+**Step 1: requirements.** Four statements, each with something a tester can observe.
+
+- **FR-1:** with the light sensor covered, the LED is on within 1 s; with it uncovered under room lighting, the LED is off within 1 s.
+- **FR-2:** at any steady light level, the LED does not flicker: it changes state at most once in 10 s.
+- **FR-3:** each button press toggles "forced on", exactly once per press.
+- **FR-4:** from reset until the first sensor reading has been taken, the LED is off.
+
+Notice what writing them forced into the open. "When it gets dark" needed a definition (covered against room lighting). FR-2 did not appear in the brief at all; it came from asking "what would make this device annoying?", and it will turn out to dictate the design.
+
+**Step 2: design and budgets.**
+
+\`\`\`text
+ light sensor (LDR + resistor divider) --> ADC1 input
+ push button to GND ---------------------> GPIO input, internal pull-up
+ GPIO output --> resistor --> LED
+
+ Pin budget (original ESP32)
+ Signal   Pin      Checked against
+ sensor   GPIO34   ADC1 channel; input-only is fine for an analogue input
+ button   GPIO27   has an internal pull-up; not a strapping pin (GPIO34-39 would not do: no pull-ups)
+ LED      GPIO26   output-capable; not a strapping pin, so the LED cannot disturb boot
+
+ Timing budget
+ sample the sensor every 100 ms; decide on each sample  -> worst-case reaction about 0.1 s, inside FR-1's 1 s
+ poll the button every 10 ms                            -> a press shorter than 10 ms could be missed; accepted
+
+ Decision rule (for FR-2): turn on below a LOW threshold, off above a HIGH threshold, no change in between.
+ The two thresholds are unknown until the sensor has been measured.
+\`\`\`
+
+The design step ended with a named unknown: the two threshold values. That tells you what the first milestone must be.
+
+**Step 3: test plan**, written before any code.
+
+| Test | For | Procedure | Pass if |
+|---|---|---|---|
+| T1 | FR-1 | Cover the sensor with a cup; remove it; ten times, timing each change with a stopwatch | Every change within 1 s |
+| T2 | FR-2 | Shade the sensor partly with a sheet of paper until the LED has just switched; hold still for 60 s | At most one further change, counted from a log line printed on every change |
+| T3 | FR-3 | Press the button 20 times at ordinary speed, reading a toggle counter from the log | Counter reads exactly 20 |
+| T4 | FR-4 | In a dark room, press reset ten times while watching the LED | No flash before the first "reading" log line |
+
+Writing T2 and T3 changed the design: both need a **log line with a counter**, which nobody would have thought to add for the device's own sake. That is the test plan doing its job before the build.
+
+**Step 4: build in milestones.**
+
+1. *Measure the sensor.* A ten-line program that prints the raw ADC reading twice a second. Record the readings covered and uncovered and choose the two thresholds between them, with a gap. This retires the biggest unknown, and until it is done no other code can be right.
+2. *LED follows the light*, using the decision rule. Now T1, T2 and T4 can be run. Run them.
+3. *Button override.* Now T3 can be run. Run all four.
+
+**Step 5: verify and document.** Suppose the table comes back like this:
+
+| Test | Result | Evidence |
+|---|---|---|
+| T1 | pass | ten timings, slowest 0.3 s |
+| T2 | pass | 60 s log, one change |
+| T3 | **fail** | counter read 23 after 20 presses |
+| T4 | pass | ten resets, no flash |
+
+T3 failed, and that is the method working: the fault was found by a test written before the code, not by a user. Three extra toggles from 20 presses points at contact bounce, a single press being seen as several. The fix is to require the button to read pressed on two consecutive 10 ms polls before counting it. Then **all four** tests are run again, because the fix touched the loop every other requirement depends on. The write-up records the failed run as well as the passing one; a reader trusts a table more when it shows that a test is able to fail.
+
+The whole project fits on two pages: four requirements, one diagram with budgets, four test rows, three milestones, one results table. A capstone is the same five artefacts, larger.`,
 
     `## How this appears in practice
 
@@ -53,16 +122,16 @@ The right-hand column tells you what to build *and* how you will know you are do
 
     { t: 'predict', q: 'You are given: "Build a door lock that only opens for authorised users." Which of these is a usable **security** requirement you could hand to a tester?',
       choices: [
-        { t: 'The lock must be secure against attackers.', why: 'This names no attacker capability and no forbidden outcome, so no test can ever fail it. It restates the brief without making it testable.' },
+        { t: 'The lock must be secure against attackers with physical or radio access, for the life of the product.', why: 'This names no attacker capability and no forbidden outcome, so no test can ever fail it. It restates the brief without making it testable.' },
         { t: 'An attacker who records the radio unlock message and replays it later cannot open the lock.', why: 'Correct: it names a specific attacker capability (record and replay) and a specific forbidden outcome (lock opens), so a tester can capture a message, replay it, and watch whether the lock stays shut.', ok: true },
-        { t: 'The firmware should use strong cryptography.', why: 'A mechanism is not a requirement. Strong crypto used wrongly still fails; and nothing here tells a tester what to try or what counts as a pass.' },
-        { t: 'The lock should be hard to pick.', why: 'This is about the physical cylinder, not the system you are building, and "hard" is not measurable. A requirement must name the attacker action and the outcome to forbid.' },
+        { t: 'The firmware must protect every unlock message with strong, standard cryptography and a 256-bit key.', why: 'A mechanism is not a requirement. Strong crypto used wrongly still fails; and nothing here tells a tester what to try or what counts as a pass.' },
+        { t: 'The lock must take a skilled person a long time to open without the proper credentials.', why: '"Skilled" and "a long time" are not measurable, and no specific action is named, so two testers would disagree about whether it passed.' },
       ],
       reveal: `A security requirement names an attacker capability and the outcome it must not achieve. "An attacker who can record-and-replay cannot open the lock" is testable: capture, replay, observe. That single sentence also tells you what to build — a freshness mechanism such as a counter or nonce — which is how good requirements drive the design.` },
 
     { t: 'callout', kind: 'mistake', md: `**The most common capstone failure:** building bottom-up with no requirements, then writing the requirements afterward to match whatever you built. You end up unable to say what "working" means, you demo the happy path only, and the first adversarial or edge input breaks it. Write the testable list *first*, even a rough one, and let it change as you learn — but let it lead.` },
 
-    { t: 'callout', kind: 'decision', md: `**Why milestones, not one big flash.** You could wire every peripheral and write all the firmware before the first run. Don't. The riskiest unknown — "will the I2C sensor and the SPI display coexist on this board?" — should be answered in hour one with a 20-line program, not in hour forty with a full application you then have to bisect. Front-load uncertainty; each milestone retires one risk.` },
+    { t: 'callout', kind: 'decision', md: `**Why milestones, not one big flash.** You could wire every peripheral and write all the firmware before the first run. Do not. The riskiest unknown — "will the I2C sensor and the SPI display coexist on this board?" — should be answered in hour one with a 20-line program, not in hour forty with a full application you then have to bisect. Front-load uncertainty; each milestone retires one risk.` },
 
     { t: 'exercise',
       prompt: `Take this brief: *"A battery sensor node that samples a temperature probe and sends readings to a base station; it should last a long time on one battery and not lose data if the link drops."* Write **four** numbered, testable requirements. At least one must be a reliability/availability requirement, and name the test for each.`,
@@ -129,6 +198,7 @@ const glossary = [
   { term: 'Functional requirement', def: 'A testable statement of what the system must *do* (e.g. "reports a reading at least once per minute"). Distinguished from a security requirement, which states what an attacker must *not* be able to do.' },
   { term: 'Security requirement', def: 'A testable statement of the form "an attacker who can *X* cannot achieve *Y*". It names an adversary capability and a forbidden outcome, so a test can try *X* and check that *Y* did not happen.' },
   { term: 'Pin budget', def: 'A written assignment of every signal to a physical pin, checked against the pins the chosen pins can actually be (input-only pins, strapping pins, bus-dedicated pins) before any wiring.' },
+  { term: 'Test plan', def: 'A table with one row per requirement: the procedure a tester follows and the observation that counts as a pass. Written before the build, so that an untestable requirement or an unobservable design is found on paper.' },
   { term: 'Milestone', def: 'A thin, runnable vertical slice of the project that retires one risk and can be demonstrated on its own. Projects grow as a sequence of milestones rather than one final integration.' },
   { term: 'Threat model', def: 'A structured list of assets, the adversaries who want them, the entry points they can reach, the threats at each point, and the mitigation for each threat. It turns a security brief into a list of security requirements.' },
   { term: 'Interoperability test', def: 'A test that confirms two independent implementations of the same protocol actually talk to each other, including under faults (dropped bytes, bit errors, resets), rather than only confirming that one implementation talks to itself.' },

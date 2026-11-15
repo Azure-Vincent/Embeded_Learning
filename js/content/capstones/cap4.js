@@ -19,7 +19,7 @@ const lab = {
     'No board: the host-side signing tool, the image format, the verification logic compiled for a host, and the test harness can all be built and tested on a PC',
   ],
   software: [
-    'ESP-IDF (OTA partitions, the `app_update` component, NVS, mbedTLS)',
+    'ESP-IDF (OTA partitions, the `app_update` component, NVS, and its crypto library: v6.1 ships Mbed TLS 4.1, where hashing, MAC and signature verification are reached through the PSA Crypto API)',
     'Python 3 with the `cryptography` package, or OpenSSL, for the host signing tool',
     'A host C compiler if you unit-test the verification code off-target',
   ],
@@ -72,18 +72,32 @@ update_result_t update_check(const pkg_header_t *h, const uint8_t digest[32],
     if (h->fw_version <= min_version)          return UPD_ROLLBACK;        /* only after the signature holds */
     return UPD_OK;
 }`, lang: 'c', status: 'pseudo' },
-    { title: 'Milestone 3: update transport on the device', md: `Add OTA partitions to the partition table and receive the package into the inactive slot using the ESP-IDF OTA API. Compute the digest over the bytes as you write them. The call that switches the boot partition is reached only when milestone 2's check returns OK.`,
+    { title: 'Milestone 3: update transport on the device', md: `Add OTA partitions to the partition table and receive the package into the inactive slot using the ESP-IDF OTA API. Compute the digest over the bytes as you write them. The call that switches the boot partition is reached only when milestone 2's check returns OK.
+
+What each call does to the device: \`esp_ota_get_next_update_partition(NULL)\` picks the OTA slot that is not running. \`esp_ota_begin\` erases it (the whole slot, with \`OTA_SIZE_UNKNOWN\`) and returns a handle. \`esp_ota_write\` programs each chunk into flash in order. \`esp_ota_end\` closes the handle and runs ESP-IDF's own validity check of the image format. None of these changes what boots next. Only \`esp_ota_set_boot_partition\` does, by updating the small \`otadata\` partition that the bootloader reads; a power cut at any earlier point leaves the old slot selected.
+
+Every return value here depends on bytes an attacker supplies, so none of them goes through \`ESP_ERROR_CHECK\`: that macro aborts and resets the chip on any error, which would turn a malformed package into a reset on demand and break SR-7.`,
       code: String.raw`const esp_partition_t *slot = esp_ota_get_next_update_partition(NULL);
 esp_ota_handle_t h;
-ESP_ERROR_CHECK(esp_ota_begin(slot, OTA_SIZE_UNKNOWN, &h));
-/* for each received chunk: update your SHA-256 context, then esp_ota_write(h, chunk, n) */
+if (slot == NULL || esp_ota_begin(slot, OTA_SIZE_UNKNOWN, &h) != ESP_OK) {
+    count_rejection();
+    return;                                /* still running slot A */
+}
+/* for each received chunk: update your SHA-256 context, then
+   if (esp_ota_write(h, chunk, n) != ESP_OK) { esp_ota_abort(h); count_rejection(); return; } */
 if (update_check(&hdr, digest, sig, sig_len, stored_min_version()) != UPD_OK) {
     esp_ota_abort(h);                      /* slot B is never selected */
     count_rejection();
     return;
 }
-ESP_ERROR_CHECK(esp_ota_end(h));
-ESP_ERROR_CHECK(esp_ota_set_boot_partition(slot));`, lang: 'c', status: 'reviewed' },
+if (esp_ota_end(h) != ESP_OK) {            /* ESP-IDF's own image-format check failed */
+    count_rejection();
+    return;
+}
+if (esp_ota_set_boot_partition(slot) != ESP_OK) {   /* the only call that changes what boots next */
+    count_rejection();
+    return;
+}`, lang: 'c', status: 'idf-checked' },
     { title: 'Milestone 4: anti-rollback', md: `Store the minimum acceptable version somewhere an update cannot lower, and raise it only after the new firmware has booted and confirmed itself healthy. Decide what "confirmed" means. ESP-IDF also has a built-in anti-rollback feature tied to eFuses and Secure Boot; read its documentation and explain how your application-level counter differs in strength.` },
     { title: 'Milestone 5: verified data records', md: `Give each stored or received record an authentication tag (HMAC-SHA-256, or an AEAD if the content is confidential) covering the data and a monotonic counter. Compare tags in constant time. Decide where this key lives and say plainly what protects it on your board.`,
       blocks: [{ t: 'widget', name: 'crypto-lab', props: { tab: 'hmac' }, caption: 'HMAC verification, and what truncating or altering a message does to it.' }] },
@@ -117,6 +131,7 @@ ESP_ERROR_CHECK(esp_ota_set_boot_partition(slot));`, lang: 'c', status: 'reviewe
 | T8 | Modified data record | Change one byte of a stored record | Record flagged invalid, never presented as data |
 | T9 | Replayed data record | Resend an old valid record | Rejected by its counter |
 | T10 | Corrupted config | Alter one byte of the stored configuration | Safe state entered and reported |
+| T11 | Signing key absent (SR-6) | Search the firmware binary, a full flash dump of your board and the repository history (\`git log -p\`) for the private key's bytes and its PEM header | No match in any of the three |
 
 Record the exact bytes changed and the device's response for each. Then run the mutation check: temporarily disable each defence in the source and confirm the matching test now **fails**. A test that passes with the defence removed is testing nothing.`,
     { t: 'widget', name: 'vuln-device', props: { device: 'rollback-updater' }, caption: 'A simulated device that lacks defence T5. Find its weakness, then confirm your own design does not share it.' },
@@ -175,7 +190,7 @@ Record the exact bytes changed and the device's response for each. Then run the 
   },
   rubric: [
     { criterion: 'Threat model and requirements', points: 15, evidence: 'Completed worksheet; SRs in capability/outcome form; stated out-of-scope items.' },
-    { criterion: 'Authenticated update', points: 20, evidence: 'Package format with signed region marked; source of the update path; T1–T4 results.' },
+    { criterion: 'Authenticated update', points: 20, evidence: 'Package format with signed region marked; source of the update path; logs of T1–T4 showing the bytes changed, the device\'s response and the version running after reboot; T11 search output.' },
     { criterion: 'Rollback protection', points: 10, evidence: 'Where the minimum version is stored and when it is raised; T5 result.' },
     { criterion: 'Data and configuration protection', points: 15, evidence: 'Tag construction; T8–T10 results; safe-state description.' },
     { criterion: 'Robust parsing and fail-closed paths', points: 10, evidence: 'Host unit tests for malformed packages; T6 and T7 results; list of error paths.' },

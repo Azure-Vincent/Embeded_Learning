@@ -117,7 +117,7 @@ Only after power, reset and clock check out is it worth suspecting the firmware.
         { t: 'The meter is faulty, because a browning-out rail must read low', why: 'A brown-out needs the rail to be low only briefly. A correct meter will still show the long-term average, which stays near nominal.' },
       ] },
       { q: 'Why must the circuit be unpowered for a resistance or continuity measurement?', kind: 'concept', choices: [
-        { t: 'The meter injects its own test current, and other sources in the circuit corrupt the result', ok: true, why: 'Resistance is computed from the meter\'s known current and the voltage it sees. Any other source in the loop makes the calculation meaningless and may drive current into parts.' },
+        { t: 'The meter injects its own test current, and other sources in the circuit corrupt the result it computes', ok: true, why: 'Resistance is computed from the meter\'s known current and the voltage it sees. Any other source in the loop makes the calculation meaningless and may drive current into parts.' },
         { t: 'Resistors change value while current flows, so only an unpowered reading matches the marking', why: 'Ordinary resistors are essentially constant over their working range. The issue is what the meter assumes about where the measured voltage came from.' },
         { t: 'A powered circuit makes the continuity beep too quiet to hear, so a short is easy to miss', why: 'The buzzer has nothing to do with the circuit under test. The limitation is in how the measurement itself is made.' },
       ] },
@@ -137,7 +137,7 @@ Only after power, reset and clock check out is it worth suspecting the firmware.
         { t: 'Replace the microcontroller, since correct rails are all a working chip needs', why: 'This is the most expensive action and the least informative. Nothing measured so far points at the chip rather than at its reset or clock circuit.' },
       ] },
       { q: 'Why does a current measurement on the lowest range that fits sometimes make a marginal board fail?', kind: 'circuit', choices: [
-        { t: 'The low range uses a larger shunt, which drops more of the supply', ok: true, why: 'Burden voltage is current times shunt resistance. Sensitive ranges use bigger shunts and can take a tenth of a volt or more from the rail.' },
+        { t: 'The low range uses a larger shunt, which drops more of the supply voltage', ok: true, why: 'Burden voltage is current times shunt resistance. Sensitive ranges use bigger shunts and can take a tenth of a volt or more from the rail.' },
         { t: 'The meter injects switching noise into the rail on its low ranges', why: 'A shunt is a passive resistor. The effect is a steady voltage drop that scales with the current.' },
         { t: 'Low ranges measure more slowly, so the board times out waiting', why: 'The reading rate does not affect the circuit. What affects it is the resistance the meter adds in series.' },
       ] },
@@ -288,7 +288,7 @@ If the dip is there, the cure is a supply question: more bulk capacitance close 
         { t: 'Switch the channel to AC coupling and see whether it goes away', why: 'AC coupling removes the DC level. It does not affect high-frequency ringing or tell you its source.' },
       ] },
       { q: 'A fault happens about once a minute and lasts 50 µs. Which setup gives the best chance of seeing its cause?', kind: 'concept', choices: [
-        { t: 'Normal mode, a trigger only the fault meets, trigger point mid-screen', ok: true, why: 'Normal mode holds the capture, a specific trigger ignores the healthy traffic, and pre-trigger memory shows what led up to the event.' },
+        { t: 'Normal mode, a trigger only the fault meets, trigger point at mid-screen', ok: true, why: 'Normal mode holds the capture, a specific trigger ignores the healthy traffic, and pre-trigger memory shows what led up to the event.' },
         { t: 'Auto mode at a slow timebase, watching the screen for the event', why: 'Auto mode redraws continuously, so a 50 µs event at a slow timebase is one pixel shown for one sweep and then overwritten.' },
         { t: 'Trigger point at the left edge so the whole screen shows what follows', why: 'The cause of a fault comes before it. With no pre-trigger time you capture only the consequences.' },
       ] },
@@ -433,7 +433,7 @@ The next measurement is a scope on SDA and SCL with a ×10 probe, looking at ris
         { t: '2 MS/s, twice the bit rate', why: 'Two samples per bit satisfies a sampling theorem for sine waves, but leaves edge positions uncertain by half a bit, which a UART decoder cannot tolerate.' },
       ] },
       { q: 'An analyser with a fixed threshold of about 1.5 V is connected to a 1.8 V I2C bus. What is the risk?', kind: 'circuit', choices: [
-        { t: 'A valid high is barely above the threshold, so noise flips bits', ok: true, why: 'The margin between a 1.8 V high and a 1.5 V threshold is a few hundred millivolts, far less than the analyser was designed around.' },
+        { t: 'A valid high is barely above the threshold, so noise or slow edges flip bits', ok: true, why: 'The margin between a 1.8 V high and a 1.5 V threshold is a few hundred millivolts, far less than the analyser was designed around.' },
         { t: 'The analyser\'s inputs will be damaged by the low bus voltage', why: 'Low voltages do not damage inputs. The hazard with voltage is on the high side, exceeding the stated maximum.' },
         { t: 'There is none, since a 1.8 V high is still above a 1.5 V threshold', why: 'Being nominally above the threshold ignores noise, ringing and the time the edge spends near that level.' },
       ] },
@@ -645,7 +645,7 @@ Physical obscurity, such as leaving a header unpopulated or removing silkscreen,
         { t: 'Short each to ground briefly and see which one resets the board', why: 'Shorting a supply rail to ground is destructive, and shorting an output can damage the driver. Identification should never require a short.' },
       ] },
       { q: 'Why measure the pin voltages before choosing an adapter?', kind: 'circuit', choices: [
-        { t: 'The port\'s logic level decides which adapter is safe to connect', ok: true, why: 'A 5 V adapter output can over-voltage a 3.3 V or 1.8 V input, and a low-voltage target may not drive a higher-voltage adapter\'s input high enough.' },
+        { t: 'The port\'s logic level decides which adapter is safe to connect to it', ok: true, why: 'A 5 V adapter output can over-voltage a 3.3 V or 1.8 V input, and a low-voltage target may not drive a higher-voltage adapter\'s input high enough.' },
         { t: 'The voltage tells you the baud rate, since faster ports run lower', why: 'Bit time and signal level are independent. Baud rate comes from pulse widths, not from amplitude.' },
         { t: 'Adapters only work if the voltage is exactly 3.30 V', why: 'Logic thresholds are ranges, not exact values. The concern is the absolute maximum on the receiving pin and the thresholds on both sides.' },
       ] },
@@ -655,7 +655,7 @@ Physical obscurity, such as leaving a header unpopulated or removing silkscreen,
         { t: '4800 baud, 8N1', why: 'At 4800 a bit lasts about 208 µs, so a 104 µs pulse would be half a bit, which a UART never produces.' },
       ] },
       { q: 'You connect adapter RX to board TX and adapter GND to board GND, and see readable text. You then also connect the adapter\'s 5 V pin to the board\'s VCC pin, which measured 3.3 V. What happens?', kind: 'circuit', choices: [
-        { t: '5 V is forced onto the 3.3 V rail, which can destroy parts on it', ok: true, why: 'The adapter\'s supply and the board\'s regulator are now joined, and the higher one pushes the rail above what 3.3 V parts tolerate.' },
+        { t: '5 V is forced onto the 3.3 V rail, which can destroy the parts powered from it', ok: true, why: 'The adapter\'s supply and the board\'s regulator are now joined, and the higher one pushes the rail above what 3.3 V parts tolerate.' },
         { t: 'Nothing, because the board\'s regulator blocks reverse current', why: 'Even if the regulator survives, the rail itself is raised to the higher voltage, and every chip powered from it sees that.' },
         { t: 'The serial data becomes more reliable because the supplies are shared', why: 'A serial link needs a shared ground reference only. Sharing supplies adds no signal integrity and creates a fight between two sources.' },
       ] },

@@ -210,7 +210,7 @@ The settings are chip-specific and some are irreversible. For the MSPM0L2228 the
         { t: 'Whether the flash is erased, since erased flash reads as ones', why: 'Erased flash reads as 0xFF bytes, but the IDCODE comes from a hard-wired register that does not depend on flash contents.' },
       ] },
       { q: 'A product ships with firmware that turns the SWD pins into GPIO inputs during start-up. How much protection does that give?', kind: 'security', choices: [
-        { t: 'Little: a probe that connects under reset halts the core before that code', ok: true, why: 'The remap is done by firmware, and firmware has not executed yet when the chip comes out of reset under debugger control.' },
+        { t: 'Little: a probe that connects under reset halts the core before it runs', ok: true, why: 'The remap is done by firmware, and firmware has not executed yet when the chip comes out of reset under debugger control.' },
         { t: 'Complete: once the pins are GPIO the debug port no longer exists', why: 'The debug logic is still in the chip and the pins are in their default debug role at every reset.' },
         { t: 'None, because pins configured as GPIO can still carry SWD packets', why: 'While remapped, the pins really are disconnected from the debug port. The weakness is the window before the remap, not after it.' },
       ] },

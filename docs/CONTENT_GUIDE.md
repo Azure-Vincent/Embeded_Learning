@@ -67,6 +67,8 @@ A block is either a Markdown string or an object:
 Every `code` block (and lab step code) declares how it was verified:
 - `host-tested` — you compiled it with `gcc -Wall -Wextra -std=c11` and ran it in this repo's environment. Only claim this if you did.
 - `interp` — it runs in the app's C interpreter (`js/sim/cinterp.js`).
+- `idf-built` — the complete program was compiled for the `esp32` target with ESP-IDF v6.1 (see `tools/idf-check/`). Not run on a board.
+- `idf-checked` — every ESP-IDF call, type and constant was checked against the ESP-IDF v6.1 headers, but the block was not compiled as a whole.
 - `reviewed` — written against vendor documentation (ESP-IDF, MSDK, TI SDK); not compiled or run on a board here.
 - `hw` — only meaningful on physical hardware.
 - `pseudo` — an illustrative fragment.

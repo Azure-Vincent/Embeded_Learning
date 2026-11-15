@@ -8,7 +8,7 @@ let cinterp = null;
 try { cinterp = await import('../js/sim/cinterp.js'); } catch { /* interpreter not built yet */ }
 const errs = [], warns = [], seen = new Set(), sectionIds = new Set(ids);
 const E = (w, m) => errs.push(`${w}: ${m}`), W = (w, m) => warns.push(`${w}: ${m}`);
-const STATUS = ['host-tested', 'interp', 'reviewed', 'hw', 'pseudo'];
+const STATUS = ['host-tested', 'interp', 'idf-built', 'idf-checked', 'reviewed', 'hw', 'pseudo'];
 const CALL = ['why', 'warn', 'mistake', 'note', 'security', 'sim', 'hw', 'decision'];
 let nLessons = 0, nLabs = 0, nQ = 0, nCLab = 0;
 

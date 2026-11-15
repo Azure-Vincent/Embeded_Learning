@@ -12,6 +12,8 @@ const CALLOUT = {
 export const CODE_STATUS = {
   'host-tested': 'Compiled and run with GCC on Linux when this lesson was written.',
   interp: 'Runs in this app’s C interpreter, which simulates the hardware.',
+  'idf-built': 'Compiled for the ESP32 target with ESP-IDF v6.1 while this course was reviewed. Not run on a physical board.',
+  'idf-checked': 'Every ESP-IDF call was checked against the ESP-IDF v6.1 headers. Not compiled as a whole program and not run on a board.',
   reviewed: 'Written against the vendor documentation. Not compiled or run on a physical board by this app — build it yourself and trust your own result.',
   hw: 'Requires physical hardware. Nothing here has measured it for you.',
   pseudo: 'Illustrative fragment, not a complete program.',

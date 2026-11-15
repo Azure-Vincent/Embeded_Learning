@@ -73,7 +73,32 @@ happens to contain the heap or \`.bss\`. The symptoms appear later and elsewhere
   immediately. That is why some linker scripts deliberately put the stack first: a crash at the moment of
   overflow is far better than silent corruption.
 
-Large local arrays, recursion, and \`printf\`-family functions (hundreds of bytes of frame) are the usual causes.`,
+Large local arrays, recursion, and \`printf\`-family functions (hundreds of bytes of frame) are the usual causes.
+
+### An overflow, address by address
+
+An invented but typical layout on a 32 KB part with SRAM at \`0x2020_0000\`: the linker reserves the top 256 bytes
+for the stack (\`0x2020_7F00\`–\`0x2020_7FFF\`, initial SP \`0x2020_8000\`), and the last variable in \`.bss\`, a
+\`uint32_t baud_rate\` holding 115200 (\`0x0001_C200\`), sits directly below it at \`0x2020_7EFC\`.
+
+\`\`\`
+                                           SP after        lowest address written
+ reset                                     0x2020_8000     -
+ main()            frame  16 bytes         0x2020_7FF0     0x2020_7FF0
+ handle_command()  frame  48 bytes         0x2020_7FC0     0x2020_7FC0
+ format_reply()    frame 200 bytes         0x2020_7EF8     0x2020_7EF8   <- below 0x2020_7F00
+   (a char line[180] local plus saved registers)
+\`\`\`
+
+\`format_reply\` has moved SP 8 bytes below the reserved region. No fault: \`0x2020_7EF8\`–\`0x2020_7EFF\` is ordinary
+RAM. Those 8 bytes are now both "the bottom of \`format_reply\`'s frame" and "\`baud_rate\` and its neighbour". When
+the function stores a saved register or a piece of \`line\` there, \`baud_rate\` changes. The function returns
+normally, SP goes back up, and much later the UART is reconfigured with a nonsense divisor. The stack "overflow"
+left no trace on the stack at all.
+
+Add a timer interrupt arriving while \`format_reply\` is running and the hardware pushes another 32 bytes below
+\`0x2020_7EF8\`, reaching eight more words of \`.bss\`. That version of the bug appears only when the interrupt
+happens to land in the deepest function.`,
 
       { t: 'widget', name: 'stack-heap', props: { program: 'recursion' }, title: 'Recursion until the stack runs out',
         caption: 'Before stepping, predict which region the stack will reach first and what will be corrupted.' },
@@ -98,7 +123,7 @@ the state of the heap, which breaks timing guarantees.`,
         md: `With all allocation done once at start-up (or none at all), memory use is fixed, visible in the map file, and identical on day 1 and day 1000. There is nothing to fragment, leak or fail at run time, and no allocation-time jitter. The price is that maximum sizes must be decided at design time. Common patterns: static buffers, fixed-size block pools (every block the same size, so fragmentation is impossible), and "allocate at boot, never free". Safety and security coding standards such as MISRA C restrict dynamic allocation for these reasons.` },
 
       { t: 'predict',
-        q: 'A function declares `char name[8];` as a local and copies a 20-character string into it with `strcpy`. On a Cortex-M with a descending stack, what is most likely to be overwritten by the extra 12 bytes?',
+        q: 'A function declares `char name[8];` as a local and copies a 20-character string into it with `strcpy`. On a Cortex-M with a descending stack, what is most likely to be overwritten by the extra 13 bytes (12 characters and the terminating zero)?',
         choices: [
           { t: 'Memory below the array: locals of functions called later', why: 'Array indices increase toward higher addresses. Which way is "up" from the array on a descending stack?' },
           { t: 'Memory above the array: other locals, saved registers and the saved return address of this function', ok: true, why: 'The array is filled from low to high addresses; the frame\'s saved state lies at higher addresses, pushed earlier.' },
@@ -135,7 +160,21 @@ A 32-bit value occupies four byte addresses. **Byte order** says which byte goes
       `Byte order is invisible while you treat a value as a whole. It appears the moment bytes cross a boundary:
 a hex dump, a pointer cast, a \`memcpy\` of a struct into a packet, a sensor that sends its high byte first.
 
-The portable way to convert is to say exactly what you mean with shifts, which works on any CPU, at any alignment:`,
+The portable way to convert is to say exactly what you mean with shifts, which works on any CPU, at any alignment.
+Worked by hand for a sensor that sends the 16-bit value \`0x1C80\` (7296) high byte first, into a buffer at
+\`0x2000_0040\`:
+
+\`\`\`
+ memory after reception     0x2000_0040: 1C      0x2000_0041: 80
+
+ wrong: *(uint16_t *)buf    the CPU takes the byte at the LOWEST address as the LOW byte
+                            -> 0x801C = 32796
+ right: (buf[0] << 8)       0x1C << 8       = 0x1C00
+        | buf[1]            0x1C00 | 0x80   = 0x1C80 = 7296
+\`\`\`
+
+The second form never asks how the CPU stores integers. It builds the value arithmetically from two separate bytes,
+so it gives 7296 on a little-endian or a big-endian machine.`,
 
       { t: 'code', lang: 'c', status: 'host-tested', caption: 'Byte-order-independent serialisation',
         code: R`#include <stdint.h>
@@ -165,7 +204,8 @@ void put_be32(uint8_t *p, uint32_t v)
       { t: 'exercise',
         prompt: `A little-endian MCU holds \`uint32_t x = 0x0A0B0C0D;\`. Code executes \`uint8_t *p = (uint8_t *)&x;\` and then reads \`p[1]\`. What value is read? Answer in hex.`,
         hints: [
-          'p[0] is the byte at the lowest address.',
+          'Write the four bytes of x in the order they sit in memory, lowest address first. Which end of the number goes first on this machine?',
+          'p[0] is the byte at the lowest address; p[1] is the next one up.',
           'Little-endian puts the least significant byte, 0x0D, at the lowest address. What comes next?',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?0?ch?\\s*$'], nudge: 'List the four bytes in address order first.' },
@@ -273,27 +313,45 @@ the **NVIC** (nested vectored interrupt controller), which is part of the core, 
 | 3 | HardFault | Any fault with no enabled specific handler, and all faults on ARMv6-M |
 | 4, 5, 6 | MemManage, BusFault, UsageFault | ARMv7-M only: MPU violation; bus error; undefined instruction, divide by zero, bad state |
 | 11 | SVCall | \`svc\` instruction: system call into an OS |
-| 14 | PendSV | Software-requested, lowest priority: used for context switches |
-| 15 | SysTick | The core's 24-bit down-counting system timer |
+| 14 | PendSV | Software-requested; an RTOS gives it the lowest priority and uses it for context switches |
+| 15 | SysTick | The core's 24-bit down-counting system timer (optional on ARMv6-M cores; check the device header) |
 | 16+ | IRQ0… | Peripheral interrupts |
 
+### Priority rules
+
 Priority is a number; **lower is more urgent**. Reset, NMI and HardFault have fixed negative priorities (−3, −2, −1)
-and so always win. Chips implement only the top bits of each 8-bit priority field: 2 bits on ARMv6-M (four levels,
-as on the MSPM0L2228), and from 3 to 8 bits on ARMv7-M as the chip maker chooses.
+and so always win. Everything else has a configurable priority that is 0 after reset. Chips implement only the top
+bits of each 8-bit priority field: 2 bits on ARMv6-M (four levels, as on the MSPM0L2228), and from 3 to 8 bits on
+ARMv7-M as the chip maker chooses.
+
+- A pending exception **preempts** the running handler only if its priority is strictly higher (numerically lower).
+  Equal priority never preempts.
+- If several exceptions of the same priority are pending at once, the one with the **lowest exception number** is
+  taken first. That decides the order only; the other still waits for the first handler to return.
+- On ARMv7-M the priority value can be split into a *group* (preemption) priority and a *subpriority* by the
+  \`PRIGROUP\` field of the \`AIRCR\` register. Only the group priority decides preemption; the subpriority only orders
+  exceptions that are pending together. ARMv6-M has no such split.
+- \`PRIMASK\` = 1 holds off everything with a configurable priority; NMI and HardFault still get through. \`BASEPRI\`
+  (ARMv7-M) holds off only exceptions whose priority value is numerically equal to or greater than the value written,
+  leaving the more urgent ones live; writing 0 to it disables the masking.
 
 ### Exception entry: the stack frame
 
 When an exception is taken, the hardware:
 
-1. Pushes eight words onto the stack in use (MSP or PSP).
+1. Pushes eight words onto the stack in use (MSP or PSP), in the fixed layout below.
 2. Reads the vector and loads PC.
 3. Sets LR to an **EXC_RETURN** value that records which stack was used and which mode to return to.
-4. Switches to handler mode and MSP.`,
+4. Switches to handler mode and MSP.
+
+The *layout* of the frame in memory is defined by the architecture and is what you rely on. The order in which the
+core performs the eight bus writes is not, and the stacking and the vector read can overlap in time.`,
 
       { t: 'ascii', caption: 'Basic exception stack frame (no floating-point context). SP points at the stacked r0 on handler entry.',
         text: R`  higher addresses    (stack contents before the exception)
         SP + 0x1C      xPSR      <- status at the moment of the exception
-        SP + 0x18      PC        <- return address: where execution was interrupted
+        SP + 0x18      PC        <- return address. Interrupt: the next instruction to run.
+                                    Fault: normally the instruction that faulted.
         SP + 0x14      LR        <- the interrupted code's link register
         SP + 0x10      r12
         SP + 0x0C      r3
@@ -304,23 +362,33 @@ When an exception is taken, the hardware:
 
   EXC_RETURN in LR:   0xFFFFFFF1  return to handler mode, frame on MSP   (nested exception)
                       0xFFFFFFF9  return to thread mode,  frame on MSP
-                      0xFFFFFFFD  return to thread mode,  frame on PSP   (RTOS task)` },
+                      0xFFFFFFFD  return to thread mode,  frame on PSP   (RTOS task)
+  Bit 2 of the value: 0 = frame on MSP, 1 = frame on PSP.  Bit 3: 0 = return to handler mode, 1 = thread mode.` },
 
-      `The handler returns with an ordinary function return. Loading an \`EXC_RETURN\` value into PC is what tells the
-core to pop the frame and resume. The stacked registers are exactly the caller-saved set, so handlers are plain
-C functions.
+      `The handler returns with an ordinary function return. Loading an \`EXC_RETURN\` value into PC while in handler
+mode is what tells the core to pop the frame and resume. The stacked registers are exactly the caller-saved set, so
+handlers are plain C functions.
 
-With an FPU in use (Cortex-M4F), the frame can be extended with floating-point registers \`s0\`–\`s15\` and the
-floating-point status word. **Lazy stacking** reserves the space but only writes it if the handler actually uses
-the FPU, keeping latency low.`,
+Two details matter when you decode a frame by hand:
+
+- **Alignment padding.** The C calling convention wants SP to be a multiple of 8 at a function boundary, but an
+  interrupt can arrive when it is only a multiple of 4. The core then pushes one extra padding word first and records
+  the fact in **bit 9 of the stacked xPSR**. The eight words are still at SP + 0 to SP + 0x1C on handler entry; what
+  changes is that the interrupted code's SP was SP + 0x24 rather than SP + 0x20. (Always on for ARMv6-M; on ARMv7-M it
+  is controlled by the \`STKALIGN\` bit of the \`CCR\` register, which is set by default on the Cortex-M4.)
+- **Floating-point context.** With an FPU in use (Cortex-M4F), the frame is extended above xPSR with \`s0\`–\`s15\`,
+  the floating-point status word and one reserved word: 26 words instead of 8. The \`EXC_RETURN\` value then has bit 4
+  clear (\`0xFFFF_FFE1\`, \`…E9\`, \`…ED\` instead of \`…F1\`, \`…F9\`, \`…FD\`). **Lazy stacking** reserves the space
+  but only writes the floating-point registers if the handler actually uses the FPU, keeping latency low.`,
 
       { t: 'widget', name: 'interrupt-flow', props: { arch: 'cortex-m' }, title: 'Entry, nesting and return',
         caption: 'Run the nested-priority case. Note the EXC_RETURN value in LR at each level and say what it means.' },
 
       `## Worked example: where did it fault?
 
-Back to the opening problem. LR = \`0xFFFF_FFF9\` means "thread mode, frame on MSP". So the frame is at MSP. The
-debugger shows:
+Back to the opening problem. LR = \`0xFFFF_FFF9\` means "thread mode, frame on MSP". So the frame is at MSP. With the
+core halted on the *first* instruction of the handler (before the handler's own prologue has pushed anything and
+moved SP), the debugger shows:
 
 \`\`\`
 (gdb) x/8xw $msp
@@ -332,15 +400,28 @@ Reading it against the frame layout: r0 = 0, r1 = \`0x2000_0410\`, r2 = \`0x40\`
 LR = \`0x0800_123D\`, **PC = \`0x0800_1A52\`**, xPSR = \`0x6100_0000\`.
 
 - The faulting instruction is at \`0x0800_1A52\`. Ask the debugger: \`info line *0x08001a52\` or look it up in the
-  disassembly. Suppose it is a \`str\` through \`r0\` inside \`memset\`.
-- r0 is 0: a write through a null pointer. On this (hypothetical) chip address 0 is flash, so the store faulted.
-- The stacked LR, \`0x0800_123D\`, is where \`memset\` was called from (clear bit 0): that names the guilty caller.
-- xPSR has the Thumb bit (bit 24) set and an exception number of 0: the fault happened in thread mode.
+  disassembly. Suppose it is a \`strb\` through \`r0\` inside \`memcpy\`.
+- \`memcpy(dest, src, n)\` receives its arguments in r0, r1, r2. r0, the destination, is 0: a copy of \`0x40\` bytes
+  from \`0x2000_0410\` to a null pointer. On this (hypothetical) chip nothing writable is mapped at address 0, so the
+  first store raised a bus error.
+- The stacked LR, \`0x0800_123D\`, is where \`memcpy\` was called from (clear bit 0): that names the guilty caller.
+- xPSR has the Thumb bit (bit 24) set, an exception number of 0 (the fault happened in thread mode), and bit 9 clear
+  (no padding word, so the interrupted code's SP was \`0x2000_7F98 + 0x20 = 0x2000_7FB8\`).
 
-On an ARMv7-M core the fault status registers in the System Control Block (CFSR, HFSR, and the fault address
-registers MMFAR and BFAR) say more: which kind of fault, and for some bus faults the exact address accessed. ARMv6-M
-has none of these; the stacked frame is all the evidence there is. The \`debug-session\` tool in the debugging
-section lets you practise this on a simulated target.`,
+On an ARMv7-M core the System Control Block has fault status registers that say more:
+
+| Register | Address | What it tells you |
+|---|---|---|
+| \`HFSR\` | \`0xE000_ED2C\` | Bit 30 \`FORCED\`: a MemManage, BusFault or UsageFault was escalated to HardFault because its own handler is not enabled (the default) or could not run. Bit 1 \`VECTTBL\`: the vector read itself failed |
+| \`CFSR\` | \`0xE000_ED28\` | Three fields in one word: MemManage status (bits 7:0), BusFault status (bits 15:8), UsageFault status (bits 31:16). Examples: \`PRECISERR\` and \`IMPRECISERR\` for bus errors, \`UNDEFINSTR\`, \`INVSTATE\` (branch to an address with bit 0 clear), \`UNALIGNED\`, \`DIVBYZERO\` |
+| \`MMFAR\` | \`0xE000_ED34\` | The address that violated the MPU, valid only while \`MMARVALID\` (CFSR bit 7) is set |
+| \`BFAR\` | \`0xE000_ED38\` | The address of a precise bus error, valid only while \`BFARVALID\` (CFSR bit 15) is set |
+
+For an *imprecise* bus error (typically a buffered write that failed after the CPU had moved on) the stacked PC is a
+few instructions past the culprit and \`BFAR\` is not valid. The CFSR bits are sticky and are cleared by writing 1 to
+them, so read them in the fault handler and clear them afterwards. ARMv6-M has none of these registers; the stacked
+frame is all the evidence there is. The \`debug-session\` tool in the debugging section lets you practise this on a
+simulated target.`,
 
       { t: 'predict',
         q: 'Firmware written for a Cortex-M4 reads a `uint32_t` from an odd address inside a received packet using a pointer cast. It is ported unchanged to a Cortex-M0+. What happens at that line?',
@@ -355,8 +436,11 @@ section lets you practise this on a simulated target.`,
 
 The optional **memory protection unit** lets privileged code define a small number of regions (commonly 8), each with
 a base, a size and access permissions: no access, read-only, read/write, execute-never. An access that violates
-them raises MemManage (ARMv7-M) or HardFault (ARMv6-M). It does not translate addresses; it only permits or
-refuses. Both course cores have one. Uses:
+them raises MemManage (ARMv7-M; escalated to HardFault unless the MemManage handler has been enabled) or HardFault
+(ARMv6-M). It does not translate addresses; it only permits or refuses. On these two architectures a region's size
+must be a power of two (at least 32 bytes on ARMv7-M, 256 bytes on ARMv6-M) and its base a multiple of its size, so a
+stack guard is a small aligned block, not an arbitrary range. Until software enables the MPU it does nothing.
+Both course cores have one. Uses:
 
 - a no-access region at the end of the stack: overflow faults immediately instead of corrupting data;
 - RAM marked execute-never, so injected data cannot be run as code;
@@ -374,7 +458,8 @@ refuses. Both course cores have one. Uses:
 | Interrupt priority bits | 2 (4 levels) | 3 to 8, chip-specific: see the device header's \`__NVIC_PRIO_BITS\` |
 | Interrupt masking | PRIMASK only | PRIMASK, FAULTMASK, BASEPRI (mask below a chosen priority) |
 | Interrupt lines | Up to 32 | Up to 240 |
-| Unaligned access | Always faults | Supported for most instructions |
+| Unaligned access | Always faults (HardFault) | Supported for ordinary single loads and stores; multi-register and exclusive accesses still fault, and a trap for all of them can be enabled |
+| Hardware entry to a handler | 15 clock cycles | 12 clock cycles (both figures from Arm's processor documentation, assuming zero-wait-state memory) |
 | Lock-free updates | No exclusive-access instructions | \`ldrex\`/\`strex\` for lock-free updates |
 | MPU, VTOR | Optional in the architecture; present on the MSPM0L2228 | Present |
 
@@ -391,8 +476,9 @@ levels must be shared among all interrupts.`,
       { t: 'exercise',
         prompt: `In a HardFault handler on a Cortex-M0+, LR holds \`0xFFFFFFF9\` and MSP is \`0x2020_7FA0\`. At what address is the stacked PC (the address of the instruction that was executing when the fault occurred)? Answer in hex.`,
         hints: [
-          'The frame starts at SP with r0, then r1, r2, r3, r12, LR, PC, xPSR, four bytes each.',
-          'PC is the seventh word: offset 6 × 4 = 0x18.',
+          'First decide which stack pointer the frame is on. What does this LR value say?',
+          'The frame starts at SP with r0, then r1, r2, r3, r12, LR, PC, xPSR, four bytes each. Which position is PC?',
+          'PC is the seventh word, so its offset is 6 × 4 bytes. Add that to MSP in hex.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?2020_?7fb8h?\\s*$'], nudge: 'Count the words from r0 at offset 0.' },
         solution: `\`0xFFFFFFF9\` confirms the frame is on MSP. PC is at offset \`0x18\`: \`0x2020_7FA0 + 0x18\` = **\`0x2020_7FB8\`**. Read that word (\`x/xw 0x20207fb8\`) to get the faulting instruction's address.` },
@@ -479,8 +565,10 @@ mandatory base plus named extensions, spelled out in the architecture string.
 | **C** | Compressed 16-bit encodings of common instructions (the counterpart of Thumb's density) |
 | **Zicsr** | The CSR access instructions |
 
-"RV32IMC" therefore means: 32-bit base, multiply/divide, compressed instructions. The ESP-IDF build for a given chip
-states the string it compiles for; check it rather than assuming, because it decides which instructions exist.
+"RV32IMC" therefore means: 32-bit base, multiply/divide, compressed instructions. Toolchains spell the string out in
+the \`-march\` option: ESP-IDF v6.1's build file for the small ULP RISC-V coprocessor, for example, uses
+\`-march=rv32imc_zicsr_zifencei\`. Check the string your build uses rather than assuming, because it decides which
+instructions exist.
 
 Base instructions are 32 bits wide; with C, 16-bit and 32-bit instructions are mixed, and instructions need
 only be 2-byte aligned.
@@ -520,7 +608,7 @@ are *not* memory-mapped.
 | \`mtvec\` | Trap vector base address. Low 2 bits select the mode: 0 = **direct** (every trap jumps to the base), 1 = **vectored** (interrupts jump to base + 4 × cause) |
 | \`mepc\` | PC of the instruction that was interrupted or that caused the exception |
 | \`mcause\` | Why: top bit 1 = interrupt, 0 = exception; the remaining bits are the cause code |
-| \`mtval\` | Extra information: the faulting address, or the bad instruction |
+| \`mtval\` | Extra information: the faulting address, or the bad instruction. A core is allowed to always write 0 here, so check what yours provides |
 | \`mie\` / \`mip\` | Per-source interrupt enable / pending bits |
 | \`mscratch\` | A spare word for the trap handler, typically a pointer to a save area |
 
@@ -532,15 +620,21 @@ exceptions 0 (instruction address misaligned), 1 (instruction access fault), 2 (
 
 "Trap" covers both interrupts and exceptions. In machine mode the hardware does this and no more:
 
-1. \`mepc\` ← current PC.
+1. \`mepc\` ← PC. For an interrupt this is the instruction that had not yet run and must be resumed; for an exception
+   it is the instruction that caused it.
 2. \`mcause\` ← cause (and \`mtval\` ← detail).
-3. \`mstatus.MPIE\` ← \`mstatus.MIE\`; \`mstatus.MIE\` ← 0 (interrupts off); \`mstatus.MPP\` ← current mode.
-4. PC ← address derived from \`mtvec\`.
+3. \`mstatus.MPIE\` ← \`mstatus.MIE\`; \`mstatus.MIE\` ← 0 (interrupts off); \`mstatus.MPP\` ← current mode; the core
+   enters machine mode.
+4. PC ← address derived from \`mtvec\`: the base in direct mode. In vectored mode, base + 4 × cause for an interrupt,
+   but still the base for every exception.
 
 No general register is saved and nothing is pushed. The handler must save every register it will use, do its
-work, restore them, and execute \`mret\`, which restores MIE from MPIE, the mode from MPP, and PC from \`mepc\`.
+work, restore them, and execute \`mret\`, which restores MIE from MPIE (and sets MPIE to 1), returns to the mode held
+in MPP, and loads PC from \`mepc\`. There is only one \`mepc\` and one \`mcause\`: a handler that wants to allow nested
+interrupts must save both, and \`mstatus\`, before setting MIE again.
+
 For a synchronous exception such as \`ecall\`, \`mepc\` points *at* the instruction, so a handler that wants to continue
-after it must add the instruction's length to \`mepc\` first.`,
+after it must add the instruction's length to \`mepc\` first: 4 for \`ecall\`, but 2 for a compressed instruction.`,
 
       { t: 'widget', name: 'interrupt-flow', props: { arch: 'riscv' }, title: 'A RISC-V machine-mode trap',
         caption: 'Step it and list, in order, every CSR the hardware writes. Then list what the software prologue has to save.' },
@@ -570,7 +664,9 @@ after it must add the instruction's length to \`mepc\` first.`,
 
       `### Interrupt controllers
 
-The core has just three standard machine interrupt inputs: software, timer, external. The classic companions are:
+The specification defines just three standard machine interrupt inputs: software, timer, external (bits 3, 7 and 11
+of \`mie\`/\`mip\`, matching their cause codes). Bits 16 and above are left for each platform to use as it likes. The
+classic companions are:
 
 - **CLINT** (core-local interruptor): memory-mapped \`mtime\` and \`mtimecmp\` registers that raise the timer interrupt
   when time reaches the compare value, and a software-interrupt bit.
@@ -631,8 +727,9 @@ The same number means different things depending on that bit.`,
       { t: 'exercise',
         prompt: `A RISC-V core reports \`mcause = 0x8000000B\`. Is this an interrupt or an exception, and which standard cause is it? Answer with the cause's usual name.`,
         hints: [
-          'The most significant bit distinguishes interrupts from exceptions.',
-          'The low bits are 0xB = 11. Look up interrupt code 11 in the table above.',
+          'The value has two parts with different meanings. Which single bit must you look at before the number means anything?',
+          'The most significant bit distinguishes interrupts from exceptions. Here it is set.',
+          'The low bits are 0xB = 11. Look up interrupt code 11 in the list of standard cause codes above.',
         ],
         answer: { type: 'text', accept: ['external'], nudge: 'Top bit set means interrupt; then decode the number 11.' },
         solution: `The top bit is set, so it is an **interrupt**; code 11 is the **machine external interrupt**, the one driven by the platform's interrupt controller on behalf of a peripheral. The handler must now ask that controller which source it was.` },

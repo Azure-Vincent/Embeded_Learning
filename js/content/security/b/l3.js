@@ -188,14 +188,14 @@ The cabinet also shows a design tension: its lockout is permanent ("factory serv
 
 **Constant-time comparison of secrets:**`,
     code(CT_EQUAL, 'host-tested', { caption: 'Constant-time equality. Functionally tested on the host; timing behaviour must be confirmed on the target (lesson 6).', explain: [
-      { lines: '11-13', md: 'The loop always runs `n` times. XOR gives zero for equal bytes; OR accumulates any non-zero bit. There is no branch that depends on the data, so the sequence of instructions executed is the same for every input.' },
+      { lines: '11-13', md: 'The loop always runs `n` times. XOR gives zero for equal bytes; OR accumulates any non-zero bit. The source has no branch that depends on the data. Whether the compiled code keeps that property is up to the compiler, so it is confirmed in the disassembly and by measurement (lesson 6).' },
       { lines: '14', md: 'The only data-dependent decision happens once, after all bytes were processed, and reveals only equal/not equal — which the response reveals anyway.' },
     ] }),
     `**A limiter that survives resets and is charged first:**`,
     code(AUTH_TRY, 'host-tested', { caption: 'Attempt limiter with increasing delay. Tested on the host with a stub nv_commit, including a simulated power loss between the charge and the comparison.', explain: [
       { lines: '31-34', md: 'The failure count is incremented and written to non-volatile memory **before** the comparison. If the count were updated only after a failed compare, cutting power in the gap between "compare failed" and "count written" would give unlimited free guesses.' },
       { lines: '36-41', md: 'The input is copied into a fixed-size, zero-padded buffer, so the comparison always processes `PIN_LEN` bytes. The length test is combined with `&&` after the comparison has already run.' },
-      { lines: '46-48', md: 'Only a success resets the count. The delay doubles with each failure, which makes exhaustive search slow without locking the owner out permanently after a few typing errors.' },
+      { lines: '46-48', md: 'Only a success resets the count. The delay doubles with each failure, so an owner who mistypes once or twice only waits a few seconds, while `MAX_FAILURES` consecutive failures end in `AUTH_LOCKED`, which needs a separate, authenticated recovery procedure. Whether that hard limit suits a product is the decision discussed below.' },
     ] }),
     { t: 'callout', kind: 'mistake', title: 'Comparing with the length the sender supplied', md: `\`strncmp(input, pin, strlen(input)) == 0\` compares only as many characters as were typed. An empty input compares zero characters and matches; a single correct first digit matches. The same slip appears with MACs when the tag length is taken from the message. The length of a comparison must come from the *verifier's* side.` },
     { t: 'callout', kind: 'decision', title: 'Permanent lockout or increasing delay?', md: `A hard lockout after N failures gives the strongest bound on guessing (N guesses, ever) and hands anyone with access to the interface a way to disable the product. An exponentially increasing delay bounds guessing to a few attempts per hour and recovers by itself, but must persist across power cycles and needs a trustworthy notion of time, or a counter in non-volatile memory with a wait enforced after reset. Choose from the threat model: for an HSM-like device holding high-value keys, a hard limit with an authenticated recovery path is defensible; for a door that people must get through, it usually is not. Whatever you choose, write down how many guesses per day it permits and compare that with the size of the secret.` },
@@ -241,16 +241,16 @@ A BLE-connected lock accepts an "owner" command set after pairing and a "service
   ],
   quiz: [
     { q: 'A review finds `static const char ADMIN_PW[] = "k9!Tz#2q";` in firmware used on every unit. The password is long and random. What is the finding?', kind: 'security', choices: [
-      { t: 'Hard-coded shared credential: it can be read from any firmware image or unit and then works on the whole fleet, so its strength is irrelevant', ok: true, why: 'The weakness is where the secret lives and how many devices share it, not how hard it is to guess.' },
+      { t: 'A hard-coded shared credential: one firmware image reveals it for the whole fleet', ok: true, why: 'Its strength is irrelevant once it can be read. The weakness is where the secret lives and how many devices share it, not how hard it is to guess.' },
       { t: 'No finding: eight random characters cannot be guessed in a practical time', why: 'Guessing resistance only matters if guessing is the easiest route. Here the bytes can simply be read.' },
       { t: 'The finding is that the password should be stored in RAM instead of flash', why: 'A constant has to be loaded from the image to reach RAM, so it is still in the image and still identical everywhere.' },
       { t: 'The finding is that `const` data can be modified at run time', why: 'Being read-only is not the issue; being readable and shared is.' },
     ] },
     { q: 'Which change removes a factory test command from the release product most reliably?', kind: 'security', choices: [
-      { t: 'Wrap the command in `#ifdef MFG_TEST`, add `#error` if `MFG_TEST` and `RELEASE_BUILD` are both defined, and grep the release binary for its strings in CI', ok: true, why: 'The code is absent from the image, the build cannot be misconfigured silently, and an independent check confirms it.' },
-      { t: 'Remove the command from the `help` output', why: 'The dispatch table still contains it. Help text is documentation, not access control.' },
-      { t: 'Rename the command to a long random string', why: 'The new name is a string in the firmware image like any other and becomes a shared hard-coded credential.' },
-      { t: 'Check a run-time flag in RAM that the factory tool sets', why: 'The code path still exists in every shipped unit and is one memory write, or one fault, away from being enabled.' },
+      { t: 'Compile it out, and make the release build fail if the factory flag is set', ok: true, why: 'Add `#error` when `MFG_TEST` and `RELEASE_BUILD` are both defined, and grep the release binary for the command\'s strings in CI. The code is absent from the image, the build cannot be misconfigured silently, and an independent check confirms it.' },
+      { t: 'Remove the command from the `help` output so that users cannot discover it', why: 'The dispatch table still contains it. Help text is documentation, not access control.' },
+      { t: 'Rename the command to a long random string that only the factory knows', why: 'The new name is a string in the firmware image like any other and becomes a shared hard-coded credential.' },
+      { t: 'Check a run-time flag in RAM that the factory tool sets before each test', why: 'The code path still exists in every shipped unit and is one memory write, or one fault, away from being enabled.' },
     ] },
     { q: 'What is wrong with this limiter?', code: C`
 if (!pin_ok(input)) {
@@ -258,28 +258,28 @@ if (!pin_ok(input)) {
     nv_write(&failures);
     return DENIED;
 }`, kind: 'code', choices: [
-      { t: 'The attempt is recorded only after a failed comparison, so removing power between the comparison and the write gives a guess that is never counted', ok: true, why: 'The durable charge must come before the comparison, with a refund on success.' },
+      { t: 'The attempt is recorded only after a failed comparison, so cutting power in between hides the guess', ok: true, why: 'The durable charge must come before the comparison, with a refund on success.' },
       { t: '`failures` should be decremented rather than incremented', why: 'Counting up to a limit and counting down from one are equivalent; the direction is not the defect.' },
       { t: 'Writing to non-volatile memory on every failure wears out the flash, so the count should stay in RAM', why: 'A RAM counter is cleared by a reset, which the person guessing controls. Wear is managed by limiting attempts, which is the purpose of the counter.' },
       { t: 'Nothing: the failure is stored in non-volatile memory', why: 'It is stored, but at a moment the adversary can prevent from being reached.' },
     ] },
     { q: 'An engineer replaces `memcmp(tag, expect, 8) == 0` with a loop that ORs together the XOR of each byte pair and compares the result with zero at the end. Which property changed?', kind: 'concept', choices: [
       { t: 'Execution time no longer depends on the position of the first differing byte', ok: true, why: 'Every byte is processed for every input, so the duration carries no information about how many leading bytes were right.' },
-      { t: 'The comparison now also authenticates the message length', why: 'Both versions compare a fixed eight bytes. Length handling is a separate check.' },
-      { t: 'The comparison is faster for wrong tags', why: 'It is slower for wrong tags, because it no longer stops early. That uniformity is the point.' },
-      { t: 'The tag is now encrypted during comparison', why: 'XOR with the expected value is arithmetic for finding differences, not encryption.' },
+      { t: 'The comparison now also authenticates the message length, because every byte is visited', why: 'Both versions compare a fixed eight bytes. Length handling is a separate check.' },
+      { t: 'The comparison is faster for wrong tags, which are the common case', why: 'It is slower for wrong tags, because it no longer stops early. That uniformity is the point.' },
+      { t: 'The tag is now encrypted by the XOR while it is being compared', why: 'XOR with the expected value is arithmetic for finding differences, not encryption.' },
     ] },
     { q: 'A product authenticates the service port with a 4-digit PIN and allows 3 attempts, after which it waits 60 seconds and allows 3 more. The counter is held in RAM. Roughly how is its guessing resistance best described?', kind: 'security', choices: [
-      { t: 'Poor: a reset clears the counter, so the real limit is how fast the device reboots, and 10,000 values are few', ok: true, why: 'The limiter must persist across resets to bound guesses, and even then 4,320 guesses a day against 10,000 values is under three days.' },
+      { t: 'Poor: a reset clears the counter, and 10,000 values are few', ok: true, why: 'The real limit is how fast the device reboots. The limiter must persist across resets to bound guesses, and even then 4,320 guesses a day against 10,000 values is under three days.' },
       { t: 'Good: three attempts out of 10,000 is a 0.03% chance', why: 'That is the chance for the first three guesses only. The device goes on to allow three more every minute, indefinitely.' },
       { t: 'Good: 60 seconds is long enough to deter anyone', why: 'An automated sender is not deterred by waiting. The question is how many guesses fit into the time available.' },
       { t: 'It cannot be assessed without knowing the PIN', why: 'Guessing resistance is a property of the space of possible secrets and the rate allowed, independent of the particular value.' },
     ] },
     { q: 'Which test would have caught `strncmp(input, pin, strlen(input)) == 0` before release?', kind: 'code', choices: [
-      { t: 'A negative test that submits an empty string and a one-character correct prefix and expects both to be denied', ok: true, why: 'The defect only appears for inputs shorter than the secret, which positive tests and full-length wrong PINs never exercise.' },
-      { t: 'A test with the correct PIN', why: 'The correct PIN is accepted by both the defective and the correct implementation, so it cannot tell them apart.' },
-      { t: 'A test with a wrong PIN of the correct length', why: 'A full-length wrong PIN is compared in full and rejected, so the defective code passes this test.' },
-      { t: 'Running the correct-PIN test under AddressSanitizer', why: 'No memory is accessed out of bounds here. The defect is in what the code decides, not where it reads or writes.' },
+      { t: 'A negative test with an empty string and a one-character correct prefix', ok: true, why: 'Both must be denied. The defect only appears for inputs shorter than the secret, which positive tests and full-length wrong PINs never exercise.' },
+      { t: 'A positive test that submits the correct PIN', why: 'The correct PIN is accepted by both the defective and the correct implementation, so it cannot tell them apart.' },
+      { t: 'A negative test with a wrong PIN of the correct length', why: 'A full-length wrong PIN is compared in full and rejected, so the defective code passes this test.' },
+      { t: 'Running the correct-PIN test under AddressSanitizer and UBSan in a host build', why: 'No memory is accessed out of bounds here. The defect is in what the code decides, not where it reads or writes.' },
     ] },
   ],
 };

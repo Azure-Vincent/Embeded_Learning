@@ -460,14 +460,14 @@ You have just extracted four hardware facts from a command line. This is why bei
   ],
   quiz: [
     { kind: 'concept', q: `Why can the output of your laptop's ordinary \`gcc\` not run on an ESP32-C3?`, choices: [
-      { t: 'The file is too large for the ESP32-C3.', why: `Size is not the obstacle. Even a tiny program compiled this way would not run.` },
-      { t: 'It contains instructions for the laptop\'s CPU and expects an operating system to load it; the ESP32-C3 has a RISC-V CPU and no such OS.', ok: true, why: `Different instruction set, different libraries, different memory layout: all three need a cross-toolchain.` },
-      { t: 'The ESP32-C3 only runs Python.', why: `Microcontrollers execute machine code from flash. Interpreters are themselves compiled firmware.` },
+      { t: `A PC executable carries debug information and libraries that make it too large for the ESP32-C3's flash.`, why: `Size is not the obstacle. Even a tiny program compiled this way would not run.` },
+      { t: `It holds instructions for the laptop's CPU and expects an operating system to load it.`, ok: true, why: `Different instruction set, different libraries, different memory layout: all three need a cross-toolchain.` },
+      { t: `The ESP32-C3 executes only interpreted languages, so C must first be translated to MicroPython bytecode.`, why: `Microcontrollers execute machine code from flash. Interpreters are themselves compiled firmware.` },
     ] },
     { kind: 'code', q: `A build ends with \`undefined reference to 'uart_send'\`. Which stage reported this, and what does it mean?`, choices: [
-      { t: 'The compiler: the function\'s prototype is missing from a header.', why: `A missing prototype produces a compile-time diagnostic about an implicit declaration, at the line of the call.` },
-      { t: 'The linker: the call compiled, but no object file or library given to the linker contains a definition of the function.', ok: true, why: `"Undefined reference" is the linker failing to resolve a symbol. Usually a source file is missing from the build's source list.` },
-      { t: 'The flashing tool: the function did not fit in flash.', why: `Flashing happens after a successful link, and a size problem is reported as a memory region overflowing.` },
+      { t: `The compiler: the function's prototype is missing from every header that the calling file includes.`, why: `A missing prototype produces a compile-time diagnostic about an implicit declaration, at the line of the call.` },
+      { t: `The linker: the call compiled, but no object file or library given to the linker defines the function.`, ok: true, why: `"Undefined reference" is the linker failing to resolve a symbol. Usually a source file is missing from the build's source list.` },
+      { t: `The flashing tool: the function was built, but did not fit in the flash region assigned to it.`, why: `Flashing happens after a successful link, and a size problem is reported as a memory region overflowing.` },
     ] },
     { kind: 'code', q: `In the rule \`%.o: %.c blink_math.h\` with command \`$(CC) $(CFLAGS) -c -o $@ $<\`, what do \`$@\` and \`$<\` expand to when building \`main.o\`?`, choices: [
       { t: '`$@` is `main.o`; `$<` is `main.c`.', ok: true, why: `\`$@\` is the target; \`$<\` is the first prerequisite.` },
@@ -475,18 +475,18 @@ You have just extracted four hardware facts from a command line. This is why bei
       { t: '`$@` is `main.o`; `$<` is `main.c blink_math.h`.', why: `All prerequisites together is a different automatic variable. Passing a header to \`-c\` as an input would also be wrong.` },
     ] },
     { kind: 'concept', q: `You open a new terminal, go to your ESP-IDF project and run \`idf.py build\`. The shell answers \`idf.py: command not found\`. Yesterday it worked. What is the most likely cause?`, choices: [
-      { t: 'ESP-IDF was uninstalled overnight.', why: `Nothing removes it by itself. Consider what differs between yesterday's terminal and this one.` },
-      { t: 'The ESP-IDF environment has not been activated in this shell, so PATH does not include the tools.', ok: true, why: `Activation changes the environment of one shell only. Each new terminal needs it again.` },
-      { t: 'The project needs `sudo`.', why: `Root privileges do not put a command on PATH, and building as root damages file ownership in the project.` },
+      { t: `An overnight system update removed ESP-IDF, so it has to be installed again from the start.`, why: `Nothing removes it by itself. Consider what differs between yesterday's terminal and this one.` },
+      { t: `The ESP-IDF environment has not been activated in this shell, so PATH lacks the tools.`, ok: true, why: `Activation changes the environment of one shell only. Each new terminal needs it again.` },
+      { t: `The project directory is owned by another user, so the command must be run with \`sudo\`.`, why: `Root privileges do not put a command on PATH, and building as root damages file ownership in the project.` },
     ] },
     { kind: 'arch', q: `The eCTF 2026 reference design builds with TI Arm Clang, while the 2025 design used arm-none-eabi-gcc. A teammate wants to paste a GCC-specific linker option into the 2026 build. What is the sound approach?`, choices: [
-      { t: 'Paste it; all Arm compilers accept the same options.', why: `The two are different compiler families with their own drivers, linkers and option sets. Some options overlap; many do not.` },
-      { t: 'Check the option in the TI Arm Clang documentation and confirm its effect in the map file or disassembly.', ok: true, why: `Treat a different toolchain as a different tool: confirm, then verify the output.` },
-      { t: 'Replace the compiler with GCC in the Dockerfile without telling anyone.', why: `Swapping the toolchain changes code generation, libraries and startup code for the whole team. It is a design decision that has to be made openly and against the rules for that year.` },
+      { t: `Paste it: both compilers target Arm and follow the same EABI, so their linker options are interchangeable.`, why: `The two are different compiler families with their own drivers, linkers and option sets. Some options overlap; many do not.` },
+      { t: `Check the option in the TI Arm Clang documentation, then confirm its effect in the map file or disassembly.`, ok: true, why: `Treat a different toolchain as a different tool: confirm, then verify the output.` },
+      { t: `Switch the Dockerfile back to GCC so the option works, since the two compilers produce equivalent code.`, why: `Swapping the toolchain changes code generation, libraries and startup code for the whole team. It is a design decision that has to be made openly and against the rules for that year.` },
     ] },
     { kind: 'concept', q: `Which situation favours PlatformIO over using ESP-IDF directly?`, choices: [
-      { t: 'You need a security feature that was added in the newest ESP-IDF release.', why: `A wrapper pins its own framework version and may not yet include the newest release.` },
-      { t: 'You maintain small projects on boards from several vendors and want one consistent build command and library manager.', ok: true, why: `A uniform front end across vendors is what PlatformIO is for.` },
+      { t: `You need a security feature that appeared in the newest ESP-IDF release and want it on the day it ships.`, why: `A wrapper pins its own framework version and may not yet include the newest release.` },
+      { t: `You maintain small projects on boards from several vendors and want one build command.`, ok: true, why: `A uniform front end across vendors is what PlatformIO is for.` },
       { t: 'You want the build directory to match Espressif\'s documentation exactly.', why: `An extra layer changes paths and invocation. The vendor's own tool is the one its documentation describes.` },
     ] },
   ],
@@ -785,24 +785,24 @@ way.`,
   ],
   quiz: [
     { kind: 'concept', q: `A board's boot log shows the app version \`v1.2-4-g9f3c2ab-dirty\`. What does the suffix \`-dirty\` tell you?`, choices: [
-      { t: 'The flash memory has bad blocks.', why: `The string describes the source tree at build time. It says nothing about the chip's memory.` },
-      { t: 'The image was built from a working tree with uncommitted changes, so no commit corresponds exactly to this firmware.', ok: true, why: `The build cannot be reproduced from the repository alone.` },
-      { t: 'The build used debug optimisation settings.', why: `Optimisation level is a build configuration choice. It is not what this suffix records.` },
+      { t: `The flash memory had bad blocks at the time the image was written, and the bootloader recorded it.`, why: `The string describes the source tree at build time. It says nothing about the chip's memory.` },
+      { t: `The image was built from a working tree that contained uncommitted changes.`, ok: true, why: `The build cannot be reproduced from the repository alone.` },
+      { t: `The build used debug settings: optimisation off and assertions enabled.`, why: `Optimisation level is a build configuration choice. It is not what this suffix records.` },
     ] },
     { kind: 'concept', q: `Why do the eCTF 2025 and 2026 reference designs build firmware inside a Docker container?`, choices: [
-      { t: 'Containers make the firmware run faster on the microcontroller.', why: `The container exists only on the build machine. The microcontroller runs the same kind of binary either way.` },
-      { t: 'So that every team, and the organisers, build with the same compiler and SDK versions and get the firmware the source describes.', ok: true, why: `Reproducibility across machines is the purpose.` },
-      { t: 'Because microcontrollers require Docker to be flashed.', why: `Flashing in those designs is done by host-side tools talking to a bootloader. Docker is not involved in that step.` },
+      { t: `A container build applies optimisations that make the firmware run faster on the microcontroller.`, why: `The container exists only on the build machine. The microcontroller runs the same kind of binary either way.` },
+      { t: `So that every team, and the organisers, build with the same compiler and SDK versions and get the same firmware.`, ok: true, why: `Reproducibility across machines is the purpose.` },
+      { t: `Because the boards' bootloader only accepts images that were packaged and signed inside the container.`, why: `Flashing in those designs is done by host-side tools talking to a bootloader. Docker is not involved in that step.` },
     ] },
     { kind: 'code', q: `Your logging script dies with \`UnicodeDecodeError\` exactly when the board resets. What is the most appropriate fix?`, choices: [
-      { t: 'Lower the baud rate.', why: `The bytes around a reset are not text at any speed. The script must tolerate arbitrary byte values.` },
-      { t: 'Decode with `errors="replace"` (or log raw bytes), because a serial line carries bytes that are not always valid text.', ok: true, why: `A logger must survive the moments when the data is garbage, since those are the moments you most want recorded.` },
-      { t: 'Wrap the whole loop in `except: pass`.', why: `That would hide every other error as well, including the port disappearing, and you would log nothing without knowing why.` },
+      { t: `Lower the baud rate on both ends, so that fewer bytes are corrupted during the reset.`, why: `The bytes around a reset are not text at any speed. The script must tolerate arbitrary byte values.` },
+      { t: `Decode with \`errors="replace"\`, or log the raw bytes.`, ok: true, why: `A logger must survive the moments when the data is garbage, since those are the moments you most want recorded.` },
+      { t: `Wrap the whole read loop in \`try: ... except: pass\` so that no exception can stop the logger.`, why: `That would hide every other error as well, including the port disappearing, and you would log nothing without knowing why.` },
     ] },
     { kind: 'concept', q: `\`pip install pyserial\` on Ubuntu 24.04 fails with \`error: externally-managed-environment\`. What should you do?`, choices: [
-      { t: 'Run it with `sudo`.', why: `Root does not bypass this protection, and installing into the system Python is what the message is warning against.` },
-      { t: 'Create and activate a virtual environment in the project, then install there.', ok: true, why: `A venv is a private package directory that cannot interfere with the system's Python.` },
-      { t: 'Add `--break-system-packages` and carry on.', why: `The flag exists, but it does what it says: it risks breaking tools the operating system depends on.` },
+      { t: `Run it with \`sudo\`, because installing packages needs administrator rights.`, why: `Root does not bypass this protection, and installing into the system Python is what the message is warning against.` },
+      { t: `Create and activate a virtual environment in the project, then install there.`, ok: true, why: `A venv is a private package directory that cannot interfere with the system's Python.` },
+      { t: `Add \`--break-system-packages\`, which is the documented way to tell pip you accept the risk.`, why: `The flag exists, but it does what it says: it risks breaking tools the operating system depends on.` },
     ] },
     { kind: 'concept', q: `You started \`picocom\` and now want your shell back. Which keys?`, choices: [
       { t: 'Ctrl+C', why: `In a serial terminal Ctrl+C is sent to the device as byte 0x03. The terminal program itself keeps running.` },
@@ -940,8 +940,8 @@ Use the tool below to set the values and see the expected current.`,
 
     { t: 'predict', q: `A 10 kΩ resistor is wired from 3.3 V to a pin, with the board powered. Curious about its exact value, you switch the meter to resistance and put the probes across it without unplugging anything. What will the meter show, and why?`, choices: [
       { t: 'Close to 10 kΩ; the meter measures the component between its probes.', why: `The meter does not sense the component. It injects a test current and reads a voltage, and here the circuit is supplying voltages and current paths of its own.` },
-      { t: 'An unreliable number, possibly negative, unstable or "OL", because the circuit\'s own voltage and other current paths corrupt the meter\'s test.', ok: true, why: `The resistance function assumes the meter is the only source driving the thing between its probes.` },
-      { t: 'Exactly 0 Ω, because current is already flowing.', why: `A reading of zero would mean no voltage between the probes. With a live circuit there generally is one, and it is not the one the meter created.` },
+      { t: 'An unreliable number: possibly negative, unstable or "OL".', ok: true, why: `The resistance function assumes the meter is the only source driving the thing between its probes.` },
+      { t: 'Exactly 0 Ω, because the current already flowing cancels the meter\'s own test current.', why: `A reading of zero would mean no voltage between the probes. With a live circuit there generally is one, and it is not the one the meter created.` },
     ], reveal: `The meter computes R = V / I using the current *it* supplies. In a powered circuit the voltage between the probes is set mostly by the circuit, so the division produces nonsense. Even unpowered, the resistor is in parallel with whatever else connects those two nodes: here the pin's internal circuitry and anything else on the 3.3 V rail. The trustworthy procedure is: power off, lift one leg of the resistor, measure.` },
 
     `## What the other instruments add
@@ -1000,7 +1000,7 @@ Nearly every beginner meets most of these. Each has a one-measurement test.
 | TX wired to TX | Nothing received in either direction | Check that each TX goes to the other side's RX |
 | Module powered from 5 V driving a 3.3 V input | Works, then pins fail | Measure the signal's high level before connecting it |
 | Wrong pin: board label differs from GPIO number | Code toggles a pin; nothing happens on the one you probed | Voltage on the pin the code names, located from the board's pinout diagram |
-| Using a pin with a special role | Board fails to boot or flash with the circuit attached | Disconnect the circuit and retry; check the chip's strapping pins. On the original ESP32 they are GPIO0, 2, 5, 12 and 15, and GPIO34 to 39 are input-only |
+| Using a pin with a special role | Board fails to boot or flash with the circuit attached | Disconnect the circuit and retry; check the chip's strapping pins. On the original ESP32 they are GPIO0, 2, 5, 12 and 15, and GPIO34 to 39 are input-only. Other ESP chips use different pins: look them up for yours |
 | Supply sagging under load | Random resets when a motor, servo or radio starts | Measure the rail under load; an oscilloscope shows the dip |
 | Old firmware on the board | Behaviour does not match the code | Change a printed message, rebuild, flash, look for the new message |`,
 
@@ -1038,33 +1038,33 @@ exact fault, and the diode and capacitors that go with the fix, in the Electroni
   quiz: [
     { kind: 'circuit', q: `You want to know how much current a sensor module draws from the 3.3 V rail. How must the multimeter be connected in its current range?`, choices: [
       { t: 'Red probe on 3.3 V, black probe on ground, with the module connected as normal.', why: `That places the meter, which is nearly a short circuit in this mode, directly across the supply.` },
-      { t: 'In series: disconnect the module\'s supply wire and connect the meter between the rail and the module\'s supply pin.', ok: true, why: `The current to be measured must pass through the meter.` },
+      { t: `In series: open the module's supply wire and bridge the gap with the meter.`, ok: true, why: `The current to be measured must pass through the meter.` },
       { t: 'Across the module\'s supply and ground pins with the power off.', why: `With the power off no current flows, and across the pins is where a voltage measurement goes.` },
     ] },
     { kind: 'circuit', q: `Why is it wrong to measure a resistor's value while the circuit is powered?`, choices: [
-      { t: 'Resistors change value when warm.', why: `The effect of temperature on an ordinary resistor at these power levels is tiny. The problem is how the meter obtains its reading.` },
-      { t: 'The meter derives resistance from its own small test current; voltages already present in the circuit corrupt that measurement and may harm the meter.', ok: true, why: `The resistance function assumes the meter is the only source.` },
-      { t: 'It will discharge the board\'s capacitors.', why: `The meter's test current is very small. The concern is the validity of the reading and the meter's input.` },
+      { t: `A resistor carrying current warms up, and its value while warm differs from the value printed on it.`, why: `The effect of temperature on an ordinary resistor at these power levels is tiny. The problem is how the meter obtains its reading.` },
+      { t: `The meter derives resistance from its own small test current, and voltages already in the circuit corrupt that.`, ok: true, why: `The resistance function assumes the meter is the only source.` },
+      { t: `The meter's test current will discharge the board's capacitors and reset the microcontroller.`, why: `The meter's test current is very small. The concern is the validity of the reading and the meter's input.` },
     ] },
     { kind: 'circuit', q: `An LED circuit is dark. You measure 3.3 V from the pin to ground, 0 V across the series resistor and 3.3 V across the LED. Which fault fits all three readings?`, choices: [
-      { t: 'The firmware is not driving the pin.', why: `The pin measured 3.3 V, so the firmware is driving it high.` },
-      { t: 'No current is flowing and the whole voltage appears across the LED: it is reversed or open.', ok: true, why: `Zero volts across the resistor means zero current. The element that has the full voltage across it is the one blocking.` },
-      { t: 'The resistor value is too high.', why: `A resistor that was merely too large would still carry some current and would show a voltage across it.` },
+      { t: `The firmware is driving the pin low, so nothing reaches the LED.`, why: `The pin measured 3.3 V to ground, so it is being driven high.` },
+      { t: `The LED is reversed or open: it blocks, so it takes the whole voltage.`, ok: true, why: `Zero volts across the resistor means zero current. The element that has the full voltage across it is the one blocking.` },
+      { t: `The resistor value is far too high, so it leaves too little current to light the LED.`, why: `A resistor that was merely too large would still carry some current and would show a voltage across it.` },
     ] },
     { kind: 'concept', q: `A pin is supposed to output a 1 kHz square wave between 0 V and 3.3 V. Your multimeter on DC volts reads a steady 1.65 V. What can you conclude?`, choices: [
-      { t: 'The pin is faulty and stuck at half supply.', why: `That is one possibility, but a meter that averages would show the same number for a healthy 50% square wave.` },
-      { t: 'The reading is consistent with a 50% duty square wave, but the meter cannot distinguish that from a steady 1.65 V; an oscilloscope or logic analyser is needed.', ok: true, why: `A multimeter reports an average. Different waveforms with the same average look identical to it.` },
-      { t: 'The frequency is exactly 1 kHz.', why: `A DC voltage reading carries no information about frequency.` },
+      { t: `The pin is faulty and stuck at half supply, because a working square wave would make the reading flicker.`, why: `That is one possibility, but a meter that averages would show the same number for a healthy 50% square wave.` },
+      { t: `The reading fits a 50% square wave, but the meter cannot tell that from a steady 1.65 V; use an oscilloscope.`, ok: true, why: `A multimeter reports an average. Different waveforms with the same average look identical to it.` },
+      { t: `The output is working, and the steady reading shows that its frequency is stable at 1 kHz.`, why: `A DC voltage reading carries no information about frequency.` },
     ] },
     { kind: 'concept', q: `Your board prints garbage on the serial port. You simultaneously change the baud rate in the terminal, swap the USB cable and re-flash. The output is now clean. What is wrong with this as a debugging step?`, choices: [
-      { t: 'Nothing; the problem is solved.', why: `The symptom has gone, but you cannot say why, so you cannot prevent or quickly fix it next time.` },
-      { t: 'Three changes were made at once, so you do not know which one mattered and have learned nothing reusable.', ok: true, why: `One change per test is what lets a result confirm or refute a specific hypothesis.` },
-      { t: 'Re-flashing should always be done before changing a cable.', why: `No fixed ordering of changes makes up for making several of them together.` },
+      { t: `Nothing: the output is clean, and the aim of debugging is a working board, not an explanation.`, why: `The symptom has gone, but you cannot say why, so you cannot prevent or quickly fix it next time.` },
+      { t: `You cannot tell which of the three changes mattered.`, ok: true, why: `One change per test is what lets a result confirm or refute a specific hypothesis.` },
+      { t: `The order was wrong: re-flashing should always come before any change to cables or settings.`, why: `No fixed ordering of changes makes up for making several of them together.` },
     ] },
     { kind: 'concept', q: `After the last measurement of the day, a current reading, you leave the red lead in the mA socket. Next morning you put the probes on the 5 V and ground pins of a board powered from a battery pack to check the supply. What happens?`, choices: [
-      { t: 'The meter shows 5 V as usual.', why: `Which socket the lead is in determines the path inside the meter, regardless of the dial. Through the current socket that path has almost no resistance.` },
-      { t: 'The meter\'s low-resistance current path is placed across the supply: a large current flows until the meter\'s fuse blows or something else gives way.', ok: true, why: `In the current input the meter is deliberately close to a short circuit.` },
-      { t: 'The meter shows the current the board is drawing.', why: `To read the board's current the meter would have to be in series with the board. Here it is in parallel with it, across the source.` },
+      { t: `The meter shows 5 V as usual, because the dial position decides what is measured, not the socket.`, why: `Which socket the lead is in determines the path inside the meter, regardless of the dial. Through the current socket that path has almost no resistance.` },
+      { t: `The meter is nearly a short across the supply; a large current flows until its fuse blows.`, ok: true, why: `In the current input the meter is deliberately close to a short circuit.` },
+      { t: `The meter shows the current the board is drawing, since it is now set up for current.`, why: `To read the board's current the meter would have to be in series with the board. Here it is in parallel with it, across the source.` },
     ] },
   ],
 };

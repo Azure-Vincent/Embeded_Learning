@@ -108,6 +108,8 @@ int main(void)
 
     gpio_init(9, GPIO_OUTPUT, false);
     gpio_init(9, GPIO_INPUT, false);      /* reconfigured: must become an input again */
+    gpio_init(8, GPIO_INPUT, true);
+    gpio_init(8, GPIO_INPUT, false);      /* reconfigured: the pull-up must be off again */
     gpio_init(3, GPIO_OUTPUT, true);      /* a pull-up makes no sense on an output    */
     gpio_init(16, GPIO_OUTPUT, false);    /* there is no pin 16                       */
 
@@ -134,9 +136,9 @@ static void gpio_init(uint32_t pin, gpio_dir_t dir, bool pullup)
   solution: HEAD + GPIO_TYPES + GPIO_INIT + step1Main,
   tests: [{ name: 'direction and pull-up bits for each pin', stdout: 'DIR=0028 PULLUP=0004\n', regs: { GPIO_DIR: 0x28, GPIO_PULLUP: 0x04 } }],
   hints: [
+    'For each of the two registers, list the cases in which the pin\'s bit must end up 1 and the cases in which it must end up 0. Does your code write the bit in every case, including when a pin is configured a second time?',
     'Build `mask = 1u << pin` once, after rejecting `pin >= GPIO_PIN_COUNT`.',
-    'Both branches of the direction must be written: `|= mask` for output and `&= ~mask` for input. Otherwise the second call for pin 9 leaves it as an output.',
-    'The pull-up follows the same set-or-clear pattern, with the condition `pullup && dir == GPIO_INPUT`.',
+    'Both branches of the direction must be written: `|= mask` for output and `&= ~mask` for input. Otherwise the second call for pin 9 leaves it as an output. The pull-up follows the same set-or-clear pattern, with the condition `pullup && dir == GPIO_INPUT`.',
   ],
   explain: `An init function must handle *re*-configuration, so it clears as well as sets. The range check matters more than it looks: \`1u << 32\` is undefined behaviour, and \`1u << 16\` would write a bit that does not correspond to a pin. On a real chip this is also the function that would enable the port's clock and select the pin's GPIO function first (see the last step).`,
 });
@@ -188,9 +190,9 @@ static bool gpio_read(uint32_t pin)
     { name: 'button released: pull-up reads high, LED off', gpioIn: { value: 0x0000, mask: 0x0000 }, stdout: 'OUT=0001\npressed=0 led=0 pin0=1\n', regs: { GPIO_OUT: 0x01 } },
   ],
   hints: [
+    'Check the access column of the register table for `GPIO_SET`, `GPIO_CLR` and `GPIO_IN`. Which assignment operator makes sense for a write-only register, and which register tells you the level actually on a pin?',
     '`GPIO_SET = 1u << pin;` sets one output bit; `GPIO_CLR = 1u << pin;` clears one. Plain `=`: these registers ignore the zeros.',
-    '`gpio_read` masks `GPIO_IN` with the pin\'s bit and compares the result with 0, so the answer is exactly `true` or `false`.',
-    'If `pressed` is wrong in the released test, check that step 1 enabled the pull-up: an undriven input without one has no defined level.',
+    '`gpio_read` masks `GPIO_IN` with the pin\'s bit and compares the result with 0, so the answer is exactly `true` or `false`. If `pressed` is wrong in the released test, check that the pull-up is enabled: an undriven input without one has no defined level.',
   ],
   explain: `Set/clear registers make \`gpio_write\` safe to call from both the main program and an interrupt handler: there is no read-modify-write to interrupt. \`GPIO_IN\` reports the actual pin level, which for an output pin is the latch value, so \`gpio_read(LED_PIN)\` reads back what was written. The inversion for the active-low button belongs in the caller (or a \`button_pressed()\` helper), not in \`gpio_read\`, which should report the electrical level.`,
 });
@@ -234,9 +236,9 @@ static void uart_putc(char c)
   solution: HEAD + UART_BITS + UART_INIT_PUTC + step3Main,
   tests: [{ name: 'every byte is transmitted', uartTx: 'Hello\n', stdout: 'BAUD=104 CTRL=1\n', regs: { UART_BAUD: 104, UART_CTRL: 0x1 } }],
   hints: [
+    'Evaluate the right-hand side of the assignment in `uart_init` by hand, starting from the reset value 0. Then read the simulator note under the failed test: it names the condition under which a written byte is thrown away.',
     '`UART_CTRL & ~UART_CTRL_EN` *clears* the enable bit. Transmission is dropped while it is 0. Set it with `|=`.',
-    'After enabling, you will see some characters but not all. Each write to `UART_DATA` while the transmitter is busy is lost.',
-    'Before the store in `uart_putc`: `while ((UART_STATUS & UART_ST_TX_RDY) == 0) { }`.',
+    'After enabling, you will see some characters but not all. Each write to `UART_DATA` while the transmitter is busy is lost. Before the store in `uart_putc`: `while ((UART_STATUS & UART_ST_TX_RDY) == 0) { }`.',
   ],
   explain: `A UART shifts a byte out one bit at a time, which takes far longer than the CPU needs to offer the next byte. \`TX_READY\` is the hardware's "I can take another" signal, and the polling loop is the simplest correct way to honour it. The cost is that \`uart_putc\` blocks the CPU while it waits; interrupt-driven transmission with a ring buffer removes that cost and is the natural next refinement.`,
 });
@@ -283,8 +285,8 @@ static void uart_put_hex8(uint8_t value)
   solution: HEAD + GPIO_TYPES + UART_BITS + GPIO_INIT + GPIO_RW + UART_INIT_PUTC + UART_PUTS_HEX + step4Main,
   tests: [{ name: 'strings and hex bytes', uartTx: 'boot ok\nOUT=0x20 id=0x0A\n' }],
   hints: [
-    '`uart_puts` walks the string with the pointer: `while (*s != \'\\0\') { uart_putc(*s); s++; }`.',
-    'A hex digit is four bits. The high digit is `(value >> 4) & 0xF`, the low digit is `value & 0xF`.',
+    'What marks the end of a C string, and should that byte be transmitted? For the hex function: how many bits does one hex digit stand for, and which of the two digits must be sent first?',
+    '`uart_puts` walks the string with the pointer until `*s` is `\'\\0\'`, calling `uart_putc(*s)` and then `s++`. The high digit is `(value >> 4) & 0xF`, the low digit is `value & 0xF`.',
     'Turn a number 0–15 into a character by indexing a table: `static const char digits[] = "0123456789ABCDEF";`.',
   ],
   explain: `Layering keeps the hardware knowledge in one place: only \`uart_putc\` knows about \`TX_READY\`. \`uart_put_hex8\` is the tool you will use most during bring-up, because it prints register values without dragging in \`printf\`, which on a small MCU can cost several kilobytes of flash and a lot of stack. The digit table is \`static const\`, so it lives in flash.`,
@@ -376,11 +378,12 @@ static void command_loop(void)
     { name: 'LED on, button held, quit', uartRx: '1bq', gpioIn: { value: 0x0000, mask: 0x0004 }, uartTx: 'ready\nok\npressed\nbye\n', regs: { GPIO_OUT: 0x20 } },
     { name: 'on, toggle, off, toggle, unknown, button released', uartRx: '1t0txbq', gpioIn: { value: 0x0000, mask: 0x0000 }, uartTx: 'ready\nok\nok\nok\nok\nerr\nreleased\nbye\n', regs: { GPIO_OUT: 0x20 } },
     { name: 'quit immediately leaves the LED off', uartRx: 'q', uartTx: 'ready\nbye\n', regs: { GPIO_OUT: 0x00 } },
+    { name: 'slow typist: on, then toggle back off, with long pauses between keys', uartRx: { data: '1tq', interval: 400, start: 600 }, uartTx: 'ready\nok\nok\nbye\n', regs: { GPIO_OUT: 0x00 } },
   ],
   hints: [
+    'The tests type the commands slowly, so `uart_getc` is often called when nothing has arrived yet. What does `UART_DATA` return then, and which status bit tells you a byte is really there?',
     '`uart_getc` mirrors `uart_putc`: poll a status bit, then access `UART_DATA` once. Reading `UART_DATA` twice would throw a byte away.',
-    'A `for (;;)` loop around `switch (cmd)` with one `case` per command. `return` from the `q` case; every other case ends with `break`.',
-    'Toggle with the functions you have: `gpio_write(LED_PIN, !gpio_read(LED_PIN));` works because `GPIO_IN` reads back the output latch for an output pin.',
+    'A `for (;;)` loop around `switch (cmd)` with one `case` per command. `return` from the `q` case; every other case ends with `break`. Toggle with the functions you have: `gpio_write(LED_PIN, !gpio_read(LED_PIN));` works because `GPIO_IN` reads back the output latch for an output pin.',
   ],
   explain: `This is the skeleton of most serial consoles and bootloader command handlers: block for a byte, dispatch on it, reply, repeat. The \`default\` case matters: input from outside is never guaranteed to be one of the expected values. Its limits are the ones the lessons named. \`uart_getc\` waits for ever if nothing arrives (add a timeout), and while the loop is busy transmitting a reply it is not reading, so a fast sender could overrun the receiver (receive by interrupt into a ring buffer).`,
 });

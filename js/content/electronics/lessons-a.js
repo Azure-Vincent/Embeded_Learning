@@ -434,7 +434,24 @@ export default [
       { t: 'refs', items: [
         { title: 'Texas Instruments: Linear and Switching Voltage Regulator Fundamentals (SNVA558)', url: 'https://www.ti.com/lit/an/snva558/snva558.pdf', note: 'how unregulated input and ripple relate to regulator requirements' },
       ] },
-    ],
+          `### See it: what a digital input makes of an analog voltage
+
+Every "digital" signal is an analog voltage that someone agreed to read as 0 or 1. Use the tool below to connect the
+vocabulary of this lesson to a picture. Start with the sine wave and read off peak-to-peak, mean and RMS, and check
+the RMS against amplitude / √2. Then look at the lower trace: it shows what an input pin would report.
+
+Before you touch the noise control, predict: if a clean square wave gets slow edges and a little noise, will the
+input see fewer transitions, the same number, or more?`,
+      { t: 'widget', name: 'signal-lab', props: { shape: 'sine' }, caption: 'Blue: the voltage. Dashed: its mean. Shaded band: between VIL and VIH, where a logic input promises nothing. Green: what the input reads.' },
+      { t: 'callout', kind: 'why', md: `An input does not sample "the signal"; it compares a voltage with a threshold. A fast edge crosses the threshold once. A slow edge spends a long time near it, and during that time any noise larger than the distance to the threshold carries the voltage across again and again. Each crossing is a transition as far as firmware is concerned. This is the electrical root of switch bounce, of false counts from slow sensors, and of the rule that edges on a digital line should be fast.` },
+      `### Fix it with hysteresis
+
+A **Schmitt trigger** input has two thresholds: it goes high only above the upper one and low only below the lower
+one, and between them it keeps its last state. Noise smaller than the gap cannot switch it back. Many microcontroller
+pins have Schmitt-trigger inputs; whether yours does, and how wide the gap is, is in the datasheet's DC
+characteristics table (look for "hysteresis" or VT+ / VT−).`,
+      { t: 'widget', name: 'signal-lab', props: { challenge: 'clean-edges' }, caption: 'The signal is deliberately bad. Change how the input reads it, not the signal.' },
+],
     quiz: [
       { q: 'A supply is described as 5 V with 100 mV peak-to-peak ripple. Which statement is accurate?', kind: 'concept', choices: [
         { t: 'It is a DC supply whose voltage varies by 100 mV around its average', ok: true, why: 'Ripple is the AC component riding on a DC level. The polarity never reverses.' },

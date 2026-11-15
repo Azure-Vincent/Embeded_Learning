@@ -322,9 +322,9 @@ Strip away the driver and a UART transmitter is two registers: a data register y
 
 - Enable the UART by setting bit 0 of \`UART_CTRL\`.
 - Before each write to \`UART_DATA\`, wait until the \`UART_TX_READY\` bit of \`UART_STATUS\` is 1.
-- \`main\` must send the text \`Bench\` followed by \`\\r\\n\`.
+- \`main\` sends the text \`Bench\` with \`uart_puts\`, then \`\\r\` and \`\\n\` with two \`uart_putc\` calls one straight after the other. Only add the enable line to \`main\`; leave its calls as they are.
 
-The starter writes the bytes back to back. Run it and look at what actually leaves the pin.`,
+The two back-to-back calls are the test of your \`uart_putc\`: the second arrives while the transmitter is still busy with the first. Run the starter and look at what actually leaves the pin.`,
           starter: String.raw`#include <stdint.h>
 
 void uart_putc(char c)
@@ -342,7 +342,9 @@ void uart_puts(const char *s)
 int main(void)
 {
     /* TODO: enable the UART first */
-    uart_puts("Bench\r\n");
+    uart_puts("Bench");
+    uart_putc('\r');
+    uart_putc('\n');
     return 0;
 }
 `,
@@ -367,12 +369,15 @@ void uart_puts(const char *s)
 int main(void)
 {
     UART_CTRL = UART_CTRL | 1u;
-    uart_puts("Bench\r\n");
+    uart_puts("Bench");
+    uart_putc('\r');
+    uart_putc('\n');
     return 0;
 }
 `,
           tests: [{ name: 'sends "Bench\\r\\n" complete and in order', uartTx: 'Bench\r\n' }],
           hints: [
+            'Look at what arrived and which characters are missing. What was the transmitter doing at the moment each missing character was written?',
             'Transmission is dropped while the ENABLE bit of `UART_CTRL` is 0. Set it before the first write.',
             '`UART_STATUS & UART_TX_READY` is non-zero when the transmitter can accept a byte. Loop while it is zero.',
             'In `uart_puts`, walk the pointer until it points at the 0 byte: `while (*s) { uart_putc(*s); s++; }`.',

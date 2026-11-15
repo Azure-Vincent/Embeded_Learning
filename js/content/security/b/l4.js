@@ -59,6 +59,52 @@ rx_result_t frame_accept(peer_t *peer, const uint8_t *frame, size_t frame_len)
 }
 `;
 
+const DOOR_FIXED = C`
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#define DOOR_VERSION 2u
+#define DOOR_HDR_LEN 6u         /* version, command, counter (4, LE) */
+#define DOOR_TAG_LEN 8u
+#define DOOR_WINDOW  64u
+
+void mac_compute(const uint8_t *msg, size_t len, uint8_t tag[DOOR_TAG_LEN]);
+bool ct_equal(const uint8_t *a, const uint8_t *b, size_t n);
+uint32_t nv_counter_read(void);             /* platform: non-volatile storage */
+void nv_counter_write(uint32_t value);
+bool do_command(uint8_t command);
+
+static uint32_t rd32(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+bool door_rx(const uint8_t *rx, size_t n)
+{
+    uint8_t expect[DOOR_TAG_LEN];
+    uint32_t counter, last;
+
+    if (rx == NULL || n != DOOR_HDR_LEN + DOOR_TAG_LEN) {
+        return false;                       /* exact length, before any byte is read */
+    }
+    if (rx[0] != DOOR_VERSION) {
+        return false;                       /* untagged version 1 is no longer obeyed */
+    }
+    mac_compute(rx, DOOR_HDR_LEN, expect);  /* the tag covers the version byte as well */
+    if (!ct_equal(expect, rx + DOOR_HDR_LEN, DOOR_TAG_LEN)) {
+        return false;                       /* nothing has been stored or obeyed yet */
+    }
+    counter = rd32(rx + 2);
+    last = nv_counter_read();
+    if (counter <= last || counter - last > DOOR_WINDOW) {
+        return false;                       /* replayed, old, or implausibly far ahead */
+    }
+    nv_counter_write(counter);              /* commit before acting */
+    return do_command(rx[1]);
+}
+`;
+
 export default {
   id: 'sec-b-replay',
   title: 'Replay and protocol manipulation',
@@ -102,19 +148,19 @@ Downgrade arises from compatibility. Version 1 of the protocol had no MAC. Versi
 
 The ability to cause any action that a genuine party once caused, or to change its meaning: open again, repeat a payment, re-apply an old configuration, re-install an old permission after it was revoked, make unit B obey a command addressed to unit A. Conditions: the adversary can observe the channel and inject onto it. For radio, infrared and any bus that leaves the enclosure, assume both. For a UART on an internal header, the question is whether your threat model includes someone with the case open (lesson 8).`,
     { t: 'predict', q: 'A lock accepts `UNLOCK | counter | HMAC(key, UNLOCK | counter)` if the HMAC is valid and `counter` is greater than the last accepted counter. The fob is pressed out of range of the lock three times while someone records the frames, which carry counters 41, 42 and 43. The lock last accepted 40. What can the recorder do later?', choices: [
-      { t: 'Replay any one of the recorded frames once: the lock has never seen those counters, so they are still fresh to it', ok: true, why: 'Freshness is judged against the receiver\'s state. Frames the receiver never received have not been used up.' },
-      { t: 'Nothing: the counter makes every frame single-use', why: 'A frame is used up when the receiver accepts it and advances its counter. These three never arrived.' },
+      { t: 'Replay any one of the recorded frames once: the lock has not seen those counters', ok: true, why: 'Freshness is judged against the receiver\'s state. Frames the receiver never received have not been used up.' },
+      { t: 'Nothing: the counter makes every frame single-use from the moment it is sent', why: 'A frame is used up when the receiver accepts it and advances its counter. These three never arrived.' },
       { t: 'Unlock as often as they like by replaying frame 43 repeatedly', why: 'After the first acceptance the lock\'s counter is 43, and 43 is no longer greater than it.' },
       { t: 'Compute the frame for counter 44 from the three examples', why: 'Producing a MAC for a new counter requires the key; three examples of a sound MAC do not reveal it.' },
     ], reveal: 'A counter stops re-delivery of messages the receiver has accepted. It does not stop first delivery of a message captured where the receiver could not hear it. Challenge–response closes that gap, at the cost of a two-way exchange.' },
     { t: 'callout', kind: 'sim', md: SCOPE + ` The fob and lock are both simulated, and the HMAC is computed with the browser's real cryptographic library.` },
     widget('replay-attack', { defence: 'none' }, 'Run 1: record an unlock and send it again. Note what the lock reports about the MAC.'),
-    widget('replay-attack', { defence: 'counter' }, 'Run 2, counter. Replay a frame the lock has already accepted. Then test your prediction: record presses the lock did not hear, and replay one.'),
-    widget('replay-attack', { defence: 'nonce' }, 'Run 3, challenge–response. Try both replays again and read the lock\'s reason for each decision.'),
+    widget('replay-attack', { defence: 'counter' }, 'Run 2, counter. Replay a frame the lock has already accepted. The channel in this widget is perfect, so every press reaches the lock and it cannot act out the out-of-range presses of your prediction; use the counters it displays to reason about what the lock would do with a recorded frame it had never received.'),
+    widget('replay-attack', { defence: 'nonce' }, 'Run 3, challenge–response. Replay a recording again and read the lock\'s reason for its decision. Would a response recorded out of range of the lock be of any use here?'),
     `### Debrief
 
 - **None:** the MAC verified every time. The lock had no way to tell the copy from the original.
-- **Counter:** an accepted frame could not be reused. A frame captured out of range stayed valid until the lock moved past its counter, and the acceptance *window* (needed so that a few lost presses do not desynchronise the pair) defines how far ahead a frame may be.
+- **Counter:** an accepted frame could not be reused. The widget could not show the case from your prediction, but the rule it displayed decides it: a frame captured out of range carries a counter above the lock's stored value, so it stays valid until the lock moves past that counter, and the acceptance *window* (needed so that a few lost presses do not desynchronise the pair) defines how far ahead a frame may be.
 - **Nonce:** a response is bound to one challenge that the lock chose and remembers. A recorded response answers a challenge that will not be issued again — provided the nonce is unpredictable and never repeats. A nonce taken from a counter that resets at power-up, or from a weak random generator, repeats, and old responses become valid again.
 
 ## What a MAC must cover
@@ -132,7 +178,11 @@ Everything the receiver uses to decide what to do:
 
 Use a different key, or at least a different direction byte, for each direction, so that a device never accepts a frame it could have produced itself. Fix the tag length in the receiver; never read it from the frame.`,
     widget('packet-explorer', { challenge: 'find-length-bug' }, 'A receiver that trusts its length field. This widget uses a CRC, not a MAC: work out which of its fields a sender can alter and still present a valid check value, then ask the same question of a frame protected by a MAC that covers only the payload.'),
-    `## How a team detects it
+    `### Debrief of the length field
+
+The receiver used the length field to decide how many bytes to copy. Whoever builds the frame chooses that field and can recompute the CRC to match, so a correct check value said nothing about whether the length was honest. A MAC over the payload alone leaves the same gap: the tag still verifies while an altered length or type byte moves the payload boundary or changes the command. Two defences are needed together: the receiver bounds the length against its own buffer (lessons 1 and 2), and the tag covers every header field.
+
+## How a team detects it
 
 **Review questions:**
 
@@ -193,13 +243,20 @@ bool door_rx(const uint8_t *rx, size_t n)
       'What happens to `last_counter` when a forged frame with counter 0xFFFFFFFF arrives?',
       'What does a sender have to do to avoid the MAC check entirely? And what happens to `last_counter` at power-up?',
     ], solution: `1. **No length check** — \`n\` is never used; a short frame causes an out-of-bounds read (lesson 1).
-2. **Counter updated before authentication** — a forged frame with a large counter is rejected at the MAC but has already advanced \`last_counter\`; the genuine remote is locked out (denial of service). A forged counter of 0xFFFFFFFF does it permanently.
+2. **Counter updated before authentication** — a forged frame with a large counter is rejected at the MAC but has already advanced \`last_counter\`; the genuine remote is locked out (denial of service). A forged counter of 0xFFFFFFFF does it until the counter is cleared, which (defect 4) happens at the next power cut.
 3. **Downgrade** — version 1 frames are obeyed with no tag. Any sender can choose version 1. The version byte is also outside the MAC, so even a tagged frame can have it rewritten.
 4. **Counter in RAM** — a power cut resets it to zero and every recorded frame is fresh again.
 5. **Variable-time comparison** with \`memcmp\` (lesson 3).
 6. No receiver identity under the MAC: a frame for one door opens every door sharing the key. (Keys should be per pair in any case.)
 
-**Corrected order:** check length → check version is exactly the supported one → compute the MAC over *all* bytes before the tag → constant-time compare → check \`counter > last_counter\` and within the window → store the counter in non-volatile memory → act. The code block above implements exactly this order; retire version 1 remotes or give them a separate, explicitly weaker mode that the owner must enable.` },
+**Corrected order:** check length → check version is exactly the supported one → compute the MAC over *all* bytes before the tag → constant-time compare → check \`counter > last_counter\` and within the window → store the counter in non-volatile memory → act. Retire version 1 remotes or give them a separate, explicitly weaker mode that the owner must enable.
+
+**Corrected version** (compiled with \`-Wall -Wextra -Wconversion\` and tested on the host under ASan/UBSan with a stand-in MAC and a stub for the non-volatile counter). Version 2 frames now carry a tag over bytes 0 to 5, so the version byte is covered:
+
+\`\`\`c
+${DOOR_FIXED}\`\`\`
+
+**Tests:** frames of 0, 13 and 15 bytes; the same frame twice; an older counter; a counter 65 ahead; a forged frame with counter 0xFFFFFFFF followed by the genuine next frame, which must still be accepted; version 1 frames with and without a tag; every single-bit change to a valid frame; a simulated restart between two deliveries of one frame. Receiver identity (defect 6) is handled here by giving each remote–door pair its own key.` },
     widget('c-lab', {
       title: 'Add the freshness check',
       prompt: `\`accept\` models the receiver after the MAC has been verified (\`tag_ok\` is 1 for an authentic frame). It currently obeys any authentic frame. Change it so that an authentic frame is obeyed only if its counter is strictly greater than \`last_counter\` and at most \`WINDOW\` ahead, and so that a frame that is not authentic never changes \`last_counter\`.`,
@@ -289,41 +346,41 @@ In the 2025 eCTF the reference decoder handles frames that carry a 64-bit timest
   ],
   quiz: [
     { q: 'A sensor sends `reading | HMAC(key, reading)` to a controller over radio. Which statement is true?', kind: 'security', choices: [
-      { t: 'The controller can tell that a key holder produced the reading, but not whether it was produced a second ago or last week', ok: true, why: 'A MAC binds content to a key. Time or sequence must be added to the content, and checked against stored state, to be protected.' },
+      { t: 'The controller learns that a key holder produced the reading, but not when', ok: true, why: 'A second ago and last week look the same. A MAC binds content to a key. Time or sequence must be added to the content, and checked against stored state, to be protected.' },
       { t: 'The HMAC prevents replay because it cannot be computed without the key', why: 'A replayed message does not need to be computed. It was computed by the legitimate sender and is merely sent again.' },
       { t: 'Encrypting the reading as well would prevent replay', why: 'A recorded ciphertext decrypts to the same valid plaintext every time it is delivered.' },
       { t: 'Replay is impossible on radio links because each transmission has different noise', why: 'The receiver demodulates to bits before checking anything, so the same bits are recovered from the copy.' },
     ] },
     { q: 'A frame is `version | type | length | payload | tag`, where `tag = MAC(key, payload)`. Which manipulation succeeds without the key?', kind: 'security', choices: [
-      { t: 'Changing `type` from "status" to "unlock" while keeping the payload and tag of a captured frame', ok: true, why: 'The type byte is not an input to the MAC, so the tag still verifies after the byte is changed.' },
-      { t: 'Changing one byte of the payload', why: 'The payload is exactly what the MAC covers, so any change to it makes the tag wrong.' },
+      { t: 'Changing `type` from "status" to "unlock" on a captured frame', ok: true, why: 'The payload and tag are kept as captured. The type byte is not an input to the MAC, so the tag still verifies after the byte is changed.' },
+      { t: 'Changing one byte of the payload and leaving the tag alone', why: 'The payload is exactly what the MAC covers, so any change to it makes the tag wrong.' },
       { t: 'Replacing the tag with a tag from a frame with a different payload', why: 'A tag is valid only for the payload it was computed over.' },
       { t: 'Computing a new tag for a new payload from two captured examples', why: 'Forging a tag for unseen data is what a sound MAC prevents, however many examples are available.' },
     ] },
     { q: 'In a receive routine, why must the counter be compared and stored only *after* the MAC has been verified?', kind: 'code', choices: [
-      { t: 'Otherwise a forged frame with a large counter advances the stored value and genuine frames are rejected from then on', ok: true, why: 'State must change only on authenticated input. An unauthenticated counter is a number chosen by whoever is transmitting.' },
+      { t: 'Otherwise a forged frame with a large counter advances the stored value', ok: true, why: 'Genuine frames are then rejected from that point on. State must change only on authenticated input. An unauthenticated counter is a number chosen by whoever is transmitting.' },
       { t: 'Because computing the MAC is slow and should be done first to save time', why: 'Doing the expensive operation first costs time; the ordering is about which data may be trusted, not about speed.' },
       { t: 'Because the counter is encrypted and must be decrypted by the MAC', why: 'A MAC does not decrypt anything. The counter is readable in the frame and merely not yet trustworthy.' },
       { t: 'The order does not matter as long as both checks are performed', why: 'Both checks reject the forged frame, but one ordering leaves a side effect behind from a frame that was rejected.' },
     ] },
     { q: 'A lock uses challenge–response. Its nonce is `boot_count * 65536 + message_count`, with both values held in RAM. What is the weakness?', kind: 'arch', choices: [
-      { t: 'After every power cycle the same sequence of nonces is issued again, so recorded responses become valid again', ok: true, why: 'A nonce has to be unique for the life of the key. State that resets at power-up makes it repeat.' },
+      { t: 'The same nonces are issued again after every power cycle', ok: true, why: 'Recorded responses become valid again. A nonce has to be unique for the life of the key. State that resets at power-up makes it repeat.' },
       { t: 'The nonce is too short: 32 bits can be guessed', why: 'A nonce does not need to be secret or unguessable to prevent replay of old responses; it needs to be one the verifier has never used before.' },
       { t: 'The nonce is sent in the clear, so an observer can read it', why: 'Challenges are public by design. Security rests on the response requiring the key.' },
       { t: 'Multiplication by 65536 can overflow', why: 'The arithmetic is not the security problem; a value that never overflowed but restarted from zero would be just as weak.' },
     ] },
     { q: 'Firmware 3.0 adds authenticated frames (version 2) but still accepts unauthenticated version 1 frames so that old handsets keep working. What is the right description?', kind: 'security', choices: [
-      { t: 'A downgrade weakness: anyone can send version 1 frames, so the product is as secure as version 1', ok: true, why: 'The receiver decides how strong the protocol is by what it is willing to accept, and the sender chooses the version.' },
+      { t: 'A downgrade weakness: anyone can choose to send version 1 frames', ok: true, why: 'The product is only as secure as version 1. The receiver decides how strong the protocol is by what it is willing to accept, and the sender chooses the version.' },
       { t: 'Acceptable, because genuine new handsets always use version 2', why: 'What genuine handsets send is irrelevant to what a third party can send.' },
       { t: 'Acceptable, provided the version byte is included in the version 2 MAC', why: 'That protects version 2 frames from being relabelled. It does nothing about a frame that is version 1 from the start and has no MAC.' },
       { t: 'A replay weakness, fixed by adding a counter to version 2', why: 'A counter in version 2 does not constrain a sender who chooses the version without one.' },
     ] },
     { q: 'You are writing the regression test for a counter-based receiver. Which sequence gives the strongest evidence?', kind: 'code', choices: [
-      { t: 'Valid frame (accept); same frame (reject); forged frame with a huge counter (reject); next genuine frame (accept); reset the device; first frame again (reject)', ok: true, why: 'It covers replay, state changes caused by unauthenticated input, and persistence across reset, each with an observable expected result.' },
-      { t: 'One hundred valid frames with increasing counters, all accepted', why: 'That shows the receiver works for honest traffic. A receiver with no freshness check at all would also pass.' },
-      { t: 'A frame with a wrong tag (reject)', why: 'That tests authenticity only. A replayed frame carries a correct tag.' },
+      { t: 'Accept a frame; reject it again; reject a forged huge counter; accept the next frame; reset; reject the first', ok: true, why: 'It covers replay, state changes caused by unauthenticated input, and persistence across reset, each with an observable expected result.' },
+      { t: 'One hundred valid frames with increasing counters, sent across two resets, all accepted', why: 'That shows the receiver works for honest traffic. A receiver with no freshness check at all would also pass.' },
+      { t: 'A frame with a wrong tag (reject), then the same frame with the right tag (accept)', why: 'That tests authenticity only. A replayed frame carries a correct tag.' },
       { t: 'The same frame sent twice, with a reset in between, both accepted', why: 'A second acceptance after a reset is the failure the test should detect, not the expected result.' },
     ] },
   ],
 };
-export const TESTED = { COUNTER };
+export const TESTED = { COUNTER, DOOR_FIXED };

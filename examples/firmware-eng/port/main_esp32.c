@@ -1,5 +1,5 @@
 /* main_esp32.c - ESP-IDF entry point for the door-lock application.
- * STATUS: reviewed against the ESP-IDF API, not compiled or run here (see hal_esp32.c). */
+ * STATUS: checked against the ESP-IDF v6.1 headers; not run on a board (see hal_esp32.c). */
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "app.h"

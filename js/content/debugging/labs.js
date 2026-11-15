@@ -30,7 +30,7 @@ const labs = [
       `A debug session has four layers, and each can fail on its own: **USB to the probe**, **probe to the chip**, **OpenOCD's knowledge of the chip**, and **GDB's symbols matching the flash**. The lab brings them up one at a time and has you prove each before relying on it.
 
 Rehearsal comes first because a debugger is a poor place to learn a debugger. In the simulated session nothing can be mis-wired, so every surprise is about GDB itself. On the host, \`gdb\` runs a real program with real memory. Only then do you add hardware.`,
-      { t: 'callout', kind: 'sim', md: `The debug-session tool is a simulation of a Cortex-M0+ target behind a GDB-style console, running small programs bundled with this app. Its output is not a measurement from a board. It accepts the common commands (\`break\`, \`continue\`, \`next\`, \`step\`, \`finish\`, \`info registers\`, \`x/\`, \`bt\`, \`watch\`, \`print\`), not all of GDB.` },
+      { t: 'callout', kind: 'sim', md: `The debug-session tool is a simulation of a Cortex-M target behind a GDB-style console, running small programs bundled with this app (compiled for the ARMv6-M instruction subset; the simulated core also has the ARMv7-M fault status registers). Its output is not a measurement from a board. It accepts the common commands (\`break\`, \`continue\`, \`next\`, \`step\`, \`finish\`, \`info registers\`, \`x/\`, \`bt\`, \`watch\`, \`print\`), not all of GDB.` },
     ],
     diagram: [
       { t: 'ascii', text: `  Terminal 1                 Terminal 2
@@ -48,14 +48,14 @@ Rehearsal comes first because a debugger is a poor place to learn a debugger. In
       `| Board | Debug connection | OpenOCD start (see the OpenOCD lesson for details) |
 |---|---|---|
 | ESP32-S3 / ESP32-C3 | USB cable to the chip's own USB pins | \`idf.py openocd\` |
-| Original ESP32 | External JTAG probe on GPIO12–15 | \`idf.py openocd\` with the probe's board configuration |
+| Original ESP32 | External JTAG probe on GPIO12–15 | \`idf.py openocd --openocd-commands "-f <your board or interface+target files>"\` |
 | MAX78000FTHR | On-board MAX32625PICO (DAPLink) | MSDK OpenOCD with \`interface/cmsis-dap.cfg\` and \`target/max78000.cfg\` |
 | MSPM0L2228 board with XDS110 | On-board or external XDS110 | Upstream OpenOCD with \`board/ti/mspm0-launchpad.cfg\` |`,
     ],
     steps: [
-      { title: 'Rehearse the tour', md: `Open the simulated session. Before typing anything, write down what you expect \`info registers\` to show for \`pc\` and \`sp\` just after reset on a Cortex-M part whose flash starts at \`0x0800_0000\`. Then work through: \`break main\`, \`continue\`, \`next\` three times, \`step\` into a call, \`bt\`, \`finish\`, \`info locals\`, \`x/8xw $sp\`, \`x/2xw 0x08000000\`.\n\nYou should be able to say, for the last command, which word is the initial stack pointer and which is the reset vector, and why the second is odd.`,
+      { title: 'Rehearse the tour', md: `Open the simulated session. Its flash starts erased at \`0x0800_0000\`. Before typing anything, write down what you expect \`pc\` and \`msp\` to be after \`monitor reset halt\` on an erased chip, and what they will be once a program is loaded and the chip is reset again. Then follow the tool's ten steps (connect, reset, load, reset again, \`break checksum\`, \`continue\`, \`bt\`, \`info args\`, \`x/6xb data\`, \`finish\`) and answer its three questions.\n\nThen explore on your own: \`break main\`, restart with \`monitor reset halt\` and \`continue\`, \`next\` twice, \`step\` into the call, \`info locals\`, \`x/8xw $sp\`, \`x/2xw 0x08000000\`.\n\nYou should be able to say, for the last command, which word is the initial stack pointer and which is the reset vector, and why the second is odd.`,
         blocks: [ { t: 'widget', name: 'debug-session', props: { scenario: 'tour' } } ] },
-      { title: 'Rehearse a hang and a fault', md: `Run the \`stuck-loop\` scenario: let it run, interrupt it, and find what the loop is waiting for. Then run \`hardfault\`: when the target lands in its fault handler, dump eight words from the stack and pick out the stacked PC and LR. Find the source line for the stacked PC.\n\nThe simulated core is a Cortex-M0+, so there is no CFSR to read. That is deliberate: it is the situation on the MSPM0L2228.`,
+      { title: 'Rehearse a hang and a fault', md: `Run the \`stuck-loop\` scenario: let it run, interrupt it, and find what the loop is waiting for. Then run \`hardfault\`: when the target lands in its fault handler, dump eight words from the stack and pick out the stacked PC and LR. The stacked PC will not be a code address, so find the source line from the stacked LR (step 7 of the procedure in the post-mortem lesson), then read CFSR.\n\nThe simulated core provides the ARMv7-M fault status registers so that you can practise reading them. On a real Cortex-M0+ such as the MSPM0L2228 they do not exist: do the first four questions again in your head without CFSR and notice that the frame alone was enough to find the line.`,
         blocks: [ { t: 'widget', name: 'debug-session', props: { scenario: 'stuck-loop' } }, { t: 'widget', name: 'debug-session', props: { scenario: 'hardfault' } } ] },
       { title: 'Rehearse on the host with real GDB', md: `Build and debug \`examples/debugging/gdb_practice.c\`. Find the bug with a watchpoint, as in the GDB lesson, but this time predict the new value of \`state.armed\` before you \`continue\`.`,
         lang: 'sh', status: 'host-tested', code: String.raw`cd examples/debugging
@@ -72,7 +72,8 @@ gdb -q ./gdb_practice
       { title: 'Build a known firmware with debug information', md: `Build the SDK's simplest example for your board (a "hello world" or blink) **with debug symbols and low optimisation**. In ESP-IDF, set the optimisation level to "Debug (-Og)" in \`menuconfig\`. In an MSDK or MSPM0 makefile project, check that \`-g\` is present and optimisation is \`-Og\` or \`-O0\`.\n\nFlash it by the vendor's normal method and confirm on the serial console that it runs. Do not involve the debugger until the plain build-flash-run loop works: otherwise you will not know which layer is at fault.\n\nNote the path of the ELF. You should see it in the build output: \`build/<project>.elf\` for ESP-IDF, \`build/<project>.elf\` or \`.out\` for the others.`,
         blocks: [ { t: 'widget', name: 'uart-terminal', props: { baud: 115200 }, caption: 'A reminder of what a correct and an incorrect baud setting look like before you open the real console.' } ] },
       { title: 'Start OpenOCD and read its log', md: `Start OpenOCD for your board in its own terminal and leave it running. Read the log from the top. You should see, in order: the probe being found, a clock speed, the debug port or TAP being detected with an ID, the core being examined (with its breakpoint and watchpoint counts on Arm targets), and "Listening on port 3333 for gdb connections".\n\nRecord the ID value and the number of hardware breakpoints. If the log stops with an error, classify it using the table in the OpenOCD lesson **before** changing anything: probe, wiring, or build.`,
-        lang: 'sh', status: 'reviewed', code: String.raw`# ESP32-S3 / C3 (inside an ESP-IDF environment, in the project directory)
+        lang: 'sh', status: 'reviewed', code: String.raw`# ESP32-S3 / C3 (inside an ESP-IDF environment, in the project directory).
+# With no arguments idf.py uses board/esp32s3-builtin.cfg or board/esp32c3-builtin.cfg and prints its choice.
 idf.py openocd
 
 # MAX78000FTHR (MSDK environment)
@@ -81,7 +82,7 @@ openocd -s "$MAXIM_PATH/Tools/OpenOCD/scripts" -f interface/cmsis-dap.cfg -f tar
 # MSPM0L2228 with XDS110 (upstream OpenOCD with the mspm0 driver)
 openocd -f board/ti/mspm0-launchpad.cfg` },
       { title: 'Connect GDB and verify the image', md: `In a second terminal start the matching GDB with your ELF and connect. Reset and halt. Then check that the ELF and the flash agree.\n\nYou should see each loadable section reported as "matched" by \`compare-sections\`. If any reports "MIS-MATCHED", stop: reflash from this exact ELF.`,
-        lang: 'text', status: 'reviewed', code: String.raw`$ arm-none-eabi-gdb build/hello.elf          # or: idf.py gdb   (ESP-IDF does the next three lines for you)
+        lang: 'text', status: 'reviewed', code: String.raw`$ arm-none-eabi-gdb build/hello.elf          # or: idf.py gdb   (its generated init file connects, resets, halts and runs to app_main)
 (gdb) target extended-remote :3333
 (gdb) monitor reset halt
 (gdb) compare-sections

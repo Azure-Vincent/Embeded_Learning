@@ -105,7 +105,7 @@ Keep the sketch. The logic-analyser capture in step 5 should have the same shape
         ] },
       { title: 'Create the project skeleton: pins, queue, mutex',
         md: `Create a new ESP-IDF project and replace \`main.c\` with the following. It sets up the debug pins, the ADC, the queue and the mutex. Read the comments; every later step adds to this file.`,
-        lang: 'c', status: 'reviewed',
+        lang: 'c', status: 'idf-checked',
         code: C`#include <stdint.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
@@ -169,7 +169,7 @@ static void burn_ms(uint32_t ms)
 }` },
       { title: 'Write the sampling, processing and log tasks',
         md: `Add the three tasks. Note where each debug pin is driven, that the sampler never blocks on the queue, and that the log task copies the stats under the mutex and prints **after** releasing it.`,
-        lang: 'c', status: 'reviewed',
+        lang: 'c', status: 'idf-checked',
         code: C`static void sample_task(void *arg)                 /* priority 6, period 10 ms */
 {
     TickType_t last = xTaskGetTickCount();
@@ -215,6 +215,8 @@ static void log_task(void *arg)                    /* priority 2, period 1 s */
         if (xSemaphoreTake(s_stats_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             snap = s_stats;                        /* copy out: hold time is a struct copy */
             xSemaphoreGive(s_stats_mutex);
+        } else {
+            ESP_LOGE(TAG, "log: stats mutex timeout");     /* somebody has held it for 50 ms */
         }
         ESP_LOGI(TAG, "n=%u avg=%d min=%d max=%d dropped=%u",
                  (unsigned)snap.count, (int)snap.avg, snap.min, snap.max, (unsigned)s_dropped);
@@ -228,7 +230,7 @@ static void log_task(void *arg)                    /* priority 2, period 1 s */
 }` },
       { title: 'Add the button ISR with deferred handling, and app_main',
         md: `The ISR does one thing: notify the button task. The task debounces by waiting 30 ms and re-reading the pin, then resets the stats under the mutex. Kernel objects and tasks are created **before** the interrupt is enabled.`,
-        lang: 'c', status: 'reviewed',
+        lang: 'c', status: 'idf-checked',
         code: C`static void IRAM_ATTR button_isr(void *arg)
 {
     BaseType_t woken = pdFALSE;
@@ -298,7 +300,7 @@ Compare the capture with your sketch from step 2. Explain any difference before 
 3. Create the lock as a **binary semaphore** instead of a mutex, so there is no priority inheritance, and make the process task hold it for longer by adding \`burn_ms(2)\` inside the locked region.
 
 Before you run it, predict: what is the sampler's worst-case period now? Which channel will show the cause?`,
-        lang: 'c', status: 'reviewed',
+        lang: 'c', status: 'idf-checked',
         code: C`/* 1. New task */
 static void load_task(void *arg)                   /* priority 5: between sample and process */
 {
@@ -344,7 +346,7 @@ static void load_task(void *arg)                   /* priority 5: between sample
 
 Use \`portMAX_DELAY\` on all four takes. To widen the window so that you can hit it by hand, put \`vTaskDelay(pdMS_TO_TICKS(20))\` between the two takes in the button task.
 
-Run it and press the button a few times. You should see the stats line stop changing (\`n\` frozen), then \`dropped\` climbing as the queue fills, while the log task itself keeps printing and the task watchdog stays quiet — nothing is hogging the CPU. **Diagnose it as if you did not know the cause:** which tasks stopped? Are they consuming CPU (look at CH1 and the idle behaviour)? What is each waiting for? If you enable \`CONFIG_FREERTOS_USE_TRACE_FACILITY\` and the stats formatting functions in menuconfig, \`vTaskList()\` output will show both tasks in the Blocked state.
+Run it and press the button once or twice. You should see \`log: stats mutex timeout\` once a second and the stats line fall to \`n=0\` (the log task could not take its snapshot, so it prints the zeroed one), then \`dropped\` climbing — the 16-item queue fills in 160 ms once nobody empties it. The log task itself keeps printing and the task watchdog stays quiet: nothing is hogging the CPU. **Diagnose it as if you did not know the cause:** which tasks stopped? Are they consuming CPU (look at CH1 and the idle behaviour)? What is each waiting for? If you enable \`CONFIG_FREERTOS_USE_TRACE_FACILITY\` and the stats formatting functions in menuconfig, \`vTaskList()\` output will show both tasks in the Blocked state.
 
 Then fix it twice:
 
@@ -352,7 +354,7 @@ Then fix it twice:
 2. **No nesting.** Restructure so neither task holds both: the process task copies the gain under the config mutex, releases it, and only then takes the stats mutex; the button task resets each under its own lock in turn.
 
 Finally replace every \`portMAX_DELAY\` on a mutex with a finite timeout and an error log, so that a future deadlock announces itself.`,
-        lang: 'c', status: 'reviewed',
+        lang: 'c', status: 'idf-checked',
         code: C`/* DELIBERATELY WRONG: opposite lock orders. Do not keep this. */
 
 /* process_task: stats -> cfg */
@@ -408,7 +410,7 @@ Then try the opposite: set the log task's stack to 1024 bytes. You should see ei
 | Same without \`portYIELD_FROM_ISR\` | variable, up to about one tick (10 ms) |
 | Inversion (binary semaphore + load task) | sampler gaps of tens of ms, coinciding with CH2 high while CH1 is high |
 | After restoring the mutex | worst sampler period ≈ 10 ms + hold time |
-| Deadlock build | stats count frozen, \`dropped\` rising, log task still printing, no task-watchdog report |
+| Deadlock build | \`log: stats mutex timeout\` every second, \`n=0\`, \`dropped\` rising, log task still printing, no task-watchdog report |
 | After the lock-order fix | no freeze after 50 button presses |
 | Stack free after trimming | roughly 30 % of each stack, stable over minutes |
 
@@ -429,7 +431,7 @@ For each row write the measured number next to the expectation. Where they diffe
 
 1. **Supervise it.** Subscribe the sample and process tasks to the ESP-IDF task watchdog and make each check in only when it has completed a cycle. Re-introduce the deadlock and show that the watchdog now reports the stuck task by name. Decide, and justify, whether the system should reset.
 2. **Measure before you claim.** Enable Wi-Fi (station mode, connected and idle) and repeat the baseline jitter measurement. Report the change and identify, using extra debug pins or the task list, what is preempting the sampler.
-3. **Move the sampling into a hardware timer.** Use an \`esp_timer\` or general-purpose timer callback at 1 kHz that reads the ADC and passes samples to the process task through a stream buffer. Size the buffer from rates and the worst stall you measured, state your overflow policy, and show the measured jitter.
+3. **Take the sampling off the tick.** Use a periodic \`esp_timer\` at 1 kHz whose callback reads the ADC and passes samples to the process task through a stream buffer. (With the default dispatch method an \`esp_timer\` callback runs in a high-priority task, where \`adc_oneshot_read\` is allowed. The ADC header says it must not be called from an ISR, so a GPTimer alarm callback could only notify a task that does the read.) Size the buffer from rates and the worst stall you measured, state your overflow policy, and show the measured jitter.
 4. **Write the timing argument.** With your measured C and T values, including the button task and the load task, do a response-time analysis for the sampler including the blocking term from the mutex. Compare the computed worst case with the worst case you captured.`,
     ],
     quiz: [
@@ -523,7 +525,7 @@ const glossary = [
   { term: 'Starvation', def: 'A ready task getting no (or too little) CPU because higher-priority tasks are always ready.' },
   { term: 'Priority inversion', def: 'A high-priority task waiting for a lower-priority one. Unbounded when a medium-priority task preempts the lock holder.' },
   { term: 'Priority inheritance', def: 'Temporarily raising a mutex holder\'s priority to that of the highest task waiting for the mutex, bounding inversion to the hold time.' },
-  { term: 'Priority ceiling', def: 'A protocol that raises a task to a lock\'s preset ceiling priority as soon as it takes the lock, bounding blocking and preventing some deadlocks.' },
+  { term: 'Priority ceiling', def: 'A locking protocol in which each lock has a ceiling: the highest priority of any task that uses it. In the immediate form a task runs at the ceiling from the moment it takes the lock. On one core it limits blocking to one critical section per activation and prevents deadlock among the tasks using such locks. Not provided by FreeRTOS.' },
   { term: 'Hard real-time', def: 'A timing requirement where missing a deadline is a system failure. Firm: a late result is worthless. Soft: lateness degrades value.' },
   { term: 'Latency', def: 'The delay between an event and the response to it.' },
   { term: 'Jitter', def: 'Variation in a latency or period from one occurrence to the next.' },

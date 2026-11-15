@@ -2,7 +2,7 @@
  *
  * It is written in the application's vocabulary ("the latch", "milliseconds since boot"),
  * not the chip's ("GPIO port 2 bit 0", "TIMER0 count register").
- * Each target provides one .c file implementing these four functions; the linker picks
+ * Each target provides one .c file implementing these five functions; the linker picks
  * the implementation (link-time substitution). See port/. */
 #ifndef HAL_H
 #define HAL_H

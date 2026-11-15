@@ -9,7 +9,7 @@
 #   make analyze     gcc -fanalyzer over the sources
 #   make clean
 
-CC      ?= gcc
+CC      = gcc
 BUILD   := build
 WARN    := -Wall -Wextra -Werror -Wshadow -Wconversion
 SAN     := -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer

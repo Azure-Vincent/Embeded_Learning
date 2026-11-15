@@ -84,9 +84,16 @@ State the mode of each capture and the bytes on both data lines. Then set the de
         code: String.raw`sudo apt install pulseview sigrok-cli
 sigrok-cli --scan            # should list your analyser and its driver
 pulseview &` },
-      { title: 'Part 2.2: firmware that talks on three buses', md: `Flash firmware that, once a second: prints a line on UART1; reads two bytes from your I2C sensor; and sends four bytes on SPI with MOSI looped back to MISO. Use the driver calls from the UART, I2C and SPI lessons. The sketch below shows the loop; the three \`*_init\` functions are the ones from those lessons, with the sensor address and register changed to match **your** sensor's datasheet.`,
-        lang: 'c', status: 'reviewed',
-        code: String.raw`void app_main(void)
+      { title: 'Part 2.2: firmware that talks on three buses', md: `Flash firmware that, once a second: prints a line on UART1; reads two bytes from your I2C sensor; and sends four bytes on SPI with MOSI looped back to MISO. Use the driver calls from the UART, I2C and SPI lessons. The sketch below shows the loop; the three \`*_init\` functions are the ones from those lessons, with the sensor address and register changed to match **your** sensor's datasheet. With the loopback jumper fitted, \`flash_read_id\` returns the echo of its three dummy bytes, so the console line reads \`spi: 00 00 00\`; the echoed command byte 0x9F is in the discarded first position. The proof that the loopback works is on the analyser, where MISO repeats MOSI.`,
+        lang: 'c', status: 'idf-checked',
+        code: String.raw`#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_err.h"
+#include "driver/uart.h"
+/* plus link_init, tmp_init, tmp_read, flash_init, flash_read_id from the three lessons */
+
+void app_main(void)
 {
     link_init();                 /* UART1 on GPIO25/26, 115200 8N1    (UART lesson) */
     tmp_init();                  /* I2C on GPIO21/22, 100 kHz          (I2C lesson)  */
@@ -100,7 +107,7 @@ pulseview &` },
         printf("i2c: %s raw=%d\n", esp_err_to_name(err), (int)t);
 
         uint8_t id[3];
-        flash_read_id(id);                       /* sends 9F 00 00 00; loopback returns the same */
+        flash_read_id(id);                       /* MOSI: 9F 00 00 00; loopback: id = 00 00 00  */
         printf("spi: %02X %02X %02X\n", id[0], id[1], id[2]);
 
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -291,7 +298,7 @@ all protocol tests pass
       { title: 'Optional hardware part: two ESP32 boards', md: `Port the protocol to two boards joined by UART1 (TX→RX, RX→TX, GND), using the UART set-up from the UART lesson. Keep parts 1 to 3 unchanged. Replace the test harness with:
 
 - **Requester task**: build the request, \`uart_write_bytes\`, then loop on \`uart_read_bytes\` with a short timeout, feeding each byte to \`bf_feed\`, until a valid response with the right SEQ arrives or 50 ms have passed. Retry up to 3 times.
-- **Responder task**: \`uart_read_bytes\` with a 5 ms timeout; on timeout call \`bf_reset\`; on \`BF_FRAME\` call \`bf_respond\` and send the result.
+- **Responder task**: \`uart_read_bytes\` with a short timeout; on timeout call \`bf_reset\`; on \`BF_FRAME\` call \`bf_respond\` and send the result. The specification says 5 ms, but the driver's timeout is in RTOS ticks and the default tick is 10 ms (\`CONFIG_FREERTOS_HZ=100\`), so \`pdMS_TO_TICKS(5)\` is **0**: the read would return at once and reset the parser in the middle of every frame. Use one or two ticks (10–20 ms, still far below the 50 ms response timeout) and record the change in your specification, or raise the tick rate.
 - Once a second, print all the counters on the console UART.
 
 You should see the counter increase by one per ADD and all error counters stay at zero. Then pull the TX wire out for a second and push it back: you should see timeouts and retries rise, possibly a failure, and the link carry on afterwards with the counter still equal to the number of successful ADDs plus any that were executed but whose responses were lost. Capture a retry with the logic analyser and identify the repeated SEQ.`,

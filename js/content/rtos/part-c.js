@@ -21,7 +21,7 @@ A [[Mutex]] (mutual exclusion lock) lets one task at a time into a region of cod
 - **Ownership.** The kernel records which task holds it. Only that task should give it back. This is why a mutex cannot be used from an ISR: an ISR is not a task and cannot be an owner.
 - **Priority inheritance.** If a higher-priority task blocks on a mutex, the kernel temporarily raises the holder's priority to match. Explained below.
 - **Created available.** \`xSemaphoreCreateMutex()\` returns a mutex that can be taken at once; a binary semaphore starts empty.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'A mutex-protected bus transaction with a timeout.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'A mutex-protected bus transaction with a timeout. `i2c_read_imu_registers()` and `convert_units()` are your own; the FreeRTOS calls and error codes were checked against the ESP-IDF v6.1 headers.',
         code: C`static SemaphoreHandle_t s_i2c_mutex;       /* s_i2c_mutex = xSemaphoreCreateMutex(); */
 
 esp_err_t imu_read(imu_sample_t *out)
@@ -58,35 +58,64 @@ Take three tasks on one core: H (high), M (medium), L (low). H and L share a loc
 3. M becomes ready. M is higher than L, so it preempts L. M does not need the lock, so nothing stops it.
 4. L cannot run, so it cannot release the lock, so H cannot run. **H is now waiting for M** — a task of lower priority that it has no relationship with.
 
-This is **unbounded [[Priority inversion]]**: H's delay is not limited by any critical section but by how long M (and any other medium-priority task) chooses to run. In the opening problem, the 80 ms is the log compressor.`,
-      { t: 'ascii', caption: 'Unbounded priority inversion with a plain lock. H is ready from t=2 but runs at t=9.',
-        text: `t:   0  1  2  3  4  5  6  7  8  9  10
-H:   .  .  ▒  ▒  ▒  ▒  ▒  ▒  ▒  █  █     ▒ = blocked on the lock
-M:   .  .  .  █  █  █  █  █  .  .  .     M preempts L at t=3
-L:   █  █  █  .  .  .  .  .  █  .  .     L holds the lock from t=1 to t=9
-        ^take ^H tries          ^L gives` },
+This is **unbounded [[Priority inversion]]**: H's delay is not limited by any critical section but by how long M (and any other medium-priority task) chooses to run. In the opening problem, the 80 ms is the log compressor.
+
+The trace below uses the numbers of the simulator that follows it, so you can check every tick. Low (priority 1) starts at tick 0, works 1 tick, then holds the lock for 4 ticks of work. High (priority 3) is released at tick 2, works 1 tick, then needs the lock for 2 ticks. Medium (priority 2) is released at tick 3 and computes for 6 ticks without touching the lock. The lock is a binary semaphore.`,
+      { t: 'ascii', caption: 'Unbounded priority inversion with a lock that has no inheritance. █ = running, ▒ = Blocked on the lock, r = Ready but not chosen, . = not released or finished.',
+        text: `tick:    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+High:    .  .  █  ▒  ▒  ▒  ▒  ▒  ▒  ▒  ▒  ▒  █  █  .
+Medium:  .  .  .  █  █  █  █  █  █  .  .  .  .  .  .
+Low:     █  █  r  r  r  r  r  r  r  █  █  █  r  r  █
+lock:    -  L  L  L  L  L  L  L  L  L  L  L  H  H  -
+
+tick 0   Low runs its first tick, then takes the lock (free).
+tick 1   Low is inside its critical section: 1 of 4 ticks done.
+tick 2   High is released and preempts Low (3 > 1). Low still holds the lock.
+tick 3   High asks for the lock and Blocks. Medium is released at the same instant.
+         Ready tasks: Medium (2) and Low (1). Medium wins.
+ticks 3-8  Medium computes. Low cannot run, so it cannot give the lock, so High cannot run.
+ticks 9-11 Medium is done. Low finishes the remaining 3 ticks of its critical section and gives.
+tick 12  High gets the lock 9 ticks after asking: 3 ticks of Low's critical section
+         plus all 6 ticks of Medium. It finishes at tick 14, response time 12.` },
       { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'priority-inversion' }, title: 'Watch the inversion',
-        caption: 'Lengthen the medium task\'s run time. The high task\'s response time grows with it, although they share nothing.' },
+        caption: 'The starting values are the ones in the trace above. Lengthen Medium\'s run time: High\'s response time grows tick for tick with it, although they share nothing. Then solve the task without touching a priority.' },
       { t: 'predict',
-        q: 'Same three tasks, but the lock is now a FreeRTOS mutex with priority inheritance. L holds it; H blocks on it at t = 2; M becomes ready at t = 3. Which task is running at t = 3?',
+        q: 'Same three tasks and the same times, but the lock is now a FreeRTOS mutex with priority inheritance. Low holds it; at tick 3 High blocks on it and Medium becomes ready. Which task runs in tick 3?',
         choices: [
           { t: 'L, running at H\'s priority, so M cannot preempt it.', ok: true, why: 'When H blocked, the kernel raised L to H\'s priority. M is now lower than L and stays Ready until L gives the mutex and drops back.' },
           { t: 'M, because it is higher than L.', why: 'That compares M with L\'s base priority. While L holds a mutex that H is waiting for, its effective priority is H\'s.' },
           { t: 'H, because the kernel hands it the mutex at once.', why: 'The kernel cannot take the resource away from L mid-transaction; it can only make L finish as quickly as possible.' },
         ],
         reveal: 'With inheritance, H waits for at most L\'s remaining critical section. M runs only after H has finished. The inversion is bounded by the hold time again.' },
+      { t: 'ascii', caption: 'The same task set with a mutex. The bottom row is Low\'s effective priority.',
+        text: `tick:    0  1  2  3  4  5  6  7  8  9 10 11 12 13 14
+High:    .  .  █  ▒  ▒  ▒  █  █  .  .  .  .  .  .  .
+Medium:  .  .  .  r  r  r  r  r  █  █  █  █  █  █  .
+Low:     █  █  r  █  █  █  r  r  r  r  r  r  r  r  █
+Low pri: 1  1  1  3  3  3  1  1  1  1  1  1  1  1  1
+
+tick 3   High Blocks on the mutex. The kernel raises Low, the holder, from 1 to 3.
+         Ready tasks: Low (now 3) and Medium (2). Low wins.
+ticks 3-5  Low finishes the remaining 3 ticks of its critical section at priority 3.
+tick 6   Low gives the mutex and drops back to 1. High takes it and runs.
+tick 8   High is done: response time 6 instead of 12. Only now does Medium start.
+         High waited 3 ticks: what was left of Low's critical section, and nothing else.` },
       { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'priority-inheritance' }, title: 'The same scenario with inheritance',
-        caption: 'Compare the high task\'s response time with the previous run, and note when the low task\'s priority is raised and restored.' },
+        caption: 'Watch Low\'s priority column change at tick 3 and tick 6. The task set here asks for more: High must finish by tick 7, and with a 4-tick critical section it finishes at tick 8. Inheritance cannot help further — find what can.' },
 
       `## Limits of priority inheritance
 
 - **It bounds the wait; it does not remove it.** H still waits for the rest of L's critical section. Worst-case blocking for a task is (roughly) the longest critical section of any lower-priority task on each mutex it uses.
 - **Only mutexes inherit.** Binary semaphores, queues and critical sections do not.
-- **FreeRTOS's implementation is simplified.** When a task holds several mutexes, its priority is restored only when it has released all of them, and the kernel does not promise correct behaviour for complex chains. The kernel documentation says the mechanism assumes a task holds only one mutex at a time.
+- **FreeRTOS's implementation is simplified.** When a task holds several mutexes, its inherited priority is dropped only when it has released all of them, so it can run boosted for longer than it should. The kernel source calls this a deliberate simplification; the mechanism is exact only for a task that holds one mutex at a time.
 - **It does nothing if the holder is blocked** on something else (a delay, another mutex). Raising the priority of a sleeping task does not wake it. Never block while holding a mutex.
 - **On two cores** a medium task may simply run on the other core, so inversion may not appear in the same form — but it still exists whenever all the contenders are tied to one core or the system is busy.
 
-An alternative protocol, **[[Priority ceiling]]**, gives each mutex a ceiling equal to the highest priority of any task that uses it, and raises a task to the ceiling as soon as it takes the mutex. It bounds blocking to one critical section and prevents some deadlocks. FreeRTOS does not provide it directly; you can approximate it by making one high-priority task the only user of the resource — which is the design recommended in the last lesson of this section.`,
+An alternative family of protocols, **[[Priority ceiling]]**, gives each mutex a *ceiling*: the highest priority of any task that ever uses it. In the simple variant (immediate ceiling, also called highest-locker) a task is raised to the ceiling the moment it **takes** the mutex, not when someone later blocks on it. Compare the two on the trace above: with inheritance, High started, ran into the lock and waited; with a ceiling of 3, Low would have run its whole critical section at priority 3 from tick 1, and High would not have started until the lock was free.
+
+On one core, and provided no task blocks while holding a lock, the ceiling protocol guarantees more than inheritance does: a task can be blocked **at most once** per activation, for one critical section of a lower-priority task, even if it uses several locks; and tasks that use only ceiling locks cannot deadlock with each other. Inheritance gives neither guarantee: a task that takes two mutexes can be blocked once for each, and deadlock is still possible. The price of a ceiling is that it delays tasks between the holder's priority and the ceiling even when nobody wants the lock, and that you must know every user of every lock in advance.
+
+FreeRTOS provides inheritance only. The harder case at the end of this lesson looks at a hand-made ceiling; the last lesson of this section removes the lock altogether by giving the resource to one owner task.`,
       { t: 'callout', kind: 'decision', title: 'Three ways out of the I2C problem',
         md: `1. **Mutex with inheritance and short hold time.** Simple; H's worst-case wait is one full transaction by L.
 2. **One "bus owner" task.** Only that task touches I2C; others send it requests through a queue. No lock, no inversion; latency becomes queueing delay you can prioritise.
@@ -96,9 +125,9 @@ Option 1 is right when transactions are short. Option 2 scales better and makes 
 
       `## Mars Pathfinder, briefly
 
-In July 1997, shortly after landing, the Mars Pathfinder lander began resetting itself, losing or delaying data each time. The account given by the JPL software lead, Glenn Reeves, is the standard reference. The lander ran VxWorks. A high-priority bus-management task and a low-priority meteorological data task both used a shared resource (the "information bus") protected by a mutex that had been created **without** priority inheritance. Occasionally the low task held the mutex when the bus task needed it, and a medium-priority communications task then ran for a long time, preempting the low one. A watchdog-style check noticed that the bus task had not completed in its cycle and reset the system.
+In July 1997, shortly after landing, the Mars Pathfinder lander began resetting itself, losing or delaying data each time. The account written afterwards by Glenn Reeves, who led the flight software team at JPL, is the standard reference (it circulates under the title "What really happened on Mars?"), and what follows keeps to it. The lander ran VxWorks. A high-priority bus-management task and a low-priority meteorological data task both used a shared resource (the "information bus") protected by a mutex that had been created **without** priority inheritance. Occasionally the low task held the mutex when the bus task needed it, and a medium-priority communications task then ran for a long time, preempting the low one. A scheduling check that ran every cycle noticed that the bus task had not completed, treated that as a serious fault and reset the system.
 
-The engineers reproduced the fault on an identical system on Earth using trace recording, and fixed the spacecraft by uploading a small change that turned priority inheritance **on** for that mutex. The lessons usually drawn: inversion is a real and rare-timing bug; the watchdog did its job by turning a hang into a recoverable reset; and leaving tracing facilities in the flight software made remote diagnosis possible.`,
+The engineers reproduced the fault on a replica of the spacecraft computer on Earth, with the operating system's event tracing switched on, and fixed the lander by uploading a small change that turned priority inheritance **on** for that mutex. The lessons usually drawn: inversion is a real and rare-timing bug; the reset logic did its job by turning a stalled task into a recoverable restart; and leaving tracing and patching facilities in the flight software made remote diagnosis and repair possible. Details beyond these — exact task names, how often it happened — vary between retellings; go to Reeves's account if you need them.`,
 
       { t: 'exercise',
         prompt: 'Worst-case blocking. H (priority 3) needs 2 ms of CPU per activation and takes mutex B once. L (priority 1) holds mutex B for at most 4 ms. M (priority 2), which does not use B, runs for up to 30 ms at a time. No task is higher than H. With priority inheritance, what is H\'s worst-case response time in ms (from becoming ready to finishing)?',
@@ -235,8 +264,25 @@ Break any one and deadlock is impossible. In firmware, 1 and 3 are usually inher
           { t: 'It cannot deadlock, because the higher-priority task always wins.', why: 'Priority decides who runs, not who holds a lock. A high-priority task still blocks on a mutex held by a lower one.' },
         ],
         reveal: 'The window is "B holds Y but has not yet taken X". If A becomes ready inside that window, the cycle closes. One in twenty is plausible for two button presses; one in ten million is plausible for other code — and equally fatal.' },
+      { t: 'ascii', caption: 'The simulator\'s starting schedule, tick by tick. A (priority 2) takes M1 then M2; B (priority 1) takes M2 then M1. Each works 2 ticks between its two takes. B starts at tick 0, A is released at tick 1.',
+        text: `tick:   0  1  2  3  4  5  6 ...
+runs:   B  A  A  B  -  -  -        - = only the idle task runs
+M1:     -  A  A  A  A  A  A        (holder)
+M2:     B  B  B  B  B  B  B
+
+tick 0   B takes M2 (free) and does the first of its 2 ticks of work.
+tick 1   A is released and preempts B (2 > 1). A takes M1 (free) and works.
+tick 2   A works. B is Ready, holding M2, with 1 tick of work left before its second take.
+tick 3   A asks for M2: held by B, so A Blocks. (Inheritance raises B to priority 2. It changes nothing.)
+         B runs its last tick of work.
+tick 4   B asks for M1: held by A, which is Blocked waiting for B. The cycle is closed.
+         A waits for M2 -> held by B -> waits for M1 -> held by A. Nothing can ever run to break it.
+
+The window: B holds M2 from tick 0 and takes M1 at the end of its 2 ticks of work.
+A deadlocks only if it gets M1 inside that window. Release A at tick 0 (A runs first and takes
+both) or at tick 2 or later (B already holds both, A just waits) and both tasks finish.` },
       { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'deadlock' }, title: 'Step into the deadlock',
-        caption: 'Adjust the release times until the two tasks each hold one lock. Then make both tasks take the locks in the same order and try to deadlock them again.' },
+        caption: 'It deadlocks at tick 4 with the starting values. Move A\'s release time and see it "fixed" by timing alone, then put it back. Then make both tasks take the locks in the same order and try every release time again.' },
 
       `## Prevention by design
 
@@ -245,7 +291,7 @@ Break any one and deadlock is impossible. In firmware, 1 and 3 are usually inher
 **Do not nest (breaks hold and wait).** If no task ever holds two locks, no cycle can exist. Copy what you need out from under the first lock, release it, then take the second. Or put both resources behind one lock. Or give each resource an owner task and send it messages — a task blocked on its own queue holds nothing.
 
 **Timeouts with back-off (recovery, not prevention).** Take the second lock with a finite timeout. On failure, **release the first lock**, wait a short, preferably randomised, time and retry. Releasing is the essential step: a timeout that leaves the first lock held changes a deadlock into repeated failure. Without randomisation two tasks can retry in step forever — a *livelock*, where both are busy and neither progresses.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'The save/restore pair made safe by a global lock order: settings before flash, always.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'The save/restore pair made safe by a global lock order: settings before flash, always. The semaphore calls were checked against the ESP-IDF v6.1 headers; the flash and report functions are your own.',
         code: C`/* LOCK ORDER (lowest rank first): s_settings_mutex, then s_flash_mutex. */
 static SemaphoreHandle_t s_settings_mutex;
 static SemaphoreHandle_t s_flash_mutex;
@@ -323,7 +369,7 @@ void sensor_task_poll(void)              /* sensor task, priority 6 */
         prompt: 'A system has 4 mutexes, ranked 1–4. A code review finds these acquisition sequences in different tasks: (a) 1→3, (b) 2→4, (c) 3→4, (d) 4→2, (e) 1→2→3. Which sequence violates the ordering rule (answer with its letter), and which other sequence could it deadlock with?',
         hints: ['The rule: while holding rank r, only take ranks greater than r.', 'For the violator, find a sequence that takes the same two locks in the opposite order.'],
         answer: { type: 'text', accept: ['^\\s*\\(?d\\)?', '\\bd\\b'], nudge: 'Look for a sequence that goes from a higher rank to a lower one.' },
-        solution: '**(d)** takes 2 while holding 4. It can deadlock with **(b)**, which takes 4 while holding 2: (b) holds 2 and wants 4, (d) holds 4 and wants 2. All the others only go upward and cannot form a cycle among themselves.' },
+        solution: '**(d)** takes 2 while holding 4. It can deadlock with **(b)**, which takes 4 while holding 2: (b) holds 2 and wants 4, (d) holds 4 and wants 2. All the others only go upward and cannot form a cycle among themselves.\n\nThere is a second, less obvious cycle through (d), with three tasks: (e) holds 1 and 2 and wants 3; (c) holds 3 and wants 4; (d) holds 4 and wants 2. No two of them take the same pair in opposite orders, which is why comparing sequences pair by pair is not a sufficient review. Checking each sequence against the rank rule is: one violation is enough to make a cycle possible, and none makes it impossible.' },
 
       `## A harder case`,
       { t: 'exercise',
@@ -680,7 +726,7 @@ A hardware [[Watchdog]] resets the MCU if it is not fed in time. Feeding it from
 ESP-IDF provides this as the **task watchdog (TWDT)**: a task subscribes with \`esp_task_wdt_add(NULL)\` and must call \`esp_task_wdt_reset()\` within the configured timeout; the idle tasks are subscribed by default.`,
       { t: 'widget', name: 'timer-lab', props: { mode: 'watchdog' }, title: 'Feed, miss, reset',
         caption: 'Choose a timeout and feed interval. Then imagine the feed coming from a task that has deadlocked: the timeline shows what the watchdog does about it.' },
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'A supervised task on ESP-IDF using the task watchdog.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'A supervised task on ESP-IDF using the task watchdog. `esp_task_wdt_add()` and `esp_task_wdt_reset()` checked against `esp_task_wdt.h` in ESP-IDF v6.1; `s_samples` and `process()` come from the earlier producer/consumer example.',
         code: C`#include "esp_task_wdt.h"
 
 static void process_task(void *arg)

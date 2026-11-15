@@ -117,14 +117,14 @@ Only after power, reset and clock check out is it worth suspecting the firmware.
         { t: 'The meter is faulty, because a browning-out rail must read low', why: 'A brown-out needs the rail to be low only briefly. A correct meter will still show the long-term average, which stays near nominal.' },
       ] },
       { q: 'Why must the circuit be unpowered for a resistance or continuity measurement?', kind: 'concept', choices: [
-        { t: 'The meter works by injecting its own test current and measuring the result, and the circuit\'s own voltages corrupt that', ok: true, why: 'Resistance is computed from the meter\'s known current and the voltage it sees. Any other source in the loop makes the calculation meaningless and may drive current into parts.' },
-        { t: 'Resistors change value when current flows through them', why: 'Ordinary resistors are essentially constant over their working range. The issue is what the meter assumes about where the measured voltage came from.' },
-        { t: 'The beep would be too quiet to hear over the circuit', why: 'The buzzer has nothing to do with the circuit under test. The limitation is in how the measurement itself is made.' },
+        { t: 'The meter injects its own test current, and other sources in the circuit corrupt the result', ok: true, why: 'Resistance is computed from the meter\'s known current and the voltage it sees. Any other source in the loop makes the calculation meaningless and may drive current into parts.' },
+        { t: 'Resistors change value while current flows, so only an unpowered reading matches the marking', why: 'Ordinary resistors are essentially constant over their working range. The issue is what the meter assumes about where the measured voltage came from.' },
+        { t: 'A powered circuit makes the continuity beep too quiet to hear, so a short is easy to miss', why: 'The buzzer has nothing to do with the circuit under test. The limitation is in how the measurement itself is made.' },
       ] },
       { q: 'You measure 4.1 kΩ across a 10 kΩ pull-up in circuit, power off. What is the most defensible conclusion?', kind: 'circuit', choices: [
-        { t: 'Nothing is proven wrong: other paths between those nets are in parallel with the resistor', ok: true, why: 'In-circuit readings below the marked value are expected. Only a reading well above it, or near zero, points at a fault.' },
-        { t: 'The resistor is damaged and has drifted to 4.1 kΩ', why: 'Resistors that fail usually go open or far out of range, and a meter cannot isolate one part while other paths join the same two nets.' },
-        { t: 'A 4.7 kΩ resistor was fitted by mistake', why: 'That is possible, but the reading cannot show it, because a correct 10 kΩ part with parallel paths gives the same kind of number. Read the marking or lift a leg.' },
+        { t: 'Nothing is proven wrong: other paths are in parallel with it', ok: true, why: 'In-circuit readings below the marked value are expected. Only a reading well above it, or near zero, points at a fault.' },
+        { t: 'The resistor is damaged and its value has drifted down to 4.1 kΩ', why: 'Resistors that fail usually go open or far out of range, and a meter cannot isolate one part while other paths join the same two nets.' },
+        { t: 'A 4.7 kΩ resistor was fitted by mistake and reads slightly low', why: 'That is possible, but the reading cannot show it, because a correct 10 kΩ part with parallel paths gives the same kind of number. Read the marking or lift a leg.' },
       ] },
       { q: 'In diode mode, red probe on GND and black probe on an unpowered GPIO pin reads 0.58 V. The same test on the next pin reads 0.00 V. What does that suggest?', kind: 'circuit', choices: [
         { t: 'The second pin is shorted to ground', ok: true, why: 'A healthy pin shows a diode drop from its protection structure. Zero volts at the test current means a direct low-resistance path to ground.' },
@@ -132,14 +132,14 @@ Only after power, reset and clock check out is it worth suspecting the firmware.
         { t: 'The second pin is an output and the first an input', why: 'With the chip unpowered its direction registers do not exist in any meaningful sense. The test sees only the passive structures on the pad.' },
       ] },
       { q: 'A dead board has correct rails. Which check comes next, and why?', kind: 'concept', choices: [
-        { t: 'The reset pin level, because a processor held in reset executes nothing regardless of its firmware', ok: true, why: 'Power, reset, clock, then code: each is a precondition for the next, and reset is a five-second DC measurement.' },
+        { t: 'The reset pin: a processor held in reset executes nothing', ok: true, why: 'Power, reset, clock, then code: each is a precondition for the next, and reset is a five-second DC measurement.' },
         { t: 'Reflash the firmware, because that is the most common cause', why: 'If the chip is in reset or has no clock, flashing may fail or change nothing, and you will have added an unknown without removing one.' },
-        { t: 'Replace the microcontroller', why: 'This is the most expensive action and the least informative. Nothing measured so far points at the chip rather than at its reset or clock circuit.' },
+        { t: 'Replace the microcontroller, since correct rails are all a working chip needs', why: 'This is the most expensive action and the least informative. Nothing measured so far points at the chip rather than at its reset or clock circuit.' },
       ] },
       { q: 'Why does a current measurement on the lowest range that fits sometimes make a marginal board fail?', kind: 'circuit', choices: [
-        { t: 'The low range uses a larger shunt, so more of the supply voltage is dropped across the meter', ok: true, why: 'Burden voltage is current times shunt resistance. Sensitive ranges use bigger shunts and can take a tenth of a volt or more from the rail.' },
-        { t: 'The meter injects noise into the rail on low ranges', why: 'A shunt is a passive resistor. The effect is a steady voltage drop that scales with the current.' },
-        { t: 'Low ranges measure more slowly, so the board times out', why: 'The reading rate does not affect the circuit. What affects it is the resistance the meter adds in series.' },
+        { t: 'The low range uses a larger shunt, which drops more of the supply', ok: true, why: 'Burden voltage is current times shunt resistance. Sensitive ranges use bigger shunts and can take a tenth of a volt or more from the rail.' },
+        { t: 'The meter injects switching noise into the rail on its low ranges', why: 'A shunt is a passive resistor. The effect is a steady voltage drop that scales with the current.' },
+        { t: 'Low ranges measure more slowly, so the board times out waiting', why: 'The reading rate does not affect the circuit. What affects it is the resistance the meter adds in series.' },
       ] },
     ],
   },
@@ -278,18 +278,18 @@ If the dip is there, the cure is a supply question: more bulk capacitance close 
         { t: 'Nothing, because signals at the bandwidth limit are filtered out', why: 'The roll-off is gradual. At the rated bandwidth the fundamental still gets through at roughly 70 % amplitude.' },
       ] },
       { q: 'Why does switching a probe from ×1 to ×10 usually make the displayed edges of an I2C line sharper?', kind: 'circuit', choices: [
-        { t: 'The ×10 probe adds much less capacitance to the bus, so the pull-up charges the line faster', ok: true, why: 'In ×1 the cable capacitance is added directly to the bus. In ×10 the circuit sees only around a tenth of it.' },
-        { t: 'The ×10 probe amplifies the signal tenfold', why: 'It does the opposite: it divides the signal by ten, and the scope rescales the display. The benefit is in loading, not gain.' },
+        { t: 'The ×10 probe loads the bus with much less capacitance', ok: true, why: 'In ×1 the cable capacitance is added directly to the bus. In ×10 the circuit sees only around a tenth of it.' },
+        { t: 'The ×10 probe amplifies the signal tenfold, which steepens the edges', why: 'It does the opposite: it divides the signal by ten, and the scope rescales the display. The benefit is in loading, not gain.' },
         { t: 'The scope applies digital sharpening in ×10 mode', why: 'The scope setting only multiplies the numbers on the display. The change in edge shape is a physical change in what the probe does to the node.' },
       ] },
       { q: 'You see 1.2 V of ringing on a clock edge. Which check distinguishes a real signal-integrity problem from a probing artefact?', kind: 'circuit', choices: [
-        { t: 'Repeat the measurement with a short ground spring and see whether the ringing changes', ok: true, why: 'Ringing that depends on the ground-lead length is made by the probe loop. Ringing that persists belongs to the board.' },
+        { t: 'Repeat with a short ground spring and see whether it changes', ok: true, why: 'Ringing that depends on the ground-lead length is made by the probe loop. Ringing that persists belongs to the board.' },
         { t: 'Increase the vertical scale so the ringing is smaller on screen', why: 'That changes how large it is drawn, not whether it exists or where it comes from.' },
-        { t: 'Switch the channel to AC coupling', why: 'AC coupling removes the DC level. It does not affect high-frequency ringing or tell you its source.' },
+        { t: 'Switch the channel to AC coupling and see whether it goes away', why: 'AC coupling removes the DC level. It does not affect high-frequency ringing or tell you its source.' },
       ] },
       { q: 'A fault happens about once a minute and lasts 50 µs. Which setup gives the best chance of seeing its cause?', kind: 'concept', choices: [
-        { t: 'Normal mode, a trigger condition only the fault meets, trigger point mid-screen', ok: true, why: 'Normal mode holds the capture, a specific trigger ignores the healthy traffic, and pre-trigger memory shows what led up to the event.' },
-        { t: 'Auto mode at a slow timebase and watch the screen', why: 'Auto mode redraws continuously, so a 50 µs event at a slow timebase is one pixel shown for one sweep and then overwritten.' },
+        { t: 'Normal mode, a trigger only the fault meets, trigger point mid-screen', ok: true, why: 'Normal mode holds the capture, a specific trigger ignores the healthy traffic, and pre-trigger memory shows what led up to the event.' },
+        { t: 'Auto mode at a slow timebase, watching the screen for the event', why: 'Auto mode redraws continuously, so a 50 µs event at a slow timebase is one pixel shown for one sweep and then overwritten.' },
         { t: 'Trigger point at the left edge so the whole screen shows what follows', why: 'The cause of a fault comes before it. With no pre-trigger time you capture only the consequences.' },
       ] },
       { q: 'A probe is switched to ×10 but the scope channel is set to ×1. You measure a 3.3 V rail. What does the scope display?', kind: 'circuit', choices: [
@@ -298,7 +298,7 @@ If the dip is there, the cure is a supply question: more bulk capacitance close 
         { t: '3.3 V, because modern probes report their setting', why: 'Some probes have a sense pin, many do not, and a manual switch is not reported. The two settings must be checked by hand.' },
       ] },
       { q: 'Which symptom most strongly calls for a scope and not a logic analyser?', kind: 'concept', choices: [
-        { t: 'SPI data is corrupted only on boards with a longer cable to the sensor', ok: true, why: 'Dependence on cable length points at edges, reflections or loading: analog properties that a 1-bit sampler cannot show.' },
+        { t: 'SPI data is corrupted only on boards with a longer sensor cable', ok: true, why: 'Dependence on cable length points at edges, reflections or loading: analog properties that a 1-bit sampler cannot show.' },
         { t: 'You need to see which of eight chip-select lines goes low first', why: 'That is an ordering question across many digital lines, which is what a multi-channel logic analyser is for.' },
         { t: 'You want to read 4,000 bytes of UART log from a boot', why: 'That is a long protocol capture. A logic analyser with a UART decoder, or simply a serial adapter, handles it.' },
       ] },
@@ -423,9 +423,9 @@ The next measurement is a scope on SDA and SCL with a ×10 probe, looking at ris
     ],
     quiz: [
       { q: 'What does a logic analyser store for each channel at each sample?', kind: 'concept', choices: [
-        { t: 'One bit: whether the input was above or below the threshold', ok: true, why: 'Reducing each sample to one bit is what allows many channels and long captures, and why analog detail is lost.' },
-        { t: 'The voltage, at lower resolution than a scope', why: 'There is no voltage resolution at all on a plain logic channel. Instruments that also record voltage are mixed-signal scopes.' },
-        { t: 'The decoded protocol byte', why: 'Decoding is done afterwards in software from the stored samples. The hardware knows nothing about protocols.' },
+        { t: 'One bit: whether the input was above the threshold', ok: true, why: 'Reducing each sample to one bit is what allows many channels and long captures, and why analog detail is lost.' },
+        { t: 'The voltage, at a lower resolution than a scope would record', why: 'There is no voltage resolution at all on a plain logic channel. Instruments that also record voltage are mixed-signal scopes.' },
+        { t: 'The decoded protocol byte that was on the bus at that moment', why: 'Decoding is done afterwards in software from the stored samples. The hardware knows nothing about protocols.' },
       ] },
       { q: 'You need to capture a 1 Mbit/s UART. Which sample rate is the lowest sensible choice?', kind: 'concept', choices: [
         { t: '4 MS/s', ok: true, why: 'Four samples per bit is the practical minimum for an asynchronous signal, and more is better if the analyser allows it.' },
@@ -433,17 +433,17 @@ The next measurement is a scope on SDA and SCL with a ×10 probe, looking at ris
         { t: '2 MS/s, twice the bit rate', why: 'Two samples per bit satisfies a sampling theorem for sine waves, but leaves edge positions uncertain by half a bit, which a UART decoder cannot tolerate.' },
       ] },
       { q: 'An analyser with a fixed threshold of about 1.5 V is connected to a 1.8 V I2C bus. What is the risk?', kind: 'circuit', choices: [
-        { t: 'A valid high is only slightly above the threshold, so noise or slow edges are read as wrong bits', ok: true, why: 'The margin between a 1.8 V high and a 1.5 V threshold is a few hundred millivolts, far less than the analyser was designed around.' },
-        { t: 'The analyser will be damaged by the low voltage', why: 'Low voltages do not damage inputs. The hazard with voltage is on the high side, exceeding the stated maximum.' },
-        { t: 'There is none, since 1.8 V is above 1.5 V', why: 'Being nominally above the threshold ignores noise, ringing and the time the edge spends near that level.' },
+        { t: 'A valid high is barely above the threshold, so noise flips bits', ok: true, why: 'The margin between a 1.8 V high and a 1.5 V threshold is a few hundred millivolts, far less than the analyser was designed around.' },
+        { t: 'The analyser\'s inputs will be damaged by the low bus voltage', why: 'Low voltages do not damage inputs. The hazard with voltage is on the high side, exceeding the stated maximum.' },
+        { t: 'There is none, since a 1.8 V high is still above a 1.5 V threshold', why: 'Being nominally above the threshold ignores noise, ringing and the time the edge spends near that level.' },
       ] },
       { q: 'A decoder shows framing errors on a UART capture. The device itself prints correctly to a serial terminal. What should you check first?', kind: 'concept', choices: [
-        { t: 'Samples per bit and the decoder\'s baud-rate setting', ok: true, why: 'A working terminal proves the wire is fine, so the error is in how the capture was taken or decoded.' },
-        { t: 'The device\'s crystal accuracy', why: 'If the clock were far enough off to cause framing errors, the serial terminal would show garbage too.' },
-        { t: 'The firmware\'s UART driver', why: 'A driver bug would affect what the terminal receives as well. Here only the capture disagrees.' },
+        { t: 'Samples per bit and the decoder\'s baud setting', ok: true, why: 'A working terminal proves the wire is fine, so the error is in how the capture was taken or decoded.' },
+        { t: 'The accuracy of the device\'s crystal oscillator', why: 'If the clock were far enough off to cause framing errors, the serial terminal would show garbage too.' },
+        { t: 'The firmware\'s UART driver and its baud-rate divisor', why: 'A driver bug would affect what the terminal receives as well. Here only the capture disagrees.' },
       ] },
       { q: 'Why is "raise a spare GPIO when the firmware detects the bad value" a good trigger for a rare fault?', kind: 'concept', choices: [
-        { t: 'It marks the exact moment with a simple edge, and pre-trigger memory then shows the traffic that led to it', ok: true, why: 'The firmware knows what "bad" means better than any trigger pattern, and an edge trigger is available on every analyser.' },
+        { t: 'It marks the exact moment, and pre-trigger memory shows what led to it', ok: true, why: 'The firmware knows what "bad" means better than any trigger pattern, and an edge trigger is available on every analyser.' },
         { t: 'GPIO edges are faster than protocol signals, so the capture is more precise', why: 'Edge speed is not the point. The value is in letting the firmware classify the event.' },
         { t: 'It stops the firmware so the bus stays frozen for inspection', why: 'Setting a pin does not halt anything. The analyser records history; it does not hold the bus.' },
       ] },
@@ -534,7 +534,28 @@ screen /dev/ttyUSB0 115200                # exit with Ctrl-A k`,
         explain: [
           { lines: '1-3', md: 'All three open the serial device at the given baud rate with 8N1 framing. If you get "permission denied", your user needs access to the device node, commonly by membership of the `dialout` group.' },
         ] },
-      `## Worked example: from pulse width to baud rate
+      `## Worked example: four unlabelled pads
+
+A board you own has a row of four pads, P1 to P4, next to the processor. Follow the procedure and fill in a table as you go.
+
+| Pad | Step 2: continuity, power off | Step 3: DC volts, powered and idle | Step 4: during a power-cycle |
+|---|---|---|---|
+| P1 | no beep to ground or to the 3V3 rail | 3.28 V | dips to about 2.6 V for two seconds, then returns |
+| P2 | beeps to the USB shell | 0.00 V | 0.00 V |
+| P3 | no beep to ground or to the 3V3 rail | 3.30 V | steady |
+| P4 | beeps to the 3V3 rail | 3.30 V | follows the rail up and stays |
+
+Reasoning, one pad at a time:
+
+- **P2** is ground: continuity to the shell, and 0 V always.
+- **P4** is the supply: continuity to the rail. Never connect it to the adapter.
+- **P1 and P3** both idle high, which is what both UART lines do. They are told apart by step 4. P1's average falls during boot because the line spends part of that time low: it is being **driven with data**, so it is the board's **TX**.
+- **P3** is high but never moves and has no continuity to the rail: an input held high by a pull-up, the board's **RX**.
+- The logic level is 3.3 V, so a 3.3 V adapter is safe. A 5 V adapter is not.
+
+Connection for listening: adapter GND to P2, adapter RX to P1, nothing else. Had step 4 shown **no** pad moving, the conclusion would not be "pick one and try". It would be that the console is silent, disabled or elsewhere, and the next measurement is a logic analyser on both candidates for a longer time.
+
+## Worked example: from pulse width to baud rate
 
 With cursors on a capture you measure pulses of 8.7 µs, 17.4 µs and 26 µs. The shortest is 8.7 µs:
 
@@ -562,9 +583,9 @@ for (size_t i = 0; i < sizeof standard / sizeof standard[0]; i++) {
         ] },
       { t: 'predict', q: 'A capture of the first byte after reset shows the line going low, and the shortest pulse you can find anywhere in the first 200 ms is 208 µs. The text decodes as garbage at 4800 baud (1/208 µs ≈ 4808). What is the most likely explanation?',
         choices: [
-          { t: 'The device uses a non-standard rate close to 4800', why: 'A rate within 0.2 % of a standard one is not the problem. Being that close is evidence the arithmetic was right for the pulse you measured.' },
-          { t: 'The capture never contained a single isolated bit: the true rate is 9600 and 208 µs is two bits', ok: true, why: 'The shortest pulse equals one bit only if the data happens to include an isolated 0 or 1. Two equal bits side by side look like one pulse of twice the width.' },
-          { t: 'The device uses 7 data bits and even parity', why: 'A framing mismatch garbles some characters, but the bit time measured from pulse widths would still decode into mostly recognisable text.' },
+          { t: 'The device uses a non-standard rate close to 4800, which no terminal offers', why: 'A rate within 0.2 % of a standard one is not the problem. Being that close is evidence the arithmetic was right for the pulse you measured.' },
+          { t: 'The capture held no isolated bit: 208 µs is two bits at 9600', ok: true, why: 'The shortest pulse equals one bit only if the data happens to include an isolated 0 or 1. Two equal bits side by side look like one pulse of twice the width.' },
+          { t: 'The device uses 7 data bits and even parity instead of 8N1', why: 'A framing mismatch garbles some characters, but the bit time measured from pulse widths would still decode into mostly recognisable text.' },
         ],
         reveal: `Measure across more data, or try the next rates up. Bytes such as \`U\` (0x55) alternate every bit and give you a true one-bit pulse. If doubling the rate turns garbage into text, you had measured two bits.` },
       { t: 'widget', name: 'logic-analyzer', props: { capture: 'uart-unknown-baud' }, caption: 'Find the shortest pulse with the cursors, convert it to a standard baud rate, then decode.' },
@@ -579,13 +600,14 @@ Once the text is readable, read all of it. A boot log commonly gives away:
 - a message such as "press any key to stop autoboot", which is an invitation to a bootloader prompt;
 - error messages that name files, addresses and functions.
 
-On Espressif chips the ROM bootloader itself prints a reset reason and boot mode on UART0 before any of your code runs. On the original ESP32 that output is at 115200 baud. ESP-IDF's second-stage bootloader then logs the partition table. This is why \`idf.py monitor\` shows text even when your application crashes immediately.`,
+On Espressif chips the ROM bootloader itself prints a reset reason and boot mode on UART0 before any of your code runs. On the original ESP32 that output is at 115200 baud with the usual 40 MHz crystal (a board with a different crystal frequency prints its ROM messages at a different rate, which is one reason 74880 is in the table above). ESP-IDF's second-stage bootloader then logs the partition table. This is why \`idf.py monitor\` shows text even when your application crashes immediately.`,
       { t: 'callout', kind: 'mistake', title: 'TX to TX', md: `Connecting the board's TX to the adapter's TX gives you two outputs driving one wire and no data. It is the single most common serial wiring error, and labels make it worse: some boards label a pin by what it *is* and some by what you should *connect to it*. Trust the measurement: the pin that shows activity at boot is the device's output, and it goes to the adapter's **RX**.` },
       { t: 'callout', kind: 'decision', title: 'Why listen before you talk?', md: `A receive-only connection cannot change the device's behaviour and exposes your adapter's input only to the board's known output voltage. Connecting your TX is the step that can inject current, interrupt a boot, or type into a bootloader. Do it second, on purpose, after the voltage check.` },
       { t: 'exercise', prompt: `On an unknown board's serial line, the shortest pulse you measure is 26.0 µs, and other pulses are 52 µs and 104 µs. Which standard baud rate is this?`,
         hints: [
-          'Baud ≈ 1 / (shortest pulse in seconds).',
-          '1 / 26.0 µs ≈ 38,462 bit/s. Which standard rate is closest?',
+          'Which of the three pulses can be a single bit, and what would the other two then be in bit times? Check that they come out as whole numbers.',
+          'One bit lasts the shortest pulse width. How many of those fit in one second? Mind the unit: the width is in microseconds.',
+          'Method: baud ≈ 1 / (shortest pulse in seconds), then pick the nearest rate from the list of standard rates in step 5 and check it is within a few percent.',
         ],
         answer: { type: 'number', value: 38400, tol: 1, unit: 'baud' },
         solution: `1 / 26.0 µs = 38,462 bit/s. The nearest standard rate is **38400** (bit time 26.04 µs), 0.2 % away. The other pulses are 2 and 4 bit times, which is consistent.` },
@@ -603,6 +625,14 @@ You are now on the other side: you are shipping a product with a UART console on
 
 Physical obscurity, such as leaving a header unpopulated or removing silkscreen, costs an attacker minutes. The real control is what the firmware and the chip's configuration do when someone connects.`,
       { t: 'widget', name: 'protocol-debug', props: { scenario: 'tx-rx-swapped' }, caption: 'A serial link with no data. Diagnose it from the symptoms before changing any wire.' },
+      { t: 'exercise', prompt: `A 4-pad header on a board you own measures as follows. Pad A: beeps to the USB shell with power off. Pad B: no continuity to ground or supply; 1.79 V when powered; steady during a power-cycle. Pad C: no continuity to ground or supply; 1.80 V idle; the meter reading sags to about 1.4 V for a second after power-up. Pad D: continuity to a rail that measures 1.80 V.\n\nWhich pad do you connect to your adapter's **RX** pin? Answer with the pad letter. Then decide whether your 3.3 V adapter may be used.`,
+        hints: [
+          'Sort the pads first: which one is ground, and which one is a supply? Those two are identified with the power off.',
+          'Two pads remain and both idle high. What does a transmitting line do to a meter\'s average reading that a quiet input does not?',
+          'The pad whose reading moves during boot is the board\'s output. An output goes to the adapter\'s input. Separately: compare the measured logic level with the adapter\'s.',
+        ],
+        answer: { type: 'text', accept: ['^\\s*(pad\\s*)?[cC]\\b'], nudge: 'Which pad shows activity during boot? That is the board\'s TX, and TX goes to the adapter\'s RX.' },
+        solution: `Pad A is ground and pad D is the supply. Of the two that idle high, **pad C** sags during boot, so it is the board's TX, and it goes to the adapter's RX. Pad B is the board's RX.\n\nThe port runs at **1.8 V**, so a 3.3 V adapter must not be connected as it is. Its TX would drive 3.3 V into a 1.8 V input, and the board's 1.8 V high may not reach a 3.3 V adapter's input threshold reliably. Use a 1.8 V adapter or a level shifter. Listening only (adapter RX on pad C, grounds joined) does not over-voltage the board, but whether the adapter reads 1.8 V as a high is something to check in its datasheet, not to assume.` },
       { t: 'refs', items: [
         { title: 'ESP-IDF: USB Serial/JTAG controller console', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/api-guides/usb-serial-jtag-console.rst', note: 'On ESP32-S3/C3/C6 the console can be a USB CDC port with no external adapter.' },
         { title: 'esptool (serial bootloader utility)', url: 'https://github.com/espressif/esptool' },
@@ -610,13 +640,13 @@ Physical obscurity, such as leaving a header unpopulated or removing silkscreen,
     ],
     quiz: [
       { q: 'On a powered 4-pin header, two pins read 3.3 V on a meter. How do you tell TX from VCC without a scope?', kind: 'circuit', choices: [
-        { t: 'Watch both while power-cycling: TX flickers or dips during boot, VCC stays steady', ok: true, why: 'TX spends part of the boot time low, which pulls the meter\'s average down. A supply rail does not move.' },
-        { t: 'VCC is always the pin at the end of the header', why: 'There is no standard pin order for debug headers. Position is a guess, and a wrong guess here connects a supply rail to an adapter input.' },
+        { t: 'Power-cycle and watch both: TX dips during boot, VCC stays', ok: true, why: 'TX spends part of the boot time low, which pulls the meter\'s average down. A supply rail does not move.' },
+        { t: 'VCC is always the pin at the end of the header, next to ground', why: 'There is no standard pin order for debug headers. Position is a guess, and a wrong guess here connects a supply rail to an adapter input.' },
         { t: 'Short each to ground briefly and see which one resets the board', why: 'Shorting a supply rail to ground is destructive, and shorting an output can damage the driver. Identification should never require a short.' },
       ] },
       { q: 'Why measure the pin voltages before choosing an adapter?', kind: 'circuit', choices: [
-        { t: 'The port\'s logic level decides which adapter voltage is safe to connect', ok: true, why: 'A 5 V adapter output can over-voltage a 3.3 V or 1.8 V input, and a low-voltage target may not drive a higher-voltage adapter\'s input high enough.' },
-        { t: 'The voltage tells you the baud rate', why: 'Bit time and signal level are independent. Baud rate comes from pulse widths, not from amplitude.' },
+        { t: 'The port\'s logic level decides which adapter is safe to connect', ok: true, why: 'A 5 V adapter output can over-voltage a 3.3 V or 1.8 V input, and a low-voltage target may not drive a higher-voltage adapter\'s input high enough.' },
+        { t: 'The voltage tells you the baud rate, since faster ports run lower', why: 'Bit time and signal level are independent. Baud rate comes from pulse widths, not from amplitude.' },
         { t: 'Adapters only work if the voltage is exactly 3.30 V', why: 'Logic thresholds are ranges, not exact values. The concern is the absolute maximum on the receiving pin and the thresholds on both sides.' },
       ] },
       { q: 'The shortest pulse on a serial line is 104 µs and others are 208 µs and 312 µs. Which setting should you try first?', kind: 'concept', choices: [
@@ -630,15 +660,15 @@ Physical obscurity, such as leaving a header unpopulated or removing silkscreen,
         { t: 'The serial data becomes more reliable because the supplies are shared', why: 'A serial link needs a shared ground reference only. Sharing supplies adds no signal integrity and creates a fight between two sources.' },
       ] },
       { q: 'Which change gives the strongest protection for a production device\'s console?', kind: 'security', choices: [
-        { t: 'Removing or authenticating the command interface in firmware and restricting the ROM download mode in the chip configuration', ok: true, why: 'These change what the device will do for someone who connects, which is the only thing that matters once they have found the pins.' },
-        { t: 'Not populating the header', why: 'The pads, vias and chip pins are still there and can be probed or soldered to in minutes.' },
-        { t: 'Using an unusual baud rate', why: 'The rate is recovered from one pulse-width measurement, as you did in this lesson.' },
-        { t: 'Covering the processor in epoxy', why: 'It raises the effort to reach the pins but leaves the console fully functional for anyone who gets to the traces or removes the epoxy.' },
+        { t: 'Authenticate or remove the console commands and restrict ROM download mode', ok: true, why: 'These change what the device will do for someone who connects, which is the only thing that matters once they have found the pins.' },
+        { t: 'Leaving the header unpopulated so there is nothing to plug into', why: 'The pads, vias and chip pins are still there and can be probed or soldered to in minutes.' },
+        { t: 'Using an unusual baud rate that terminal programs do not offer', why: 'The rate is recovered from one pulse-width measurement, as you did in this lesson.' },
+        { t: 'Covering the processor and its pads in hard epoxy so the pins cannot be reached', why: 'It raises the effort to reach the pins but leaves the console fully functional for anyone who gets to the traces or removes the epoxy.' },
       ] },
       { q: 'You see no output at all on the adapter. The board\'s TX pin shows activity on a logic analyser. Which cause fits?', kind: 'circuit', choices: [
-        { t: 'The board\'s TX is wired to the adapter\'s TX instead of its RX', ok: true, why: 'The adapter never receives on its TX pin, so the terminal stays empty even though the board is transmitting.' },
-        { t: 'The baud rate is wrong', why: 'A wrong rate produces garbage characters, not silence. Something arrives at the receiver either way.' },
-        { t: 'The board uses 8E1 instead of 8N1', why: 'A parity mismatch corrupts or flags characters but still delivers them. Complete silence points at wiring.' },
+        { t: 'The board\'s TX is wired to the adapter\'s TX, not its RX', ok: true, why: 'The adapter never receives on its TX pin, so the terminal stays empty even though the board is transmitting.' },
+        { t: 'The baud rate is wrong, so the adapter discards every character', why: 'A wrong rate produces garbage characters, not silence. Something arrives at the receiver either way.' },
+        { t: 'The board uses 8E1 framing and the terminal is set to 8N1', why: 'A parity mismatch corrupts or flags characters but still delivers them. Complete silence points at wiring.' },
       ] },
     ],
   },

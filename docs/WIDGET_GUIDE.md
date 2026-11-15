@@ -45,6 +45,7 @@ an object keyed by id with at least `{ title }`, so content can be validated.
 | `gpio-electrical` | `{}` | one GPIO pin: output push-pull/open-drain, input with pull-up/pull-down/floating, external circuit, logic thresholds |
 | `pwm-lab` | `{freq, duty, bits}` | PWM waveform, average voltage, LED/motor effect, LEDC-style resolution-vs-frequency trade-off |
 | `adc-lab` | `{bits, vref}` | sampling, quantisation steps, code↔voltage, aliasing when sample rate is too low |
+| `signal-lab` | `{shape:'dc'|'sine'|'square'|'slow', challenge}` | a voltage against time with peak-to-peak, mean and RMS, the VIL/VIH bands, and what a single-threshold or Schmitt-trigger input reads; challenge `clean-edges` |
 
 ### Architecture (`css/w-architecture.css`)
 | name | props | behaviour |

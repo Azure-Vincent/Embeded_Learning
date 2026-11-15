@@ -141,9 +141,9 @@ The same reasoning applies to the buzzer in the opening problem: its current exc
 were specified for.`,
 
     { t: 'predict', q: `Using the excerpt above: the supply is 3.3 V. A sensor module powered from 5 V drives its output to 5 V when active. You connect that output directly to an input pin of the example part. What happens, according to the datasheet?`, choices: [
-      { t: 'It reads as logic 1 and nothing else happens: 5 V is well above VIH.', why: `It is above VIH, so it would read as 1, but you have checked only the table that describes behaviour. Look at what Table 5 allows on a pin.` },
-      { t: 'It exceeds the absolute maximum pin voltage, so damage is possible even though it would read as logic 1.', ok: true, why: `VIN max is VDD + 0.3 V = 3.6 V. 5 V is 1.4 V beyond the stress limit.` },
-      { t: 'It reads as logic 0 because 5 V is outside the valid input range.', why: `Logic thresholds do not work that way. Anything above VIH is a 1. The question is whether the pin survives being held there.` },
+      { t: 'It reads as logic 1 and nothing else happens: 5 V is well above VIH, and a higher level only adds noise margin.', why: `It is above VIH, so it would read as 1, but you have checked only the table that describes behaviour. Look at what Table 5 allows on a pin.` },
+      { t: 'It exceeds the absolute maximum pin voltage, so damage is possible.', ok: true, why: `VIN max is VDD + 0.3 V = 3.6 V. 5 V is 1.4 V beyond the stress limit. It would also read as logic 1, which is what makes the mistake easy to miss.` },
+      { t: 'It reads as logic 0, because 5 V lies outside the valid input range and out-of-range inputs are treated as low.', why: `Logic thresholds do not work that way. Anything above VIH is a 1. The question is whether the pin survives being held there.` },
     ], reveal: `The limit is written relative to VDD because of how the pin is built: a protection diode runs from the pin to the supply rail. Raise the pin more than a diode drop above VDD and that diode conducts, pushing current into the supply rail through a structure that was never meant to carry it continuously. The part may work for a while and fail later, which is the worst kind of fault to debug. You will design the fix, a voltage divider or level shifter, in the Electronics section.` },
 
     { t: 'exercise', prompt: `Still using the fictional excerpt. You want eight LEDs lit at the same time, each from its own output pin, each at the 8 mA for which VOH is specified. What total current do the I/O pins supply, in mA? Then decide whether it respects the *total* limit in Table 5.`, hints: [
@@ -198,9 +198,9 @@ could be out of date.`,
   ],
   quiz: [
     { kind: 'concept', q: `You answer a quiz question wrongly, read the explanation, and answer it correctly on the second try. How does this count toward mastering the lesson?`, choices: [
-      { t: 'It counts as correct, because you got there in the end.', why: `After the feedback you are recognising the answer, not producing it. The score is meant to measure what you knew before the explanation.` },
-      { t: 'It does not count for this attempt; only first-try answers are scored, and you can retake the assessment later.', ok: true, why: `The score is the fraction right first time. Retaking after review is the intended route.` },
-      { t: 'It locks the lesson permanently.', why: `Nothing is locked by a wrong answer. The best score across retakes is kept.` },
+      { t: `It counts as correct for this attempt, because what matters is that you reached the right answer in the end.`, why: `After the feedback you are recognising the answer, not producing it. The score is meant to measure what you knew before the explanation.` },
+      { t: `It does not count for this attempt; only first-try answers are scored, and you can retake the assessment later.`, ok: true, why: `The score is the fraction right first time. Retaking after review is the intended route.` },
+      { t: `It counts as half a mark, because the second try shows partial understanding of the idea.`, why: `There is no partial credit. An answer chosen after reading the feedback shows recognition, and the score is meant to record what you could produce before it.` },
     ] },
     { kind: 'concept', q: `You finish a lab using only the simulator and record it as "completed without hardware". What does the skills matrix show for the skills in that lab?`, choices: [
       { t: '"Built in a lab", one level below "Verified on hardware".', ok: true, why: `The matrix separates evidence from a model and evidence from a physical board.` },
@@ -209,23 +209,23 @@ could be out of date.`,
     ] },
     { kind: 'circuit', q: `A part's absolute maximum supply voltage is 3.9 V and its recommended maximum is 3.6 V. Your regulator's output can be anywhere from 3.5 V to 3.8 V depending on load. Is this acceptable?`, choices: [
       { t: 'Yes: 3.8 V is below 3.9 V, so the part is never damaged and therefore works.', why: `"Not damaged" and "works as specified" are different promises. Between the two limits the manufacturer guarantees neither behaviour nor lifetime.` },
-      { t: 'No: above 3.6 V the part is outside the range in which its specifications are guaranteed.', ok: true, why: `You design inside the recommended operating conditions. The absolute maximum is a stress limit, not a target.` },
+      { t: `No: above 3.6 V the part's specifications are no longer guaranteed.`, ok: true, why: `You design inside the recommended operating conditions. The absolute maximum is a stress limit, not a target.` },
       { t: 'Yes, as long as the typical output of the regulator is 3.6 V or less.', why: `A design has to hold at the extremes the regulator is allowed to reach, not only at its typical value.` },
     ] },
     { kind: 'concept', q: `Which notebook entry will be most useful when the same fault returns in a month?`, choices: [
-      { t: '"Fixed the serial problem."', why: `It records that something happened but not what the symptom was, what you changed, or how you knew it was fixed.` },
-      { t: '"No output on /dev/ttyUSB0 at 115200. Expected boot log. Swapped USB cable (old one from a power bank): port now appears in dmesg, boot log visible. Old cable has no data lines; labelled it."', ok: true, why: `It has the symptom, the expectation, the single change, the observation and the conclusion.` },
-      { t: 'A photo of the working board with no text.', why: `A photo helps with wiring, but it cannot say what was wrong before or which change mattered.` },
+      { t: `"Fixed the serial problem after about two hours. Tried lots of things: cables, drivers, a reboot, a reflash. Works now, so do not touch the setup. Remember this for next time."`, why: `It lists activity, not evidence: no symptom, no single change tied to a result, and "lots of things" cannot be repeated next month.` },
+      { t: `"No output on /dev/ttyUSB0 at 115200; expected boot log. Swapped the USB cable only: port now in dmesg, log visible. Old cable has no data lines; labelled it."`, ok: true, why: `It has the symptom, the expectation, the single change, the observation and the conclusion.` },
+      { t: `A sharp, well-lit photo of the working board and its wiring from above, with the date and time in the file name and no accompanying text.`, why: `A photo helps with wiring, but it cannot say what was wrong before or which change mattered.` },
     ] },
     { kind: 'circuit', q: `A datasheet specifies VOL ≤ 0.4 V "at IOL = 4 mA". You sink 15 mA through that pin, which is below the absolute maximum pin current. What can you say about the pin's low-level voltage?`, choices: [
-      { t: 'It is still at most 0.4 V, because the pin is within its ratings.', why: `The 0.4 V figure is tied to its test condition. At nearly four times that current the output transistor drops more voltage.` },
-      { t: 'It is not specified; it will be higher than at 4 mA by an amount the datasheet does not promise.', ok: true, why: `A guarantee applies only under its stated condition. Outside it you are relying on unspecified behaviour.` },
-      { t: 'It is exactly 1.5 V, scaling linearly with current.', why: `Scaling linearly assumes a fixed output resistance. The datasheet gives a limit at one condition, not a resistance you can extrapolate from with confidence.` },
+      { t: `It is still at most 0.4 V, because 15 mA is within the pin's absolute maximum rating and the limit holds up to there.`, why: `The 0.4 V figure is tied to its test condition. At nearly four times that current the output transistor drops more voltage.` },
+      { t: `It is not specified: higher than at 4 mA, by an amount the datasheet does not promise.`, ok: true, why: `A guarantee applies only under its stated condition. Outside it you are relying on unspecified behaviour.` },
+      { t: `It is 1.5 V, because VOL scales in proportion to the current: 0.4 V × 15 / 4.`, why: `Scaling linearly assumes a fixed output resistance. The datasheet gives a limit at one condition, not a resistance you can extrapolate from with confidence.` },
     ] },
     { kind: 'concept', q: `Before powering a new circuit you write "expect about 1.65 V at the divider midpoint". The meter reads 3.3 V. What is the value of having written the prediction?`, choices: [
-      { t: 'None; the measurement is what matters.', why: `Without an expectation, 3.3 V would look like a perfectly ordinary number and you would move on.` },
-      { t: 'It turns the reading into evidence: something in the lower half of the divider is not connected the way you think.', ok: true, why: `The mismatch localises the fault before you have touched anything.` },
-      { t: 'It proves the meter is faulty.', why: `That is one hypothesis, but the reading equals the supply voltage, which is exactly what an open lower resistor would give. Test the simplest explanation first.` },
+      { t: `None: the measurement is what matters, and a reading of 3.3 V is the same fact whether or not you guessed first.`, why: `Without an expectation, 3.3 V would look like a perfectly ordinary number and you would move on.` },
+      { t: `It turns the reading into evidence: something in the lower half of the divider is not connected the way you think.`, ok: true, why: `The mismatch localises the fault before you have touched anything.` },
+      { t: `It shows the meter is faulty, since a correctly built divider cannot read the full supply voltage.`, why: `That is one hypothesis, but the reading equals the supply voltage, which is exactly what an open lower resistor would give. Test the simplest explanation first.` },
     ] },
   ],
 };
@@ -390,34 +390,34 @@ There is no single correct answer. A good answer names the observation each tool
   ],
   quiz: [
     { kind: 'circuit', q: `A board's power LED is on, but the computer shows no new USB device at all. Which cause fits this observation best?`, choices: [
-      { t: 'Your user is not in the dialout group.', why: `Group membership controls who may open a device node. Here no device has been detected at all, so there is nothing to be denied access to.` },
+      { t: `Your user is not in the dialout group, so the system hides the device.`, why: `Group membership controls who may open a device node. Here no device has been detected at all, so there is nothing to be denied access to.` },
       { t: 'The cable has power wires but no data wires.', ok: true, why: `Power present and no enumeration is the signature of a charge-only cable (or a damaged data line).` },
       { t: 'The baud rate in the terminal is wrong.', why: `Baud rate affects the bytes on an open port. The computer has not even created a port.` },
     ] },
     { kind: 'concept', q: `You are buying a USB-to-UART adapter to listen to the serial pins of a 3.3 V microcontroller. Which property matters most?`, choices: [
-      { t: 'It supports very high baud rates.', why: `Nearly every adapter exceeds the rates used for consoles. Speed will not protect the pin you connect it to.` },
-      { t: 'Its logic level is 3.3 V, or can be set to 3.3 V.', ok: true, why: `An adapter that drives 5 V onto its TX line can exceed the absolute maximum input voltage of a 3.3 V pin.` },
-      { t: 'It has a long cable.', why: `Convenient, but unrelated to whether the electrical levels suit the target.` },
+      { t: `It supports baud rates well above the 115200 that most consoles use.`, why: `Nearly every adapter exceeds the rates used for consoles. Speed will not protect the pin you connect it to.` },
+      { t: `Its logic level is 3.3 V, or can be switched to 3.3 V with a jumper.`, ok: true, why: `An adapter that drives 5 V onto its TX line can exceed the absolute maximum input voltage of a 3.3 V pin.` },
+      { t: `It exposes the DTR and RTS lines as well as TX, RX and ground.`, why: `Those lines help with automatic reset on some boards. They do nothing to make the adapter electrically compatible with the pin you connect it to.` },
     ] },
     { kind: 'concept', q: `A teammate says: "eCTF uses the MAX78000FTHR, so let's all buy one to prepare for next season." What is the accurate response?`, choices: [
-      { t: 'Correct; eCTF hardware is fixed.', why: `The public reference designs show the target changing across years, including a change of vendor and CPU core between 2025 and 2026.` },
-      { t: 'The MAX78000FTHR was the target for eCTF 2024 and 2025; 2026 uses a TI MSPM0L2228. Confirm the hardware in the rules for the season you are entering before buying.', ok: true, why: `Competition hardware is specified per year, and the official rules for that year are the authority.` },
-      { t: 'eCTF is run entirely in emulation, so no hardware is needed.', why: `Some past years were emulated, but recent years use physical microcontroller boards.` },
+      { t: `Reasonable: eCTF has used the MAX78000FTHR for two seasons running, so the organisers have clearly standardised on it.`, why: `The public reference designs show the target changing across years, including a change of vendor and CPU core between 2025 and 2026.` },
+      { t: `That board was the 2024 and 2025 target; 2026 uses a TI MSPM0L2228. Check the rules for your season first.`, ok: true, why: `Competition hardware is specified per year, and the official rules for that year are the authority.` },
+      { t: `Unnecessary: eCTF is run entirely in emulation, so teams never need to buy or handle physical boards.`, why: `Some past years were emulated, but recent years use physical microcontroller boards.` },
     ] },
     { kind: 'circuit', q: `Why does a bench supply with an adjustable current limit protect a first prototype better than powering it straight from a battery pack?`, choices: [
-      { t: 'It provides a more accurate voltage.', why: `Accuracy is helpful but does not limit the damage from a wiring mistake.` },
-      { t: 'With the limit set just above the expected current, a short becomes a limited current and a visible reading instead of the full current the source can deliver.', ok: true, why: `Limiting fault current limits heating, which is what destroys parts and tracks.` },
-      { t: 'It isolates the circuit from static electricity.', why: `A supply's current limit acts on current drawn from its output. It does nothing about static discharge from your hand.` },
+      { t: `It regulates the voltage more accurately than a battery, so the parts are never stressed by a rail that is slightly too high.`, why: `Accuracy is helpful but does not limit the damage from a wiring mistake.` },
+      { t: `A wiring mistake draws only the small current you allowed, and shows up as a reading.`, ok: true, why: `Limiting fault current limits heating, which is what destroys parts and tracks.` },
+      { t: `It isolates the circuit from mains earth, so static discharge from your hands cannot reach the parts through the supply.`, why: `A supply's current limit acts on current drawn from its output. It does nothing about static discharge from your hand.` },
     ] },
     { kind: 'circuit', q: `You need to move a jumper on a powered breadboard to a neighbouring row. What is the right procedure, and why?`, choices: [
-      { t: 'Move it quickly; brief contact is harmless.', why: `A wire that touches the wrong row for a few milliseconds can still put a supply rail on a pin or short two outputs. Damage does not need long.` },
+      { t: `Move it quickly and carefully; contact lasting a few milliseconds is too brief to damage anything.`, why: `A wire that touches the wrong row for a few milliseconds can still put a supply rail on a pin or short two outputs. Damage does not need long.` },
       { t: 'Disconnect power, move the wire, check the wiring, reconnect.', ok: true, why: `With no power there is no fault current, whatever the wire touches on its way.` },
-      { t: 'Hold the reset button while moving it.', why: `Reset stops the program but the supply rails and pin protection structures are still live.` },
+      { t: `Hold the reset button while moving it, so that no pin is being driven during the move.`, why: `Reset stops the program but the supply rails and pin protection structures are still live.` },
     ] },
     { kind: 'concept', q: `An I2C bus shows correct bytes on the logic analyser, yet the device sometimes misses its address. A colleague suspects slow, rounded rising edges. Which instrument tests that hypothesis?`, choices: [
-      { t: 'The logic analyser, at a higher sample rate.', why: `It reports only above or below a threshold at each sample. A slow edge and a fast edge look the same once they have crossed it.` },
-      { t: 'An oscilloscope, which shows the voltage of the edge over time.', ok: true, why: `Edge shape is an analogue property. Only an instrument that records voltage can show it.` },
-      { t: 'A multimeter on DC volts.', why: `A multimeter averages over a time far longer than one bus edge, so it cannot show an event lasting microseconds.` },
+      { t: `The logic analyser at its highest sample rate, so that each edge is covered by many samples.`, why: `It reports only above or below a threshold at each sample. A slow edge and a fast edge look the same once they have crossed it.` },
+      { t: `An oscilloscope, which records the voltage of each edge against time.`, ok: true, why: `Edge shape is an analogue property. Only an instrument that records voltage can show it.` },
+      { t: `A multimeter on DC volts, held on the line while the bus is active.`, why: `A multimeter averages over a time far longer than one bus edge, so it cannot show an event lasting microseconds.` },
     ] },
   ],
 };
@@ -571,7 +571,7 @@ id -nG`, explain: [
     { t: 'callout', kind: 'mistake', title: 'Fixing permissions with sudo or chmod 666', md: `\`sudo idf.py flash\` appears to work, but it runs the whole build as root: files in your \`build\` directory become root-owned and the next ordinary build fails with permission errors of its own. \`sudo chmod 666 /dev/ttyUSB0\` works until you unplug the board, because the node is created fresh each time. Both treat the symptom. Group membership fixes the cause once.` },
 
     { t: 'predict', q: `You run \`sudo usermod -aG dialout "$USER"\`. It prints nothing, which means it succeeded. Without closing the terminal, you immediately run the flash command again. What happens?`, choices: [
-      { t: 'It works: the group was added.', why: `The group database was updated, but a running session does not re-read it. Check what \`id -nG\` prints in that same terminal.` },
+      { t: 'It works: the group was added, and the kernel checks membership each time a file is opened.', why: `The group database was updated, but a running session does not re-read it. Check what \`id -nG\` prints in that same terminal.` },
       { t: 'Permission denied again, until you start a new login session.', ok: true, why: `A process inherits its group list from the session that started it, and that list was fixed at login.` },
       { t: 'It fails because usermod needs the board unplugged.', why: `\`usermod\` edits the account database. It has no connection to any device.` },
     ], reveal: `Every process carries a list of group IDs, copied from its parent. Your terminal got its list from the desktop session, which got it at login. Editing \`/etc/group\` changes what the *next* login will receive. Logging out of the desktop and back in is the reliable fix; a reboot always works. \`newgrp dialout\` starts a sub-shell with the new group for a quick test, but only that one shell is affected.` },
@@ -702,34 +702,34 @@ The simulated bench below starts where this lesson stops: the port opens, and th
   ],
   quiz: [
     { kind: 'concept', q: `\`ls -l /dev/ttyUSB0\` prints \`crw-rw---- 1 root dialout ...\`. Your user is in the groups \`sudo\` and \`plugdev\` only. What happens when a program you run tries to open the port?`, choices: [
-      { t: 'It opens, because you are in the sudo group.', why: `Membership of \`sudo\` lets you *run commands with sudo*. It does not give your ordinary processes any extra file access.` },
-      { t: 'Permission denied: you are neither the owner nor in the owning group, and "others" have no access.', ok: true, why: `The last three permission characters are \`---\`. Your process falls into that class.` },
-      { t: 'It opens read-only.', why: `Read access for others would show as \`r--\` in the last three characters. Here they are all dashes.` },
+      { t: `It opens, because members of the sudo group are administrators and may use any device.`, why: `Membership of \`sudo\` lets you *run commands with sudo*. It does not give your ordinary processes any extra file access.` },
+      { t: `Permission denied: you are neither the owner nor in the owning group, and "others" have no access.`, ok: true, why: `The last three permission characters are \`---\`. Your process falls into that class.` },
+      { t: `It opens read-only, because any user may read a device node and only writing is restricted.`, why: `Read access for others would show as \`r--\` in the last three characters. Here they are all dashes.` },
     ] },
     { kind: 'concept', q: `Why must ESP-IDF's environment script be run as \`. ./export.sh\` and not \`./export.sh\`?`, choices: [
-      { t: 'The leading dot makes it run as root.', why: `The dot has nothing to do with privileges. It is the shell's "read and execute in this shell" command.` },
-      { t: 'It sets PATH and other variables, and those must be set in your current shell, not in a child shell that exits.', ok: true, why: `A child process cannot change its parent's environment. Sourcing runs the lines in the current shell.` },
-      { t: 'The script has no execute permission, and the dot works around that.', why: `Even with execute permission, running it as a program would set the variables in a child shell and then discard them.` },
+      { t: `The leading dot runs it with the privileges it needs to install tools into system directories.`, why: `The dot has nothing to do with privileges. It is the shell's "read and execute in this shell" command.` },
+      { t: `It must change the environment of your current shell, not of a child.`, ok: true, why: `A child process cannot change its parent's environment. Sourcing runs the lines in the current shell.` },
+      { t: `The script has no execute permission, and the dot is the shell's way to run a file that lacks it.`, why: `Even with execute permission, running it as a program would set the variables in a child shell and then discard them.` },
     ] },
     { kind: 'circuit', q: `A board appears as \`/dev/ttyACM0\` instead of \`/dev/ttyUSB0\`. What does that tell you about its hardware?`, choices: [
-      { t: 'It is faulty; serial devices should be ttyUSB.', why: `Both names are normal. They reflect which kernel driver is in use.` },
-      { t: 'Its USB interface presents the standard CDC-ACM serial class, as native-USB microcontrollers and many on-board debug probes do, not a vendor-specific bridge chip.', ok: true, why: `The \`cdc_acm\` driver creates \`ttyACM\` nodes; bridge-chip drivers create \`ttyUSB\` nodes.` },
-      { t: 'It runs at a fixed baud rate of 9600.', why: `The node name says nothing about speed. It reflects the driver that bound.` },
+      { t: `Something is misconfigured: USB serial devices should appear as ttyUSB, and ACM is a fallback name.`, why: `Both names are normal. They reflect which kernel driver is in use.` },
+      { t: `Its USB interface presents the standard CDC-ACM serial class, not a vendor-specific bridge chip's protocol.`, ok: true, why: `The \`cdc_acm\` driver creates \`ttyACM\` nodes; bridge-chip drivers create \`ttyUSB\` nodes.` },
+      { t: `It is a modem-class device, so it runs at a fixed baud rate that the host cannot change.`, why: `The node name says nothing about speed. It reflects the driver that bound.` },
     ] },
     { kind: 'concept', q: `After plugging in a board, the first flashing attempt fails with "port is busy" and a second attempt ten seconds later succeeds. \`dmesg\` shows the port attached and staying attached. Which explanation fits?`, choices: [
-      { t: 'A charge-only cable.', why: `With no data wires the port would never appear and the second attempt could not succeed.` },
-      { t: 'ModemManager probing the new serial port for a few seconds.', ok: true, why: `It opens new ports briefly to look for a modem, then lets go. That matches "busy at first, fine later".` },
-      { t: 'Your user is missing from the dialout group.', why: `A missing group gives "permission denied" every time. It would not clear up by itself after ten seconds.` },
+      { t: `A charge-only cable, which delays enumeration until the second attempt.`, why: `With no data wires the port would never appear and the second attempt could not succeed.` },
+      { t: `ModemManager probing the new serial port for a few seconds after it appears.`, ok: true, why: `It opens new ports briefly to look for a modem, then lets go. That matches "busy at first, fine later".` },
+      { t: `Your user is missing from the dialout group, and the first attempt triggers the access request.`, why: `A missing group gives "permission denied" every time. It would not clear up by itself after ten seconds.` },
     ] },
     { kind: 'concept', q: `You type \`sudo usermod -G dialout $USER\`, leaving out \`-a\`. What is the consequence?`, choices: [
-      { t: 'Nothing different; -a is optional.', why: `The flag changes the meaning of \`-G\` from "add to" to "set to exactly".` },
-      { t: 'Your supplementary groups are replaced by dialout alone, so at next login you are no longer in groups such as sudo.', ok: true, why: `Without \`-a\`, \`-G\` sets the complete list. Recovering can require a rescue boot.` },
-      { t: 'The command fails with an error.', why: `It succeeds silently, which is what makes this mistake dangerous.` },
+      { t: `Nothing different: -a is the default behaviour whenever -G names a single group.`, why: `The flag changes the meaning of \`-G\` from "add to" to "set to exactly".` },
+      { t: `All your other supplementary groups, such as sudo, are dropped at your next login.`, ok: true, why: `Without \`-a\`, \`-G\` sets the complete list. Recovering can require a rescue boot.` },
+      { t: `The command refuses to run and prints an error, because -G requires -a on modern systems.`, why: `It succeeds silently, which is what makes this mistake dangerous.` },
     ] },
     { kind: 'concept', q: `In a virtual machine, flashing starts, then fails halfway with "device disconnected". On the host OS a new USB device notification appears at the same moment. What most likely happened?`, choices: [
-      { t: 'The board re-enumerated during flashing and the hypervisor returned the new device to the host instead of the guest.', ok: true, why: `Passthrough is per device. A reset that changes how the board identifies itself needs a filter that matches the new identity too.` },
-      { t: 'The dialout group membership expired.', why: `Group membership does not expire during a session, and it would not make a device show up on the host.` },
-      { t: 'The baud rate was too low.', why: `A low baud rate makes flashing slow. It does not make a USB device move from guest to host.` },
+      { t: `The board re-enumerated during flashing and the hypervisor returned the new device to the host, not the guest.`, ok: true, why: `Passthrough is per device. A reset that changes how the board identifies itself needs a filter that matches the new identity too.` },
+      { t: `The guest's dialout group membership is checked again when a device resets, and the check failed.`, why: `Group membership does not expire during a session, and it would not make a device show up on the host.` },
+      { t: `The flashing baud rate was too low, so the transfer timed out and the device dropped off the bus.`, why: `A low baud rate makes flashing slow. It does not make a USB device move from guest to host.` },
     ] },
   ],
 };

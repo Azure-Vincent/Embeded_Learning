@@ -94,8 +94,8 @@ So flash encryption is paired with other mechanisms, never used alone: **secure 
 
     { t: 'predict', q: 'A device with flash encryption (no secure boot) stores "failed PIN attempts" in an encrypted flash record and locks permanently at 5. An adversary can read and write the external flash chip but cannot decrypt it. How could the limit be defeated?',
       choices: [
-        { t: 'Save the ciphertext of the record while the count is 0 and write it back after every few attempts', ok: true, why: 'The old ciphertext is still valid at that address under that key. Encryption gave confidentiality of the counter, which was never the property that mattered; the counter needed freshness.' },
-        { t: 'It cannot be defeated, because the adversary cannot read the counter', why: 'Reading it is unnecessary. Restoring a previous state requires only copying bytes, not understanding them.' },
+        { t: 'Save the record\'s ciphertext while the count is 0 and write it back every few attempts', ok: true, why: 'The old ciphertext is still valid at that address under that key. Encryption gave confidentiality of the counter, which was never the property that mattered; the counter needed freshness.' },
+        { t: 'It cannot be defeated: the adversary can neither read the counter nor produce a valid ciphertext for a lower value', why: 'Neither reading nor producing anything is necessary. Restoring a previous state requires only copying bytes, not understanding them.' },
         { t: 'By decrypting the record with the flash offset, which is the tweak', why: 'The tweak is public and is only one input. Without the key in eFuse nothing can be decrypted.' },
       ],
       reveal: 'Ask of every stored value which guarantee it needs. A retry counter needs to be un-rewindable: keep it in monotonic storage, or bind the record to a counter that is. A password needs confidentiality. A configuration flag needs integrity. They are different requirements with different mechanisms.' },
@@ -175,39 +175,39 @@ Carry the reasoning to a part that executes from **internal** flash, such as the
   quiz: [
     { q: 'Flash encryption is enabled on a device with external SPI flash. What does an adversary who desolders and reads the flash chip obtain?', kind: 'security',
       choices: [
-        { t: 'Ciphertext; without the key held inside the microcontroller it reveals neither code nor stored secrets', ok: true, why: 'The key never leaves the SoC, so the bytes on the separate flash part are not useful on their own.' },
+        { t: 'Ciphertext, useless without the key held inside the microcontroller', ok: true, why: 'The key never leaves the SoC, so the bytes on the separate flash part are not useful on their own.' },
         { t: 'Plaintext, because the flash chip stores the key in its own status register', why: 'The flash part is an ordinary memory with no knowledge of the encryption. The key is in the microcontroller\'s OTP.' },
         { t: 'Nothing: the chip refuses to be read once encryption is enabled', why: 'The flash part still answers read commands normally. What changes is the meaning of the bytes it returns.' },
       ] },
     { q: 'According to the ESP-IDF flash encryption guide, how does the original ESP32 differ from chips such as the ESP32-C3?', kind: 'arch',
       choices: [
-        { t: 'The original ESP32 uses AES-256 with an offset-derived key tweak and is not XTS; the ESP32-C3 uses XTS-AES with a 256-bit key', ok: true, why: 'These are the two schemes the guide describes. Their eFuse names differ too: FLASH_CRYPT_CNT versus SPI_BOOT_CRYPT_CNT.' },
-        { t: 'Both use XTS-AES; only the key length differs', why: 'The guide is explicit that the original chip\'s scheme predates and differs from the XTS one.' },
+        { t: 'The ESP32 uses AES-256 with an offset-derived key tweak, not XTS; the C3 uses XTS-AES', ok: true, why: 'These are the two schemes the guide describes. Their eFuse names differ too: FLASH_CRYPT_CNT versus SPI_BOOT_CRYPT_CNT.' },
+        { t: 'Both use XTS-AES as defined in IEEE 1619; only the key length differs between the two chips', why: 'The guide is explicit that the original chip\'s scheme predates and differs from the XTS one.' },
         { t: 'The original ESP32 has no flash encryption', why: 'It has flash encryption, with its key in an eFuse block; the scheme is simply an older design.' },
       ] },
     { q: 'Why can whole-flash transparent encryption not authenticate the data it protects?', kind: 'concept',
       choices: [
-        { t: 'Ciphertext must be the same size as plaintext so addresses still map one-to-one, which leaves no room for per-block tags', ok: true, why: 'Authentication needs extra stored bits. Length-preserving storage encryption has none, by design.' },
+        { t: 'Ciphertext is the same size as plaintext, leaving no room for per-block tags', ok: true, why: 'Authentication needs extra stored bits. Length-preserving storage encryption has none, by design.' },
         { t: 'AES is unable to produce authentication tags', why: 'AES is used inside authenticated modes such as GCM and CMAC. The limitation here comes from the storage layout, not the cipher.' },
-        { t: 'It does authenticate: decryption fails if a block is modified', why: 'Decryption of a modified block still produces output, just different output. Nothing signals an error.' },
+        { t: 'It does authenticate: decryption of a modified block fails and the chip raises a flash read error', why: 'Decryption of a modified block still produces output, just different output. Nothing signals an error.' },
       ] },
     { q: 'A record in flash is protected with AES-GCM. An adversary replaces it with a copy of the same record saved a month ago. Does the tag check fail?', kind: 'security',
       choices: [
-        { t: 'No. The old record is a genuine, correctly tagged record; detecting it needs a version or counter checked against monotonic state', ok: true, why: 'Authenticity says who made the data, not when. Freshness is a separate requirement.' },
-        { t: 'Yes, because the nonce has been used before', why: 'The verifier does not remember which nonces it has seen unless you build that. A stored record legitimately keeps its nonce.' },
+        { t: 'No. The old record is genuine and correctly tagged; freshness needs a version check', ok: true, why: 'Authenticity says who made the data, not when. Freshness is a separate requirement.' },
+        { t: 'Yes, because the nonce has been used before and GCM rejects a nonce it has already seen', why: 'The verifier does not remember which nonces it has seen unless you build that. A stored record legitimately keeps its nonce.' },
         { t: 'Yes, because GCM tags expire', why: 'A tag is a pure function of key, nonce, data and associated data. It has no notion of time.' },
       ] },
     { q: 'An ESP32 product ships with flash encryption enabled but left in development mode, without secure boot. A buyer has a USB-serial cable and no key. What can they do?', kind: 'security',
       choices: [
-        { t: 'Flash a plaintext program of their own through the ROM download mode; the chip encrypts and runs it, and it can read the rest of the flash decrypted', ok: true, why: 'Development mode keeps the encrypt-on-download path so that boards can be re-flashed on the bench. The ESP-IDF guide notes that this indirectly allows the plaintext of the flash to be read out.' },
-        { t: 'Nothing useful: the flash contents are ciphertext in either mode', why: 'The stored bytes are ciphertext in both modes. What differs is whether the chip will still encrypt and run an image handed to it over the serial port.' },
-        { t: 'Read the encryption key out of eFuse over the serial port', why: 'The key block is read-protected in both modes, so no tool returns it. The route that development mode leaves open does not need the key at all.' },
+        { t: 'Flash their own plaintext program over serial; the chip encrypts it, runs it, and it reads the flash decrypted', ok: true, why: 'Development mode keeps the encrypt-on-download path so that boards can be re-flashed on the bench. The ESP-IDF guide notes that this indirectly allows the plaintext of the flash to be read out.' },
+        { t: 'Nothing useful: the flash holds ciphertext in either mode, and the serial loader cannot decrypt it for them', why: 'The stored bytes are ciphertext in both modes. What differs is whether the chip will still encrypt and run an image handed to it over the serial port.' },
+        { t: 'Read the encryption key out of eFuse over the serial port, since development mode leaves it readable', why: 'The key block is read-protected in both modes, so no tool returns it. The route that development mode leaves open does not need the key at all.' },
       ] },
     { q: 'Which stored item most needs freshness rather than confidentiality?', kind: 'concept',
       choices: [
-        { t: 'A counter of failed PIN attempts', ok: true, why: 'Its value is not secret. The harm comes from returning it to an earlier state.' },
+        { t: 'A count of failed PIN attempts', ok: true, why: 'Its value is not secret. The harm comes from returning it to an earlier state.' },
         { t: 'A Wi-Fi password', why: 'Reading it is the harm. Restoring an older password mostly just breaks connectivity.' },
-        { t: 'A private device identity key', why: 'Disclosure is the primary harm for a private key.' },
+        { t: 'A device\'s private identity key', why: 'Disclosure is the primary harm for a private key.' },
       ] },
   ],
 };
@@ -293,9 +293,9 @@ Three design points decide whether it works:
 
     { t: 'predict', q: 'A design raises the anti-rollback floor in the bootloader as soon as a new image passes signature verification, before booting it. Release 7 has a bug that makes it crash at start-up on boards with a second-source flash chip. What happens to those boards?',
       choices: [
-        { t: 'They are stuck: release 7 crashes and release 6 is now below the floor, so there is nothing the device may run', ok: true, why: 'Raising the floor is irreversible. Doing it before the new image has proved it works turns a recoverable bad release into bricked units.' },
+        { t: 'They are stuck: release 7 crashes and release 6 is now below the floor', ok: true, why: 'Raising the floor is irreversible. Doing it before the new image has proved it works turns a recoverable bad release into bricked units.' },
         { t: 'They fall back to release 6 and keep working', why: 'Falling back requires that release 6 is still acceptable. The floor has already been moved past it.' },
-        { t: 'The bootloader lowers the floor again when it detects the crash', why: 'The floor is in monotonic storage. No software step can reduce it, which is the property that makes it useful.' },
+        { t: 'The bootloader lowers the floor again when it sees the trial image crash', why: 'The floor is in monotonic storage. No software step can reduce it, which is the property that makes it useful.' },
       ],
       reveal: 'Sequence: verify, trial boot, self-test, confirm, then raise the floor. There is a deliberate window in which rollback to the previous version is still possible; it closes when the new version confirms.' },
 
@@ -351,7 +351,7 @@ You verify this by cutting power at every flash-operation boundary. On a host bu
 
 ESP-IDF provides this structure: two or more OTA app partitions, an \`otadata\` partition recording which to boot, and an \`esp_ota_*\` API to write and select images. Two bootloader features map directly onto this lesson:
 
-- **App rollback** (\`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE\`, off by default). The states in \`otadata\` are this lesson's states under other names:
+**App rollback** (\`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE\`, off by default). The states in \`otadata\` are this lesson's states under other names:
 
 | This lesson | ESP-IDF state | Set by |
 |---|---|---|
@@ -360,8 +360,9 @@ ESP-IDF provides this structure: two or more OTA app partitions, an \`otadata\` 
 | confirmed | \`ESP_OTA_IMG_VALID\` | the app, with \`esp_ota_mark_app_valid_cancel_rollback()\` |
 | bad | \`ESP_OTA_IMG_ABORTED\` (never confirmed) or \`ESP_OTA_IMG_INVALID\` (app rejected itself) | the bootloader on the next boot, or the app |
 
-  A reset for any reason while the image is pending-verify (the option's help text names power loss and the watchdog) ends in rollback to the previous app. With the option off, none of these states is used and a bad image simply keeps booting.
-- **Anti-rollback** (\`CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK\`, which depends on app rollback being enabled). Each app carries a \`secure_version\` in its application description, set at build time by \`CONFIG_BOOTLOADER_APP_SECURE_VERSION\`. The chip keeps its floor in an eFuse field as a unary count, the number of bits set, exactly like the model above: 32 bits on the original ESP32, 16 on most other chips, 9 on the ESP32-C5 and only 4 on the ESP32-C2. The bootloader selects only apps whose version is at least the eFuse value, and the eFuse is advanced when the new app calls \`esp_ota_mark_app_valid_cancel_rollback()\`. Conditions the guide attaches: the partition table must be \`ota_0\` + \`ota_1\` with **no factory or test app** (those would be an unversioned way back), and on the original ESP32 the eFuse coding scheme must be "None". One exception to "the floor moves at confirm": if \`otadata\` is still blank and a higher-versioned app was flashed over serial, the bootloader advances the eFuse immediately.
+A reset for any reason while the image is pending-verify (the option's help text names power loss and the watchdog) ends in rollback to the previous app. With the option off, none of these states is used and a bad image simply keeps booting.
+
+**Anti-rollback** (\`CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK\`, which depends on app rollback being enabled). Each app carries a \`secure_version\` in its application description, set at build time by \`CONFIG_BOOTLOADER_APP_SECURE_VERSION\`. The chip keeps its floor in an eFuse field as a unary count, the number of bits set, exactly like the model above: 32 bits on the original ESP32, 16 on most other chips, 9 on the ESP32-C5 and only 4 on the ESP32-C2. The bootloader selects only apps whose version is at least the eFuse value, and the eFuse is advanced when the new app calls \`esp_ota_mark_app_valid_cancel_rollback()\`. Conditions the guide attaches: the partition table must be \`ota_0\` + \`ota_1\` with **no factory or test app** (those would be an unversioned way back), and on the original ESP32 the eFuse coding scheme must be "None". One exception to "the floor moves at confirm": if \`otadata\` is still blank and a higher-versioned app was flashed over serial, the bootloader advances the eFuse immediately.
 
 An updater can ask \`esp_efuse_check_secure_version(new_version)\` after receiving the first block of an image, and stop a doomed download before erasing anything.`,
 
@@ -440,14 +441,14 @@ Suppose updates are delivered by a phone app over BLE, and the adversary control
   quiz: [
     { q: 'An update file for an old firmware version carries a valid vendor signature. Without anti-rollback, what does the device do when offered it?', kind: 'security',
       choices: [
-        { t: 'Installs it, because the signature proves who made it and says nothing about whether it is still acceptable', ok: true, why: 'Authenticity and currency are separate properties. A version floor in monotonic storage supplies the second.' },
-        { t: 'Rejects it, because signatures include an expiry date', why: 'A raw signature has no notion of time, and most small devices have no trusted clock to check one against.' },
+        { t: 'Installs it: the signature proves who made it, not that it is current', ok: true, why: 'Authenticity and currency are separate properties. A version floor in monotonic storage supplies the second.' },
+        { t: 'Rejects it, because vendor signatures carry an expiry date that the device checks', why: 'A raw signature has no notion of time, and most small devices have no trusted clock to check one against.' },
         { t: 'Rejects it, because the hash differs from the installed image', why: 'Every update differs from the installed image; that difference cannot be a reason for rejection.' },
       ] },
     { q: 'Why must the anti-rollback floor be kept in OTP or equivalent monotonic storage and not in the normal flash configuration area?', kind: 'arch',
       choices: [
-        { t: 'Whoever can rewrite flash to install an old image can rewrite a flash-stored floor at the same time', ok: true, why: 'The floor must be at least as hard to change as the thing it guards. One-way storage achieves that.' },
-        { t: 'Flash is too slow to read during boot', why: 'The bootloader already reads the whole application from flash. Read speed is not the issue.' },
+        { t: 'Whoever can rewrite flash to install an old image can rewrite the floor too', ok: true, why: 'The floor must be at least as hard to change as the thing it guards. One-way storage achieves that.' },
+        { t: 'Flash is too slow to read during boot, while an OTP word is read in a single cycle', why: 'The bootloader already reads the whole application from flash. Read speed is not the issue.' },
         { t: 'OTP is larger than flash', why: 'OTP is far smaller, which is why the security version is kept separate from the release number.' },
       ] },
     { q: 'When should the floor be raised to the new image\'s security version?', kind: 'concept',
@@ -458,21 +459,21 @@ Suppose updates are delivered by a phone app over BLE, and the adversary control
       ] },
     { q: 'What is wrong with this bounds check on an untrusted 32-bit length?', code: 'uint32_t len = header->payload_len;          /* from the image */\nif (HDR_LEN + len + SIG_LEN <= SLOT_SIZE) {  /* all uint32_t */\n    flash_write(slot, payload, len);\n}', kind: 'code',
       choices: [
-        { t: 'For len near 0xFFFFFFFF the sum wraps around to a small value and the check passes', ok: true, why: 'Unsigned arithmetic is modulo 2^32. Keep the untrusted value alone on one side: len <= SLOT_SIZE - HDR_LEN - SIG_LEN.' },
+        { t: 'For len near 0xFFFFFFFF the sum wraps to a small value', ok: true, why: 'Unsigned arithmetic is modulo 2^32. Keep the untrusted value alone on one side: len <= SLOT_SIZE - HDR_LEN - SIG_LEN.' },
         { t: '<= should be <, otherwise it is correct', why: 'An image that exactly fills the slot is legitimate. The comparison operator is not the flaw.' },
-        { t: 'uint32_t is too small to hold a flash size', why: '32 bits address 4 GiB, far more than a microcontroller slot. The type\'s range is sufficient; the arithmetic on it is the issue.' },
+        { t: 'uint32_t is too small to hold HDR_LEN + SLOT_SIZE for a large flash', why: '32 bits address 4 GiB, far more than a microcontroller slot. The type\'s range is sufficient; the arithmetic on it is the issue.' },
       ] },
     { q: 'A new image is booted for the first time and hangs in an initialisation loop. In a correct A/B design, what brings the device back?', kind: 'arch',
       choices: [
-        { t: 'The watchdog resets it; the bootloader finds the slot still marked trial, marks it bad and boots the previous slot', ok: true, why: 'The trial state persists across the reset precisely so that "did not confirm" is detectable without knowing why.' },
-        { t: 'The new image detects its own hang and rolls back', why: 'Code that is stuck cannot be relied on to run its own recovery. The decision belongs to the bootloader on the next boot.' },
+        { t: 'The watchdog resets it; the bootloader sees the slot still on trial and boots the previous one', ok: true, why: 'The trial state persists across the reset precisely so that "did not confirm" is detectable without knowing why.' },
+        { t: 'The new image detects its own hang with a software timer and rolls itself back', why: 'Code that is stuck cannot be relied on to run its own recovery. The decision belongs to the bootloader on the next boot.' },
         { t: 'Nothing; a user must re-flash it', why: 'This is the outcome of a single-slot design. Two slots and a trial state exist to avoid it.' },
       ] },
     { q: 'Why does the bootloader verify the application signature at every boot when the updater already verified it at download?', kind: 'security',
       choices: [
-        { t: 'Flash contents can be changed after the download check, for instance by rewriting the chip directly', ok: true, why: 'Download-time verification protects the channel. Boot-time verification protects the storage.' },
+        { t: 'Flash can be changed after the download check', ok: true, why: 'Download-time verification protects the channel. Boot-time verification protects the storage.' },
         { t: 'Signatures decay and must be refreshed', why: 'A signature is a fixed value. Nothing about it changes with time.' },
-        { t: 'It does not need to; one check is enough', why: 'This assumes nothing can alter flash between the two moments, which is false for an adversary with physical access.' },
+        { t: 'It does not need to; the download check is enough and the boot check only adds delay', why: 'This assumes nothing can alter flash between the two moments, which is false for an adversary with physical access.' },
       ] },
   ],
 };
@@ -533,8 +534,8 @@ The general idea to carry between chips: **the route back to an open device must
 
     { t: 'predict', q: 'A product disables SWD by having the application write a register that turns the SWD pins into GPIO, as its first statement in main(). An adversary has physical access. What is the weakness?',
       choices: [
-        { t: 'A probe can hold the chip in reset, connect, and halt the core before main() ever runs', ok: true, why: 'Anything done by application code takes effect only after that code executes. Debug logic is usable from the reset state unless the chip\'s own boot configuration disables it.' },
-        { t: 'None: with the pins reassigned the probe has nothing to talk to', why: 'True only once the reassignment has executed. There is a window between reset and that statement.' },
+        { t: 'A probe can connect under reset and halt the core before main() runs', ok: true, why: 'Anything done by application code takes effect only after that code executes. Debug logic is usable from the reset state unless the chip\'s own boot configuration disables it.' },
+        { t: 'None: once the pins are reassigned as GPIO the probe has nothing left to talk to', why: 'True only once the reassignment has executed. There is a window between reset and that statement.' },
         { t: 'The pins can be changed back by sending the right UART command', why: 'There is no such general command. The weakness is about timing at reset, not about another interface.' },
       ],
       reveal: 'Lockdown has to live where it takes effect before any code runs: in OTP or boot configuration memory that the chip evaluates at reset.' },
@@ -701,37 +702,37 @@ The 2026 eCTF reference design holds files with per-group permissions behind a P
   quiz: [
     { q: 'Why does an open debug port undermine secure boot and flash encryption?', kind: 'security',
       choices: [
-        { t: 'It gives direct read and write access to memory and CPU state without going through the firmware those mechanisms protect', ok: true, why: 'Secure boot and flash encryption constrain what is loaded and what is stored. A debugger operates beneath both, on the running system.' },
-        { t: 'It slows down signature verification enough to cause time-outs', why: 'The port has no effect on verification speed when no probe is attached.' },
+        { t: 'It reads and writes memory and CPU state directly, bypassing the firmware', ok: true, why: 'Secure boot and flash encryption constrain what is loaded and what is stored. A debugger operates beneath both, on the running system.' },
+        { t: 'It slows signature verification enough to cause time-outs, so the boot check is skipped', why: 'The port has no effect on verification speed when no probe is attached.' },
         { t: 'It does not; those mechanisms also encrypt debug traffic', why: 'Debug protocols carry plain register and memory values. Nothing in secure boot or flash encryption changes that.' },
       ] },
     { q: 'The MSPM0L2228 boot configuration offers debug access as enabled, enabled with password, or disabled, and mass erase as enabled, password, or disabled. Which pair keeps a recovery path while protecting secrets?', kind: 'arch',
       choices: [
         { t: 'Debug disabled, mass erase enabled or password-protected', ok: true, why: 'Access can be regained only by erasing, which destroys the secrets first. Recovery and confidentiality are both kept.' },
-        { t: 'Debug enabled, mass erase disabled', why: 'This leaves full memory access to anyone with a probe and removes the ability to wipe the device.' },
+        { t: 'Debug enabled, mass erase disabled, header unpopulated', why: 'This leaves full memory access to anyone with a probe and removes the ability to wipe the device.' },
         { t: 'Debug disabled, mass erase disabled', why: 'Secrets are protected, but there is no way back from a mistake or for service; this is the permanent option, not the recoverable one.' },
       ] },
     { q: 'What does marking RAM execute-never achieve?', kind: 'concept',
       choices: [
-        { t: 'The CPU faults if it tries to fetch an instruction from RAM, so bytes injected into a buffer cannot be run as code', ok: true, why: 'It removes the simplest route from "can write data" to "can run chosen code".' },
-        { t: 'It prevents buffer overflows from happening', why: 'The overflow still writes memory. The attribute changes what the overwritten bytes can be used for, not whether the write occurs.' },
+        { t: 'The CPU faults on any instruction fetch from RAM, so injected bytes cannot run', ok: true, why: 'It removes the simplest route from "can write data" to "can run chosen code".' },
+        { t: 'It prevents buffer overflows: a write past the end of a RAM buffer now raises a fault', why: 'The overflow still writes memory. The attribute changes what the overwritten bytes can be used for, not whether the write occurs.' },
         { t: 'It encrypts RAM contents', why: 'Region attributes control access type. They do not transform stored data.' },
       ] },
     { q: 'An unprivileged task needs a privileged service to write a flash page, and passes a pointer and a length through SVC. What must the SVC handler do first?', kind: 'security',
       choices: [
-        { t: 'Validate that the pointer and length lie entirely within memory the caller is allowed to access, and that the target page is one the caller may write', ok: true, why: 'The handler runs with full privilege on arguments chosen by less-trusted code. Unchecked, the caller can direct privileged reads and writes anywhere.' },
-        { t: 'Disable the MPU so the handler can reach the buffer', why: 'Privileged code can already reach what it needs. Turning protection off inside the most sensitive path removes the safeguard exactly where it matters.' },
+        { t: 'Check that the pointer, length and target page are all ones this caller may use', ok: true, why: 'The handler runs with full privilege on arguments chosen by less-trusted code. Unchecked, the caller can direct privileged reads and writes anywhere.' },
+        { t: 'Disable the MPU for the duration of the call so the handler can reach the caller\'s buffer', why: 'Privileged code can already reach what it needs. Turning protection off inside the most sensitive path removes the safeguard exactly where it matters.' },
         { t: 'Nothing: arguments from the same firmware image can be trusted', why: 'The purpose of the split is that the unprivileged side may be under an adversary\'s control after a bug. Its arguments are untrusted input.' },
       ] },
     { q: 'On a Cortex-M0+ with the MPU enabled, a task writes to a region it has no permission for. What exception is taken?', kind: 'arch',
       choices: [
         { t: 'HardFault, because ARMv6-M has no separate MemManage exception', ok: true, why: 'The dedicated MemManage fault and its status registers belong to ARMv7-M cores such as the Cortex-M4.' },
-        { t: 'MemManage, as on every Cortex-M core', why: 'That is the ARMv7-M behaviour. The smaller ARMv6-M exception model does not include it.' },
+        { t: 'MemManage, as on every Cortex-M core that has an MPU', why: 'That is the ARMv7-M behaviour. The smaller ARMv6-M exception model does not include it.' },
         { t: 'No exception; the write is silently ignored', why: 'An MPU violation always raises a fault. Silent discard would hide bugs and attacks alike.' },
       ] },
     { q: 'A stack canary is checked just before a function returns. Which defect does it detect?', kind: 'code',
       choices: [
-        { t: 'A linear overflow of a local array that runs up toward the saved return address', ok: true, why: 'The guard value sits between the locals and the saved registers, so a contiguous overwrite changes it first.' },
+        { t: 'A linear overflow of a local array toward the return address', ok: true, why: 'The guard value sits between the locals and the saved registers, so a contiguous overwrite changes it first.' },
         { t: 'A write through a wild pointer directly to the return address', why: 'A write that jumps straight to the target address leaves the guard untouched, so the check passes.' },
         { t: 'Too much recursion exhausting the stack', why: 'Exhaustion runs off the bottom of the stack region without touching any frame\'s guard value. A guard region at the stack limit handles that case.' },
       ] },
@@ -813,8 +814,8 @@ out:
     return ok;
 }`,
       choices: [
-        { t: '0 for that case, but 1 for an image shorter than the header, because ok starts as success and the early exit skips the check', ok: true, why: 'The default value decides what every unplanned path returns. Initialise to failure and set success in exactly one place, after all checks have passed.' },
-        { t: '0 in every failure case', why: 'Trace the path where len is too small: the jump goes straight to the return with the initial value still in place.' },
+        { t: '0 for that case, but 1 for an image shorter than the header', ok: true, why: 'The default value decides what every unplanned path returns. Initialise to failure and set success in exactly one place, after all checks have passed.' },
+        { t: '0 in every failure case, because ok is only left at 1 when crypto_verify succeeds', why: 'Trace the path where len is too small: the jump goes straight to the return with the initial value still in place.' },
         { t: '-1, the value from crypto_verify', why: 'The function returns its own variable, which is only ever 1 or 0.' },
       ],
       reveal: 'This "fail open" shape has appeared in real, widely used code. The rule is mechanical: result variables start as failure; success is assigned once, at the end.' },
@@ -933,38 +934,38 @@ You have three engineers and eight weeks, the situation of a competition team or
   quiz: [
     { q: 'Which is a well-formed security requirement?', kind: 'concept',
       choices: [
-        { t: 'A production unit shall refuse to boot an application image not signed by the release key (verified by test SB-2)', ok: true, why: 'It states an outcome, names the condition, and points at the test that demonstrates it.' },
-        { t: 'The firmware shall be secure against attackers', why: 'There is no way to test or review this; it names neither an asset nor an adversary nor an observable behaviour.' },
+        { t: 'A production unit shall refuse to boot an image not signed by the release key (test SB-2)', ok: true, why: 'It states an outcome, names the condition, and points at the test that demonstrates it.' },
+        { t: 'The firmware shall be secure against attackers with physical or remote access', why: 'There is no way to test or review this; it names neither an asset nor an adversary nor an observable behaviour.' },
         { t: 'The firmware shall use SHA-256', why: 'This names an algorithm without a purpose. Using a hash somewhere satisfies it and protects nothing in particular.' },
       ] },
     { q: 'What is wrong with this check?', code: '#define MAX_LEN 64                  /* an int constant */\nint n = get_len_from_packet();      /* attacker-controlled */\nif (n > MAX_LEN) return -1;\nmemcpy(buf, pkt, n);                /* buf is 64 bytes */', kind: 'code',
       choices: [
-        { t: 'A negative n passes the signed comparison and is then converted to a huge size_t by memcpy', ok: true, why: 'Both operands of the comparison are signed, so -1 is less than 64. The call then converts -1 to the largest size_t value. Lengths should be unsigned and checked as such.' },
-        { t: 'The comparison should be >= so that exactly 64 bytes is rejected', why: 'Copying exactly 64 bytes into a 64-byte buffer is in bounds. Tightening the upper limit leaves the real gap open.' },
+        { t: 'A negative n passes the signed comparison, then becomes a huge size_t', ok: true, why: 'Both operands of the comparison are signed, so -1 is less than 64. The call then converts -1 to the largest size_t value. Lengths should be unsigned and checked as such.' },
+        { t: 'The comparison should be >= so that a 64-byte copy, which overruns buf by one, is rejected', why: 'Copying exactly 64 bytes into a 64-byte buffer is in bounds, so nothing overruns. Tightening the upper limit leaves the real gap open.' },
         { t: 'memcpy cannot take its length from an int variable', why: 'The argument is converted to size_t automatically. That conversion is what makes an unexpected sign dangerous, not what makes the call illegal.' },
       ] },
     { q: 'Why build firmware parsers for the host PC and run them under AddressSanitizer?', kind: 'concept',
       choices: [
-        { t: 'An out-of-bounds access that silently "works" on the target is reported immediately with the faulting line', ok: true, why: 'On a microcontroller a one-byte overread usually returns some neighbouring value and the test passes. The sanitizer instruments every access.' },
-        { t: 'Host builds prove the code is constant-time on the target', why: 'Timing depends on the target\'s compiler output and CPU. A host run says nothing about it.' },
+        { t: 'An out-of-bounds access that silently "works" on the target is reported at once', ok: true, why: 'On a microcontroller a one-byte overread usually returns some neighbouring value and the test passes. The sanitizer instruments every access.' },
+        { t: 'Host builds with sanitizers prove the code is memory-safe and constant-time on the target', why: 'Timing depends on the target\'s compiler output and CPU. A host run says nothing about it.' },
         { t: 'It removes the need to test on the target', why: 'Peripheral behaviour, lockdown state and timing can only be checked on the real device.' },
       ] },
     { q: 'A release fixes a security flaw. Which step makes sure the flawed version cannot be reinstalled later?', kind: 'security',
       choices: [
-        { t: 'Incrementing the image\'s security version so that the anti-rollback floor rises once the new image confirms', ok: true, why: 'The old image stays correctly signed for ever. Only the version floor makes it unacceptable.' },
-        { t: 'Deleting the old image from the download server', why: 'Copies of the old file already exist outside your control, and each one still carries a valid signature.' },
+        { t: 'Incrementing the security version, so the floor rises once the new image confirms', ok: true, why: 'The old image stays correctly signed for ever. Only the version floor makes it unacceptable.' },
+        { t: 'Deleting the old image from the download server and revoking its links, so no device can fetch it again', why: 'Copies of the old file already exist outside your control, and each one still carries a valid signature.' },
         { t: 'Signing the new image with a longer key', why: 'Key length has no bearing on whether previously signed images are still accepted.' },
       ] },
     { q: 'What is an SBOM for, when a vulnerability is announced in a third-party library?', kind: 'concept',
       choices: [
-        { t: 'It tells you which of your products and firmware versions contain the affected library version', ok: true, why: 'Without the list, "are we affected?" means reverse-engineering your own releases under time pressure.' },
+        { t: 'It tells you which products and versions contain the affected library', ok: true, why: 'Without the list, "are we affected?" means reverse-engineering your own releases under time pressure.' },
         { t: 'It patches the library automatically', why: 'An SBOM is an inventory document. It informs the fix; it does not perform one.' },
-        { t: 'It proves the product has no vulnerabilities', why: 'It lists components. Whether those components have flaws is a separate question it helps you answer.' },
+        { t: 'It proves to customers that the product contains no vulnerable components', why: 'It lists components. Whether those components have flaws is a separate question it helps you answer.' },
       ] },
     { q: 'Who should execute the release-hardening checklist?', kind: 'concept',
       choices: [
         { t: 'Someone other than the author of the change, recording evidence for each item', ok: true, why: 'Independent execution with attached evidence catches the "I am sure I enabled that" class of error, which is how development configurations reach the field.' },
-        { t: 'Nobody; the CI pipeline being green is sufficient', why: 'CI covers what can be automated on a build. Device-state items such as lockdown and eFuse read-back need a unit from the production flow.' },
+        { t: 'Nobody: a green CI pipeline already covers every item on the list', why: 'CI covers what can be automated on a build. Device-state items such as lockdown and eFuse read-back need a unit from the production flow.' },
         { t: 'The developer, from memory, after the release has shipped', why: 'A checklist completed afterwards from memory records belief, not observation, and comes too late to stop a bad release.' },
       ] },
   ],

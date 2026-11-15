@@ -137,7 +137,7 @@ Restore \`>=\` and confirm \`make test\` passes again. Then run \`make bug-demo\
 }`, lang: 'c', status: 'pseudo' },
     { title: 'Part 4: port to Bench-MCU', md: `Now move the application to a microcontroller it has never run on. In the simulator the whole program has to be one file, so the portable code is pasted below a HAL section that you write. This is the same task as writing \`port/hal_benchmcu.c\`; compare with that file afterwards.
 
-The test bench feeds command lines into UART0's receiver and checks both what is transmitted and the final state of \`GPIO_OUT\`.`,
+The test bench feeds command lines into UART0's receiver and checks what is transmitted, the pin directions, the state of \`GPIO_OUT\`, and the relock timeout: the latch must still be open 2500 timer periods after a correct PIN and must close once your \`hal_millis\` has counted 5000 ms. (The lab's board constant is 100 timer ticks per millisecond, not the 1000 in \`port/hal_benchmcu.c\`, so that the simulator can cover five seconds.)`,
       blocks: [{ t: 'widget', name: 'c-lab', props: clPortBench }] },
     { title: 'Part 5 (optional, hardware): bring it up on an ESP32', md: `This part needs a board. The files \`port/hal_esp32.c\` and \`port/main_esp32.c\` implement the HAL with the ESP-IDF UART and GPIO drivers. **They were written against the ESP-IDF documentation and have not been compiled or run by the authors**, so treat the first build as a review exercise: read every API call against the documentation of the IDF version you installed.
 
@@ -228,7 +228,7 @@ void hal_gpio_write(hal_pin_t pin, bool level)
 
 **Negative check.** A test suite you have never seen fail is unproven. For at least two tests, change the code so that they should fail (for example \`LOCK_MAX_BAD\` to 4, or remove the \`'\\r'\` handling), confirm that the expected test and only a plausible set of others goes red, and restore the code.
 
-**Bench-MCU (part 4).** All three tests in the C lab must pass: the UART transmit text must match exactly and \`GPIO_OUT\` must read \`0x10\` (latch), \`0x20\` (lockout LED) and \`0x00\` respectively.
+**Bench-MCU (part 4).** All four tests in the C lab must pass: the UART transmit text must match exactly; \`GPIO_OUT\` must read \`0x10\` while the latch is open, go back to \`0x00\` by itself after the 5000 ms timeout, read \`0x20\` during lockout and \`0x00\` after an explicit \`LOCK\`.
 
 **ESP32 (part 5).** You should see, on the adapter's terminal: \`LOCKED\` in reply to \`STATUS\`; \`DENIED\`, \`DENIED\`, \`LOCKOUT\` for three wrong PINs with the lockout LED on; \`LOCKOUT\` in reply to the correct PIN during the next 30 s. With a logic analyser on the latch pin you should see a high pulse of about 5 s after a correct PIN. These are expectations from the code, not measurements made by the authors.`,
   ],
@@ -239,6 +239,7 @@ void hal_gpio_write(hal_pin_t pin, bool level)
     { symptom: 'Part 3b: the new test passes before you implement anything', cause: 'The test was not added to `main` with `RUN`, or it compares against the reply that the unknown-command path already gives.', fix: 'Confirm the test name appears in the `ran …` output and that it expects a number, not `ERR`.' },
     { symptom: 'Part 4: UART output is empty or missing characters', cause: '`UART_CTRL` ENABLE was not set in `hal_init`, or `hal_uart_write` writes `UART_DATA` without waiting for `TX_READY`.', fix: 'Set bit 0 of `UART_CTRL`; poll `UART_STATUS & UART_TX_READY` before each write, with a bounded count.' },
     { symptom: 'Part 4: replies are correct but the `GPIO_OUT` check fails', cause: 'The pins were never made outputs (`GPIO_DIR`), or the wrong bit is written for a pin role.', fix: 'Set bits 4 and 5 of `GPIO_DIR` in `hal_init`; map `HAL_PIN_LATCH` to bit 4 and `HAL_PIN_LED` to bit 5.' },
+    { symptom: 'Part 4: the simulator stops with "probably an infinite loop", or the latch closes far too early', cause: 'Time is wrong. If `hal_millis` never advances (timer not enabled, no auto-reload, EXPIRED never tested) the latch never relocks and the loop never ends. If it adds one on every call, or never clears EXPIRED, 5000 "milliseconds" pass in a fraction of the real time.', fix: 'In `hal_init` write `TIM_LOAD` and set ENABLE and AUTO_RELOAD in `TIM_CTRL`. In `hal_millis` count one millisecond only when `TIM_STATUS` bit 0 is set, and clear the flag by writing 1 to it.' },
     { symptom: 'Part 5: garbage characters on the terminal', cause: 'Baud rate or format mismatch, or the terminal is attached to the board\'s console port, which carries the bootloader and IDF log.', fix: 'Use the adapter\'s port at 115200 8N1. If still garbled, check that both sides share ground.' },
     { symptom: 'Part 5: nothing received and no reply', cause: 'TX and RX not crossed, or the chosen pins are in use on your board.', fix: 'Adapter TX goes to the ESP32 RX pin and vice versa. Check the board\'s schematic for the pins; the Protocols section\'s `protocol-debug` tool has this fault as a scenario.' },
     { symptom: 'Part 5: build fails on an include or a `PRIV_REQUIRES` name', cause: 'Driver component names and header locations have changed between ESP-IDF major versions, and the port file was not compiled by the authors.', fix: 'Look up the UART, GPIO and esp_timer pages for your IDF version and adjust the includes and component names. This is the review the step asked for.' },
@@ -300,7 +301,7 @@ void hal_gpio_write(hal_pin_t pin, bool level)
     { criterion: 'Architecture reading', points: 15, evidence: 'Notebook answers for part 2: T/U/b symbols classified by layer; predicted and measured .bss change.' },
     { criterion: 'Sanitizer report interpretation', points: 15, evidence: 'The report from part 3a with the faulting line, the array and the index identified.' },
     { criterion: 'Test-first feature', points: 25, evidence: 'The failing test output before implementation, then the passing run; an accessor in lock.h instead of direct struct access; a boundary test for the number formatter.' },
-    { criterion: 'Bench-MCU port', points: 25, evidence: 'All three C-lab tests pass with the portable section unmodified.' },
+    { criterion: 'Bench-MCU port', points: 25, evidence: 'All four C-lab tests pass with the portable section unmodified.' },
   ],
 };
 

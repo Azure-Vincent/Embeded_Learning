@@ -125,19 +125,19 @@ If you have no board yet, complete milestones 0, 1 and the design half of 4, and
       { t: 'GPIO35 with an external 10 kΩ resistor to 3.3 V', why: 'An external pull-up is exactly how an input-only pin is given a defined level, so this works.' },
     ] },
     { q: 'Why should a button ISR only post an event to a queue?', kind: 'arch', choices: [
-      { t: 'Work done in an ISR delays every other interrupt and task, and blocking calls are not allowed there', ok: true, why: 'Correct: keeping the ISR to a few instructions bounds its effect on timing and moves the real work to a task where it can block.' },
-      { t: 'ISRs cannot read GPIO levels', why: 'An ISR can read a pin perfectly well; the constraint is on how long it runs and what it may call.' },
-      { t: 'Queues are the only way to exit an ISR', why: 'An ISR returns on its own; the queue is a way to hand data to a task, not a requirement for returning.' },
+      { t: `Time spent in an ISR delays every other interrupt and task, and an ISR must not block`, ok: true, why: 'Correct: keeping the ISR to a few instructions bounds its effect on timing and moves the real work to a task where it can block.' },
+      { t: `An ISR cannot read GPIO levels reliably, so the pin has to be sampled later by a task`, why: 'An ISR can read a pin perfectly well; the constraint is on how long it runs and what it may call.' },
+      { t: `Posting to a queue is what tells the scheduler that the ISR has finished`, why: 'An ISR returns on its own; the queue is a way to hand data to a task, not a requirement for returning.' },
     ] },
     { q: 'Your sensor is unplugged and the display keeps showing the last good reading. Which requirement type did you fail to write?', kind: 'concept', choices: [
-      { t: 'A fault requirement stating the visible behaviour when a read fails', ok: true, why: 'Correct: without a stated fault behaviour nobody decided what should happen, so the default — a stale value that looks valid — is what you got.' },
-      { t: 'A timing requirement for button response', why: 'Button timing is unrelated to how sensor failures are presented.' },
-      { t: 'A power budget', why: 'The power budget concerns supply current, not how a failed read is handled.' },
+      { t: `A fault requirement stating the visible behaviour when a sensor read fails`, ok: true, why: 'Correct: without a stated fault behaviour nobody decided what should happen, so the default — a stale value that looks valid — is what you got.' },
+      { t: `A timing requirement stating how quickly a button press must be handled`, why: 'Button timing is unrelated to how sensor failures are presented.' },
+      { t: `A power budget showing the sensor's supply current against the regulator's limit`, why: 'The power budget concerns supply current, not how a failed read is handled.' },
     ] },
     { q: 'Sensor and display share one I2C bus. A full display refresh takes longer than the sensor period. What is the cleanest fix?', kind: 'arch', choices: [
-      { t: 'Measure both transactions, then shorten the refresh (partial redraw) or relax the sensor period so the budget closes', ok: true, why: 'Correct: this is a timing-budget problem, so it is solved with measurements and a budget that adds up.' },
-      { t: 'Raise the sensor task priority to maximum', why: 'Priority does not let two transactions use one bus at once; the sensor read still waits for the bus to be free.' },
-      { t: 'Remove the bus mutex so both can transmit', why: 'Interleaving two transactions on one bus corrupts both; the lock is what keeps the bus usable.' },
+      { t: `Measure both transactions, then shorten the refresh or relax the sensor period`, ok: true, why: 'Correct: this is a timing-budget problem, so it is solved with measurements and a budget that adds up.' },
+      { t: `Raise the sensor task to the highest priority so that its read pre-empts the display refresh`, why: 'Priority does not let two transactions use one bus at once; the sensor read still waits for the bus to be free.' },
+      { t: `Remove the bus mutex so that the sensor read no longer waits for the refresh`, why: 'Interleaving two transactions on one bus corrupts both; the lock is what keeps the bus usable.' },
     ] },
   ],
   requirements: {

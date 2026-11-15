@@ -96,7 +96,7 @@ The sanitizers stop at the first error, so you see one defect per run. To see th
 - Fix the cause, not the test. If a test sends length 241, the fix is not \`if (len == 241)\`.
 - Do all length arithmetic in \`size_t\`. Require the frame to be exactly as long as its length field implies.
 - Decide the order of checks and write it as a comment at the top of the function: length, version, authenticity, freshness, then per-command ranges.
-- Nothing in \`ctx\` may change unless every check has passed.
+- Nothing in \`ctx\` may change for a frame that fails the length, version, authenticity or freshness check. Decide, and write down, whether an authentic and fresh frame whose command then fails a range check still uses up its counter (the reference module says yes, so that the same bytes can never be presented again).
 - Remove what should not exist; do not hide it behind a flag.
 
 Build your version against the tests:
@@ -219,31 +219,31 @@ These results were produced on the host with GCC 13 when this lab was written. N
 4. **Fuzz it.** Write a libFuzzer or AFL++ harness that calls \`cmd_handle\` with arbitrary bytes under the sanitizers, run it against \`review_me.c\` and against your fixed module, and note which of the seven findings fuzzing finds unaided and which it cannot.`,
   quiz: [
     { q: 'The happy-path test passes on `review_me.c`. What does that establish?', kind: 'concept', choices: [
-      { t: 'That well-formed, correctly tagged frames are handled as intended; it says nothing about malformed, replayed or unauthenticated frames', ok: true, why: 'Security defects live in the inputs a cooperative sender never produces, and a test of valid input does not reach them.' },
+      { t: 'That well-formed, correctly tagged frames are handled as intended', ok: true, why: 'It says nothing about malformed, replayed or unauthenticated frames. Security defects live in the inputs a cooperative sender never produces, and a test of valid input does not reach them.' },
       { t: 'That the module has no memory-safety defects, because nothing crashed', why: 'Valid frames stay inside every buffer. The absence of a crash on inputs that fit says nothing about inputs that do not.' },
       { t: 'That authentication works, because the frames in the test were tagged', why: 'Showing that tagged frames are accepted is different from showing that untagged frames are refused.' },
       { t: 'Nothing at all; happy-path tests are useless', why: 'They show that the fix did not break legitimate use, which every security fix must also preserve.' },
     ] },
     { q: 'In `review_me.c`, `need = (uint8_t)(CMD_HDR_LEN + len + CMD_TAG_LEN)` with a 7-byte header and an 8-byte tag. For which `len` does a 15-byte frame pass `if (need > frame_len) reject`?', kind: 'code', choices: [
-      { t: 'Any `len` from 241 to 255, because 15 + len then exceeds 255 and the stored sum wraps to between 0 and 14', ok: true, why: 'The sum is computed as an int and truncated to 8 bits on the cast, so large lengths produce a small `need`.' },
-      { t: 'Only `len` = 0', why: 'A zero length gives need = 15, which legitimately fits. The defect concerns lengths that should not fit and are accepted anyway.' },
-      { t: 'No value: the addition is done in `int` because of promotion', why: 'Promotion applies to the addition, but the result is then cast to an 8-bit type, which discards the high bits.' },
-      { t: 'Any `len` above 15', why: 'Lengths from 1 to 240 give a sum between 16 and 255, which is correctly greater than 15 and rejected.' },
+      { t: 'Any `len` from 241 to 255, because the 8-bit sum wraps to between 0 and 14', ok: true, why: '15 + len then exceeds 255. The sum is computed as an int and truncated to 8 bits on the cast, so large lengths produce a small `need`.' },
+      { t: 'Only `len` = 0, the one length a 15-byte frame can hold', why: 'A zero length gives need = 15, which legitimately fits. The defect concerns lengths that should not fit and are accepted anyway.' },
+      { t: 'No value: the addition is done in `int` because of promotion, so nothing can wrap', why: 'Promotion applies to the addition, but the result is then cast to an 8-bit type, which discards the high bits.' },
+      { t: 'Any `len` above 15, because the frame is 15 bytes long', why: 'Lengths from 1 to 240 give a sum between 16 and 255, which is correctly greater than 15 and rejected.' },
     ] },
     { q: 'Why does the corrected module compare the counter only after verifying the tag?', kind: 'security', choices: [
-      { t: 'So that an unauthenticated frame cannot change `last_counter`, which would let a forger lock out the genuine sender', ok: true, why: 'Device state may only be modified by input that has been authenticated.' },
+      { t: 'So that an unauthenticated frame cannot change `last_counter`', ok: true, why: 'Otherwise a forger could lock out the genuine sender. Device state may only be modified by input that has been authenticated.' },
       { t: 'Because the counter is encrypted until the tag has been checked', why: 'The counter is sent in the clear and covered by the tag. Verification makes it trustworthy, not readable.' },
       { t: 'To save time on replayed frames', why: 'Checking the counter first would be faster for replays; the order is chosen for safety, at some cost in speed.' },
       { t: 'The order is arbitrary as long as both checks exist', why: 'With the other order a rejected forgery still leaves a side effect behind.' },
     ] },
     { q: 'A 16-byte name is sent to the defective `CMD_SET_NAME`. ASan alone reports nothing, yet the device state is wrong afterwards. Why, and what catches it?', kind: 'code', choices: [
-      { t: 'The terminator is written to `name[16]`, which is the `unlocked` field of the same struct; ASan checks object boundaries only, while UBSan\'s bounds check or an assertion on the result catches it', ok: true, why: 'The write stays inside one heap object. Detecting it needs either index checking against the array type or a functional check of the neighbouring field.' },
-      { t: 'ASan is not active for heap memory', why: 'ASan instruments heap allocations thoroughly. The limitation is about fields within a single allocation.' },
+      { t: 'The terminator lands on `unlocked`, in the same struct; UBSan or an assertion catches it', ok: true, why: '`name[16]` is the `unlocked` field, and ASan checks object boundaries only. The write stays inside one heap object. Detecting it needs either index checking against the array type or a functional check of the neighbouring field.' },
+      { t: 'ASan is not active for heap memory, only for stack arrays', why: 'ASan instruments heap allocations thoroughly. The limitation is about fields within a single allocation.' },
       { t: 'Sixteen bytes fit in a 16-byte array, so nothing is wrong', why: 'The data fits; the string terminator that follows it does not.' },
-      { t: 'The overflow only happens on the target, not on the host', why: 'The struct layout is the same in both builds for these types, and the same byte is overwritten.' },
+      { t: 'The overflow only happens on the target, where the struct is packed differently from the host', why: 'The struct layout is the same in both builds for these types, and the same byte is overwritten.' },
     ] },
     { q: 'Which finding from this lab cannot be shown to be fixed by any host test, and how is it closed?', kind: 'security', choices: [
-      { t: 'The variable-time tag comparison: it is closed by review of the source, inspection of the target disassembly and a timing measurement on the target', ok: true, why: 'Timing is a property of the compiled code on the real processor. Host tests can only confirm that the new comparison is functionally correct.' },
+      { t: 'The variable-time tag comparison: it needs disassembly and timing on the target', ok: true, why: 'Review of the source is the third part of closing it. Timing is a property of the compiled code on the real processor. Host tests can only confirm that the new comparison is functionally correct.' },
       { t: 'The missing replay check: replay can only be tested with a radio', why: 'Calling the handler twice with the same bytes reproduces a replay exactly, with no hardware involved.' },
       { t: 'The buffer overflow in `CMD_SET_NAME`: memory layout differs on the target', why: 'The out-of-bounds index is visible to sanitizers and assertions on the host, whatever the eventual layout.' },
       { t: 'The factory command: it only exists in production builds', why: 'The command is in the source under review and is exercised directly by the authentication test.' },

@@ -15,6 +15,7 @@ export const WIDGETS = {
   'gpio-electrical': { title: 'GPIO electrical behaviour', group: 'Electronics' },
   'pwm-lab': { title: 'PWM explorer', group: 'Electronics' },
   'adc-lab': { title: 'ADC sampling and quantisation', group: 'Electronics' },
+  'signal-lab': { title: 'Analog and digital signals', group: 'Electronics' },
   // Architecture
   'mcu-block-diagram': { title: 'Microcontroller block diagram', group: 'Architecture' },
   'memory-map': { title: 'Memory map explorer', group: 'Architecture' },

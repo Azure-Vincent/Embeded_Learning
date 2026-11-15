@@ -30,6 +30,24 @@ void tag_message(const uint8_t *msg, size_t len, uint8_t tag[16])
 }
 `;
 
+const DERIVE_FIXED = C`
+#include <stddef.h>
+#include <stdint.h>
+
+void secure_zero(void *p, size_t n);        /* the volatile-pointer wipe shown earlier */
+void key_load(uint8_t key[32]);
+void kdf(const uint8_t key[32], const uint8_t nonce[16], uint8_t out[32]);
+
+void derive_session_key(const uint8_t nonce[16], uint8_t session[32])
+{
+    uint8_t master[32];
+
+    key_load(master);                       /* from protected storage */
+    kdf(master, nonce, session);
+    secure_zero(master, sizeof master);     /* a call the optimiser cannot treat as a dead store */
+}
+`;
+
 export default {
   id: 'sec-b-physical',
   title: 'Physical tampering and the limits of software',
@@ -76,7 +94,7 @@ Go back to the block diagram of an MCU system from the architecture section and 
 
 Depending on the design: stored secrets, the firmware (for analysis), the ability to make the device act (drive the relay, fake the sensor), a modified device returned to service (a supply-chain or "evil maid" scenario), or, where secrets are shared, the keys to every other unit. The conditions are possession and time; the main variable is whether the device must be visibly damaged, which is what tamper evidence addresses.`,
     { t: 'predict', q: 'A manufacturer covers the MCU and flash chip of a lock with black epoxy "so that nobody can read the firmware". The debug port is enabled, its pads are under the epoxy, and all units share one pairing key stored in the external flash. How much does the epoxy change the outcome for a determined adversary?', choices: [
-      { t: 'Little: it adds hours of mechanical or chemical work on one sacrificed unit, after which the shared key works on every other unit without touching them', ok: true, why: 'Potting raises the cost of the first extraction only. Because the secret is shared, the first extraction is the only one needed.' },
+      { t: 'Little: it costs hours on one sacrificed unit, and the shared key then works everywhere', ok: true, why: 'The other units are never touched. Potting raises the cost of the first extraction only. Because the secret is shared, the first extraction is the only one needed.' },
       { t: 'It prevents extraction, because the chips cannot be accessed without destroying them', why: 'Potting compounds can be removed with heat, solvents or careful milling, and a unit that is destroyed in the process has still given up its contents.' },
       { t: 'It prevents extraction, because the part markings are hidden and the chips cannot be identified', why: 'Packages, pin counts and bus signals identify memory chips well enough, and the standard interfaces work whatever the marking says.' },
       { t: 'It makes things worse, because epoxy conducts electricity', why: 'Potting compounds are insulators. The weakness is that they are a delay, not that they do electrical harm.' },
@@ -114,7 +132,7 @@ This is a design review activity, performed on the schematic, the layout and the
 
 **4. Minimise the lifetime of secrets in RAM.** Load a key, use it, erase the copy:`,
     code(SECURE_ZERO, 'host-tested', { caption: 'Erasing a temporary key copy so that the compiler cannot remove the erase. Tested on the host at -O2; where your C library provides memset_s or explicit_bzero, prefer it. Confirm the stores exist in the target disassembly.', explain: [
-      { lines: '8-12', md: 'A plain `memset(key, 0, sizeof key)` just before `return` writes to an object that is never read again. The optimiser calls that a dead store and may delete it, leaving the key on the stack for whichever function runs next — or for a debugger, a memory-dump defect, or a cold restart. Writes through a `volatile`-qualified lvalue must be performed.' },
+      { lines: '8-12', md: 'A plain `memset(key, 0, sizeof key)` just before `return` writes to an object that is never read again. The optimiser calls that a dead store and may delete it, leaving the key on the stack for whichever function runs next — or for a debugger, a memory-dump defect, or a cold restart. GCC and Clang perform every store made through a `volatile`-qualified lvalue, which is why this idiom works in practice; older C standards promise it outright only for objects that are themselves defined `volatile`, so the disassembly check named in the caption is part of the technique and not an optional extra.' },
       { lines: '24-26', md: 'The key exists in ordinary RAM only between these lines. This does not protect against an adversary who can halt the core at that moment; it removes the much larger window in which stale stack contents hold the key.' },
     ] }),
     `**5. [[Tamper evidence]].** Seals, labels and enclosures that cannot be opened without visible damage. Useful only where someone inspects the device and where "we can tell it was opened" has value: payment terminals, meters, voting equipment. It prevents nothing by itself.
@@ -125,7 +143,7 @@ This is a design review activity, performed on the schematic, the layout and the
     { t: 'callout', kind: 'mistake', title: 'Epoxy, sanded-off markings and custom screws listed as security controls', md: `Obscurity measures change how long the first unit takes. They do not change what is learned from it. A review that answers "the key is in external flash" with "but the board is potted" has not answered the finding. Record such measures as what they are — delay and, sometimes, evidence — and require a real control (per-device keys, internal storage, encryption) for the asset itself.` },
     { t: 'callout', kind: 'decision', title: 'How far to go?', md: `Match the countermeasure to the adversary and the asset, using the threat model. A consumer gadget whose only secret is its owner's Wi-Fi password needs per-device storage of that secret and a closed debug port; tamper response would be absurd. A lock or an access controller needs per-device keys, encrypted or internal storage, and authenticated internal links, because possession of a unit is expected. A device whose single key protects a whole system (content protection, payment, an HSM) needs a secure element or a security-evaluated MCU, tamper response, and a design that assumes units will be attacked in a laboratory. In a design-and-attack competition on a fixed development board, physical controls are not available to you: the proportionate response is architectural — minimise what each device holds, make secrets per-device, and harden the few decisions that matter (lesson 7).` },
     { t: 'callout', kind: 'sim', md: SCOPE + ` The worksheet below is a planning tool; it attacks nothing. If you read flash chips or probe buses for practice, do it on boards you own.` },
-    widget('threat-model', { template: 'smart-lock' }, 'Open the smart-lock template. Add an adversary "has one unit for a week, basic lab tools". For each asset, add the physical entry points from the table above, write the threat, and assign a mitigation that is a control, not a delay. Save the result to your notebook.'),
+    widget('threat-model', { template: 'smart-lock' }, 'Before you open it, write down which one asset of a smart lock you expect to have no real control left once the adversary holds the device. Then open the smart-lock template. Add an adversary "has one unit for a week, basic lab tools". For each asset, add the physical entry points from the table above, write the threat, and assign a mitigation that is a control, not a delay. Save the result to your notebook.'),
     `### Debrief
 
 Check your worksheet against these points:
@@ -158,7 +176,12 @@ void derive_session_key(const uint8_t nonce[16], uint8_t session[32])
       'For the second part: think about when the key is in RAM at all, and who can observe RAM, and how.',
     ], solution: `**Defect:** the \`memset\` is a dead store: \`master\` goes out of scope immediately afterwards, so the compiler may remove the call (CERT C MSC06-C; CWE-14, compiler removal of code to clear buffers). The master key then remains in the stack frame until overwritten by later calls, in memory that the "secure storage API" no longer protects.
 
-**Fix:** erase through a \`volatile\` pointer, as in \`secure_zero\` above, or use \`memset_s\`/\`explicit_bzero\` where the library provides one; then confirm in the disassembly of the release build that the stores are present. Better still, if the hardware offers a key store that performs the derivation internally, never load the master key into RAM at all.
+**Fix:** erase through a \`volatile\` pointer, as in \`secure_zero\` above, or use \`memset_s\`/\`explicit_bzero\` where the library provides one; then confirm in the disassembly of the release build that the stores are present:
+
+\`\`\`c
+${DERIVE_FIXED}\`\`\`
+
+(Compiled with \`-Wall -Wextra -Wconversion\` and run on the host at \`-O2\` with a test \`kdf\`.) **Test:** on the target, in a debug build, break on return from \`derive_session_key\` and search its dead stack frame for the bytes of a known test key; for the release build, the evidence is the disassembly (\`objdump -d\`: the call to \`secure_zero\`, or its inlined byte stores, after the call to \`kdf\`). A host unit test cannot do this job, because reading a dead stack frame from C is itself undefined behaviour. Better still, if the hardware offers a key store that performs the derivation internally, never load the master key into RAM at all.
 
 **What it helps against:** disclosure of stale stack contents through a memory-dump defect or over-read (lessons 1 and 2), through a debug port opened later, or through RAM that keeps its contents across a warm reset.
 
@@ -178,22 +201,22 @@ This closes the catalogue. The lab that follows asks you to apply lessons 1 to 4
   ],
   quiz: [
     { q: 'A device keeps its firmware and a device-unique key in external SPI flash, unencrypted. The MCU debug port is permanently disabled. What can someone with the device and a flash programmer obtain?', kind: 'security', choices: [
-      { t: 'The firmware and the key, by reading the flash chip directly; the MCU and its debug lock are not involved', ok: true, why: 'An external memory answers any master on its bus. Protection of the MCU does not extend to a separate chip.' },
+      { t: 'The firmware and the key, by reading the flash chip directly', ok: true, why: 'The MCU and its debug lock are not involved. An external memory answers any master on its bus. Protection of the MCU does not extend to a separate chip.' },
       { t: 'Nothing, because the debug port is disabled', why: 'The debug port guards the MCU\'s internals. The flash chip has its own interface that does not pass through it.' },
       { t: 'The firmware only, because keys in flash are automatically encrypted', why: 'Nothing is encrypted unless the design enables a flash-encryption feature and keeps its key elsewhere.' },
       { t: 'Nothing, unless they also know the SPI flash password', why: 'Standard SPI NOR flash read commands are not password protected by default.' },
     ] },
     { q: 'A secure element verifies a PIN and then drives its `AUTH_OK` pin high; the MCU opens the lock when it reads that pin as 1. Where is the weakness?', kind: 'circuit', choices: [
-      { t: 'The verdict travels on one unauthenticated wire; anyone who can reach that net can drive it high without knowing the PIN', ok: true, why: 'A logic level cannot prove who set it. The result must come as an authenticated response to a fresh challenge.' },
-      { t: 'Secure elements cannot verify PINs', why: 'Many can. The verification is not the weak part here; how its result is conveyed is.' },
+      { t: 'The verdict travels on one unauthenticated wire that can be driven from outside', ok: true, why: 'They do not need to know the PIN. A logic level cannot prove who set it. The result must come as an authenticated response to a fresh challenge.' },
+      { t: 'Secure elements can store keys but cannot verify PINs', why: 'Many can. The verification is not the weak part here; how its result is conveyed is.' },
       { t: 'GPIO inputs are too slow to read the signal reliably', why: 'A static level is trivially readable. Speed is not the issue.' },
-      { t: 'The MCU should poll the pin more often', why: 'Polling frequency does not help when the level itself can be forced by a third party.' },
+      { t: 'The MCU polls the pin too rarely and could miss a short pulse from the secure element', why: 'Polling frequency does not help when the level itself can be forced by a third party.' },
     ] },
     { q: 'Which statement about tamper evidence and tamper response is correct?', kind: 'concept', choices: [
-      { t: 'Evidence makes interference visible to a later inspector; response actively destroys secrets when interference is detected. Neither is useful without the other half of its process: inspection, or secrets held only in erasable memory', ok: true, why: 'A seal nobody checks proves nothing to anyone, and an erase circuit protects only the keys it can actually erase.' },
-      { t: 'Tamper evidence prevents the enclosure from being opened', why: 'A seal or label breaks when the enclosure is opened; it records the event and does not stop it.' },
-      { t: 'Tamper response is a software feature that needs no hardware support', why: 'It depends on sensors and on memory that can be erased without the main supply, which are hardware.' },
-      { t: 'They are two names for the same thing', why: 'One is passive and concerns detection after the fact; the other is active and concerns protecting secrets at the moment of intrusion.' },
+      { t: 'Evidence shows a later inspector that interference happened; response erases secrets when it is detected', ok: true, why: 'Neither is useful without the rest of its process: inspection, or secrets held only in erasable memory. A seal nobody checks proves nothing to anyone, and an erase circuit protects only the keys it can actually erase.' },
+      { t: 'Tamper evidence prevents the enclosure from being opened; tamper response reports it if it happens anyway', why: 'A seal or label breaks when the enclosure is opened; it records the event and does not stop it.' },
+      { t: 'Tamper response is a software feature that runs in the main loop and needs no hardware support', why: 'It depends on sensors and on memory that can be erased without the main supply, which are hardware.' },
+      { t: 'They are two names for the same mechanism, used by different industries', why: 'One is passive and concerns detection after the fact; the other is active and concerns protecting secrets at the moment of intrusion.' },
     ] },
     { q: 'Why may a compiler delete the last line of this function, and what is the consequence?', code: C`
 void sign(const uint8_t *msg, size_t n, uint8_t *sig)
@@ -203,23 +226,23 @@ void sign(const uint8_t *msg, size_t n, uint8_t *sig)
     do_sign(key, msg, n, sig);
     memset(key, 0, sizeof key);
 }`, kind: 'code', choices: [
-      { t: '`key` is never read after the `memset`, so the write is a dead store; if removed, the key stays in stale stack memory after the function returns', ok: true, why: 'Optimisers remove writes that cannot affect the program\'s observable behaviour, and "an attacker reading the stack later" is not behaviour the C standard describes.' },
+      { t: '`key` is never read after the `memset`, so the write is a dead store', ok: true, why: 'If it is removed, the key stays in stale stack memory after the function returns. Optimisers remove writes that cannot affect the program\'s observable behaviour, and "an attacker reading the stack later" is not behaviour the C standard describes.' },
       { t: '`memset` cannot be used on arrays of `uint8_t`', why: '`memset` works on any object. The call is valid; it is just not guaranteed to survive optimisation.' },
       { t: 'The compiler deletes it because `key` is `const`', why: '`key` is not declared `const` here, and the removal has nothing to do with qualifiers on the array.' },
       { t: 'It cannot be deleted; compilers never remove function calls', why: 'Compilers understand standard library functions and treat a `memset` on a dying object like any other removable store.' },
     ] },
     { q: 'A fleet of 50,000 sensors shares one symmetric key for talking to the server. The team proposes potting each board to protect the key. What should the review recommend instead, as the first change?', kind: 'security', choices: [
-      { t: 'Per-device keys (provisioned or derived from a server-side master and the device ID), so that extracting one device\'s key compromises only that device', ok: true, why: 'The dominant risk is that one extraction scales to the fleet. Removing the scaling is worth more than raising the cost of the single extraction.' },
-      { t: 'Thicker potting compound', why: 'More of a delay measure is still a delay measure, and the first successful extraction still yields the fleet key.' },
-      { t: 'Storing the key twice for redundancy', why: 'Redundant copies help availability and give an adversary twice as many places to find the key.' },
-      { t: 'Rotating the shared key every year by firmware update', why: 'Rotation limits how long a stolen key is useful, but each new shared key is exposed in the same way by the next opened unit or update image.' },
+      { t: 'Per-device keys, so that one extracted key compromises only one device', ok: true, why: 'They can be provisioned individually or derived from a server-side master and the device ID. The dominant risk is that one extraction scales to the fleet. Removing the scaling is worth more than raising the cost of the single extraction.' },
+      { t: 'Thicker potting compound and security screws on the enclosure', why: 'More of a delay measure is still a delay measure, and the first successful extraction still yields the fleet key.' },
+      { t: 'Storing the key twice, in two different chips, for redundancy', why: 'Redundant copies help availability and give an adversary twice as many places to find the key.' },
+      { t: 'Rotating the shared key every year by firmware update, so a stolen key expires', why: 'Rotation limits how long a stolen key is useful, but each new shared key is exposed in the same way by the next opened unit or update image.' },
     ] },
     { q: 'You are verifying the claim "no key material crosses the I²C bus between the MCU and the secure element". Which test supports it best?', kind: 'security', choices: [
-      { t: 'Capture the bus with a logic analyser on your own unit through provisioning, authentication and normal use, decode it, and search the bytes for the known test keys', ok: true, why: 'The claim is about what is physically on the wires, so the evidence is a recording of the wires during every phase in which keys are handled.' },
-      { t: 'Read the secure element\'s datasheet', why: 'The datasheet describes what the part can do. Whether your firmware uses it without exporting keys is a property of your design.' },
-      { t: 'Review the MCU source code for calls that read keys', why: 'Review is valuable, but a library call you did not write may transfer key material, and only the bus shows what was actually sent.' },
-      { t: 'Check that the bus has pull-up resistors', why: 'Pull-ups make the bus work electrically. They have no bearing on what data it carries.' },
+      { t: 'Capture the bus on your own unit in every phase and search it for the test keys', ok: true, why: 'Every phase means provisioning, authentication and normal use, decoded from a logic-analyser capture. The claim is about what is physically on the wires, so the evidence is a recording of the wires during every phase in which keys are handled.' },
+      { t: 'Read the secure element\'s datasheet for its key-export commands', why: 'The datasheet describes what the part can do. Whether your firmware uses it without exporting keys is a property of your design.' },
+      { t: 'Review the MCU source code for every call that reads a key from the secure element', why: 'Review is valuable, but a library call you did not write may transfer key material, and only the bus shows what was actually sent.' },
+      { t: 'Check that the bus has pull-up resistors of the right value', why: 'Pull-ups make the bus work electrically. They have no bearing on what data it carries.' },
     ] },
   ],
 };
-export const TESTED = { SECURE_ZERO };
+export const TESTED = { SECURE_ZERO, DERIVE_FIXED };

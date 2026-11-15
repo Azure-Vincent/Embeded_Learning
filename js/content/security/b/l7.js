@@ -123,7 +123,7 @@ Digital logic is built on timing and voltage margins. Recall from the architectu
 - **Electromagnetic pulse ([[EMFI]]).** A small coil near the package induces currents in the chip's internal wiring, disturbing a region of the die without any electrical connection to the board.
 - **Light.** On a chip whose package has been opened, a focused flash generates charge carriers in the silicon and can flip individual cells. This needs the most preparation and gives the most spatial precision.
 
-The common *fault models* a designer should assume, in order of how often they are reported: an instruction is **skipped** (effectively replaced by a no-op); a **loaded value is corrupted**, often to all zeros or all ones; a **comparison result or flag is wrong**; a loop **exits early**. You do not need to know which physical method produced the fault to design against these models.
+The common *fault models* a designer should assume: an instruction is **skipped** (effectively replaced by a no-op); a **loaded value is corrupted**, often to all zeros or all ones; a **comparison result or flag is wrong**; a loop **exits early**. You do not need to know which physical method produced the fault to design against these models.
 
 **Why timing matters to the adversary, and to your countermeasures:** the disturbance has to coincide with the vulnerable instruction. Code that runs at a fixed number of clock cycles after an observable event (reset release, a UART byte, a GPIO edge) can be targeted by trial and error over the delay and the pulse shape. Most attempts do nothing or reset the chip; the adversary needs only occasional success and can retry indefinitely unless something counts the attempts.
 
@@ -147,10 +147,10 @@ Whatever the faulted decision was guarding: execution of an unsigned image, a de
 | A single read of a lock or lifecycle value from fuses or flash | one corrupted read at boot changes the device state for the whole session |
 | Fixed timing from reset to the security decision | lets an adversary find the moment by sweeping a delay |`,
     { t: 'predict', q: 'A boot check is hardened by performing the signature comparison twice in a row, with identical code, and booting only if both pass. Assume a single well-timed disturbance can skip one branch with some probability. How much does the repetition help by itself?', choices: [
-      { t: 'It helps: two independent successes are now needed. But if the two checks sit at a fixed distance in time, a second disturbance can be aimed at the second one, so the gain is real and limited', ok: true, why: 'The probability of success falls roughly to the product of two single-fault probabilities, and the adversary must now produce two faults; randomising the gap between the checks removes the fixed second target.' },
-      { t: 'It makes the bypass impossible, because a glitch can only affect one instruction', why: 'One disturbance affects a short window. Nothing prevents a second disturbance later, and a wide one may span adjacent instructions.' },
+      { t: 'It helps, but only partly: a second fault can be aimed at a check that follows at a fixed distance', ok: true, why: 'The probability of success falls roughly to the product of two single-fault probabilities, and the adversary must now produce two faults; randomising the gap between the checks removes the fixed second target.' },
+      { t: 'It makes the bypass impossible, because one glitch can only ever affect a single instruction', why: 'One disturbance affects a short window. Nothing prevents a second disturbance later, and a wide one may span adjacent instructions.' },
       { t: 'It does not help at all, because the compiler will merge the two checks', why: 'The compiler may merge them, and that must be prevented and verified, but a redundant check that is present in the binary does raise the bar.' },
-      { t: 'It halves the probability of a bypass', why: 'If one fault succeeds with probability p, two independent faults succeed with roughly p × p, which for small p is far less than half of p.' },
+      { t: 'It exactly halves the probability of a bypass, because there are now two checks', why: 'If one fault succeeds with probability p, two independent faults succeed with roughly p × p, which for small p is far less than half of p.' },
     ], reveal: 'Compare the three runs below. Remember that every number in this simulation is invented to make the shape of the result visible.' },
     { t: 'callout', kind: 'sim', title: 'The numbers are invented', md: SCOPE + `\n\nThe glitch simulation is a probability model. Its time offsets, widths, the size of the vulnerable window and every success rate were chosen for teaching and correspond to no real chip, clock speed or equipment. Its purpose is to show the *shape* of the problem — a narrow window, mostly failed attempts, and how defences change the statistics — not to provide parameters.` },
     widget('glitch-sim', { defence: 'none' }, 'Run 1, single check. Sweep offset and width and look at the map: where are the successes, and what happens at large widths?'),
@@ -222,7 +222,7 @@ void boot_decide(void)
       'Put `jump_to_app()` inside the success branch, make success a specific multi-bit constant, default to failure, and test twice.',
     ], solution: `**Single skips that boot an unverified image**
 
-- Skip the conditional branch into the \`if\` body → falls through to \`jump_to_app()\`.
+- Skip the conditional branch that guards the \`if\` body → depending on how the compiler laid out the code, execution continues into \`halt_safe()\` (harmless) or straight on to \`jump_to_app()\`. You do not control the layout, so assume the worse case.
 - Skip the call to \`halt_safe()\` → falls through to \`jump_to_app()\` (and if \`halt_safe\` ever returns, the same happens with no fault at all).
 - Skip the call to \`image_verify()\` → \`bad\` holds whatever was in the return register; zero means "valid".
 - Corrupt the returned value to 0 → "valid". Zero is the easiest value to obtain by accident.
@@ -232,7 +232,7 @@ void boot_decide(void)
 \`\`\`c
 ${BOOT_FIXED}\`\`\`
 
-Success is one exact 32-bit constant; the default is failure; \`jump_to_app()\` is reachable only through two reads and two tests of \`r\`; skipping any single branch or call ends in \`halt_safe()\` or in a second test that fails. Combine it with a verifier that is itself hardened (the code block above), and confirm in the disassembly that both tests of \`r\` exist.` },
+Success is one exact 32-bit constant; the default is failure; \`jump_to_app()\` is reachable only through two reads and two tests of \`r\`; skipping any single branch or call ends in \`halt_safe()\`, in a second test that fails, or in a return from \`boot_decide\` without booting. That last case puts a requirement on the caller: the code after the call to \`boot_decide()\` must itself be a safe halt, never a fall-through into anything useful. Combine it with a verifier that is itself hardened (the code block above), and confirm in the disassembly that both tests of \`r\` exist.` },
     `## Harder application
 
 A device grants a debug unlock when \`challenge_response_ok()\` returns true, by writing 1 to a memory-mapped \`DEBUG_ENABLE\` register. The function is constant-time and the protocol is sound. Apply this lesson: where are the single points of failure between the cryptographic check and the register write? Which of the eight defences apply, which do not, and what would you ask the chip vendor about the register itself (hint: does it take a one-bit value or a multi-bit key pattern, and can it be written more than once per boot)? Then decide what the device should do after three detected faults, remembering the lockout trade-off from lesson 3.`,
@@ -253,39 +253,39 @@ if (!signature_valid(img)) {
 if (ok) {
     boot(img);
 }`, kind: 'code', choices: [
-      { t: 'Skipping the assignment `ok = false`, or the branch that leads to it: `ok` keeps its permissive initial value', ok: true, why: 'The default is "allowed" and only one instruction changes it, so that instruction is a single point of failure.' },
+      { t: 'Skipping `ok = false`, or the branch that leads to it', ok: true, why: '`ok` keeps its permissive initial value. The default is "allowed" and only one instruction changes it, so that instruction is a single point of failure.' },
       { t: 'Skipping the initialisation `ok = true`', why: 'Skipping it leaves `ok` with whatever was on the stack. That is undesirable, but it is not a reliable route to success in the way the default-allow path is.' },
       { t: 'Skipping the call to `boot(img)`', why: 'Skipping the protected action fails safe: the device does not boot. That is a denial of service, not a bypass.' },
-      { t: 'None; `signature_valid` is cryptographically sound', why: 'The fault model does not attack the mathematics. It attacks the few instructions that act on the result.' },
+      { t: 'None: `signature_valid` is cryptographically sound, so no skip can change its answer', why: 'The fault model does not attack the mathematics. It attacks the few instructions that act on the result.' },
     ] },
     { q: 'Why encode a security result as `0x3CA5965A` / `0xC35A69A5` instead of `true` / `false`?', kind: 'concept', choices: [
-      { t: 'A corrupted, zeroed or all-ones value then matches neither constant exactly, so the code can treat everything except the precise pass value as failure', ok: true, why: 'With a boolean, any non-zero value passes, and nearly every corruption is non-zero or exactly zero; multi-bit constants make a random fault very unlikely to produce "pass".' },
+      { t: 'A corrupted, zeroed or all-ones value then matches neither constant', ok: true, why: 'The code can treat everything except the precise pass value as failure. With a boolean, any non-zero value passes, and nearly every corruption is non-zero or exactly zero; multi-bit constants make a random fault very unlikely to produce "pass".' },
       { t: 'The constants are secret, so they cannot be guessed', why: 'They are in the firmware image and are not secrets. Their value lies in their distance from each other and from trivial values.' },
-      { t: 'Thirty-two-bit comparisons are executed in constant time', why: 'Comparison timing is not the property in question here; a one-bit comparison is also constant-time.' },
+      { t: 'Thirty-two-bit comparisons are executed in constant time, unlike tests of a `bool`', why: 'Comparison timing is not the property in question here; a one-bit comparison is also constant-time.' },
       { t: 'It makes the code faster on a 32-bit core', why: 'Loading a 32-bit literal is slightly slower than loading 0 or 1. The cost is accepted for robustness.' },
     ] },
     { q: 'A reviewer finds a duplicated check in the source but only one compare-and-branch in the release disassembly. What is the correct conclusion?', kind: 'security', choices: [
-      { t: 'The optimiser removed the redundant check; the hardening is absent from the product and must be rewritten so that it survives, then re-verified in the binary', ok: true, why: 'Countermeasures against physical faults exist only if they are in the machine code. Source-level intent is not evidence.' },
+      { t: 'The optimiser removed the check, so the hardening is absent from the product', ok: true, why: 'It must be rewritten so that it survives, then re-verified in the binary. Countermeasures against physical faults exist only if they are in the machine code. Source-level intent is not evidence.' },
       { t: 'The disassembler is wrong; the source code is authoritative', why: 'The device executes the binary. When the two disagree, the binary describes what will run.' },
       { t: 'No action is needed, because the compiler has shown the second check was unnecessary', why: 'The compiler reasons about a fault-free machine, in which the check is indeed redundant. The check exists for the case where that assumption fails.' },
       { t: 'Compile with optimisation disabled for the release', why: 'That may preserve the check by accident, at a cost across the whole program, and still guarantees nothing. Make the redundancy explicit and verify it.' },
     ] },
     { q: 'What does a random delay before a security check contribute, and what does it not?', kind: 'concept', choices: [
-      { t: 'It removes the fixed timing relationship that lets a disturbance be aimed at the check, raising the number of attempts needed; it does not make a correctly timed fault harmless', ok: true, why: 'Jitter spreads the vulnerable moment over a range. A fault that happens to land on it still works unless other measures catch it.' },
-      { t: 'It prevents faults from occurring', why: 'A delay is code. It has no influence on the supply voltage or the electromagnetic environment.' },
-      { t: 'It makes the check constant-time', why: 'It does the opposite: it deliberately varies timing, for a different purpose.' },
-      { t: 'It contributes nothing, because delays can always be measured', why: 'Synchronising on some other signal may be possible and must be considered, but it costs additional effort; the measure is useful, though incomplete.' },
+      { t: 'It removes the fixed moment a fault is aimed at; a fault that lands is still harmful', ok: true, why: 'It raises the number of attempts needed. Jitter spreads the vulnerable moment over a range. A fault that happens to land on it still works unless other measures catch it.' },
+      { t: 'It prevents faults from occurring during the check itself', why: 'A delay is code. It has no influence on the supply voltage or the electromagnetic environment.' },
+      { t: 'It makes the check constant-time, which hides its position', why: 'It does the opposite: it deliberately varies timing, for a different purpose.' },
+      { t: 'It contributes nothing, because an adversary can always measure the delay and compensate', why: 'Synchronising on some other signal may be possible and must be considered, but it costs additional effort; the measure is useful, though incomplete.' },
     ] },
     { q: 'In the hardened pattern, the first verification passes and the second, recomputed one fails. What should the firmware do?', kind: 'security', choices: [
-      { t: 'Treat it as a detected fault: erase volatile secrets, record the event in a persistent counter, and reset to a safe state', ok: true, why: 'Two computations over the same data cannot disagree in normal operation, so the disagreement is itself the alarm.' },
+      { t: 'Treat it as a detected fault: erase volatile secrets, count the event, reset', ok: true, why: 'The count belongs in persistent storage and the reset must end in a safe state. Two computations over the same data cannot disagree in normal operation, so the disagreement is itself the alarm.' },
       { t: 'Retry both checks until they agree', why: 'Unlimited silent retries give whoever is disturbing the device as many attempts as they need.' },
       { t: 'Accept the image, since one of the two checks passed', why: 'Requiring only one of two checks is weaker than a single check: either fault now suffices.' },
       { t: 'Return the ordinary "bad signature" error and continue normally', why: 'An ordinary bad image fails the first check too. Reporting this case as routine discards the one signal that distinguishes an attack.' },
     ] },
     { q: 'What can a host unit test of a fault-hardened function establish?', kind: 'concept', choices: [
-      { t: 'That it is functionally correct and that its fault-handling paths behave as designed when forced; not that it resists physical faults on the target', ok: true, why: 'Fault resistance depends on the compiled code and the silicon. Host tests check logic, which is necessary and not sufficient.' },
+      { t: 'Its logic and its forced fault-handling paths, not its resistance to physical faults', ok: true, why: 'Fault resistance depends on the compiled code and the silicon. Host tests check logic, which is necessary and not sufficient.' },
       { t: 'That it resists voltage glitching, if the tests run under UBSan', why: 'Sanitizers detect undefined behaviour in a correctly executing program. They do not model a processor that mis-executes.' },
-      { t: 'Nothing; hardened code can only be tested with glitching equipment', why: 'Logic errors in hardened code are common and are found exactly by ordinary tests; emulator-based skip simulation adds further evidence without equipment.' },
+      { t: 'Nothing; hardened code can only be tested with glitching equipment on the real target', why: 'Logic errors in hardened code are common and are found exactly by ordinary tests; emulator-based skip simulation adds further evidence without equipment.' },
       { t: 'That the compiler kept the redundant checks', why: 'A test observes results, and redundant checks do not change results. Only the disassembly shows whether they are present.' },
     ] },
   ],

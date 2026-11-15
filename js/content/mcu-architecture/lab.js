@@ -178,7 +178,7 @@ Useful search terms in a PDF: "memory map", "boot", "reset", "strapping", "clock
 3. its access type;
 4. what must be enabled first (clock gate, power enable, pin function).
 
-Starting points: ESP32 TRM, "IO MUX and GPIO Matrix" chapter, register summary; MSDK \`gpio_regs.h\` for the MAX78000; MSPM0 TRM GPIO chapter or the SDK's GPIO header. Then write the one-line C macro for it in the style of the registers lesson. Mark the code as unverified: you have not run it.`,
+Starting points: ESP32 TRM, "IO MUX and GPIO Matrix" chapter, register summary (cross-check against ESP-IDF's \`components/soc/esp32/register/soc/gpio_reg.h\` and \`reg_base.h\`, which give the same base and offsets as C macros); MSDK \`gpio_regs.h\` for the MAX78000; MSPM0 TRM GPIO chapter or the SDK's GPIO header. Then write the one-line C macro for it in the style of the registers lesson. Mark the code as unverified: you have not run it.`,
         code: R`/* Template: fill in from the reference manual. Not compiled, not run. */
 #define GPIOx_BASE      0x________u
 #define GPIOx_OUT_SET   (*(volatile uint32_t *)(GPIOx_BASE + 0x__u))

@@ -184,7 +184,7 @@ static uint32_t ticks;                               /* .bss   */`,
         code: String.raw`$ objcopy -O binary fw.elf fw.bin      # 8260 bytes
 $ objcopy -O ihex   fw.elf fw.hex
 $ objcopy -O srec   fw.elf fw.srec
-$ strip -o fw.stripped fw.elf           # 12792 -> 8800 bytes; nm: no symbols
+$ strip -o fw.stripped fw.elf           # about 12.8 kB -> 8.8 kB; nm: no symbols
 
 $ strings -t x -n 6 fw.bin
    1010 bench-fw 1.4.2 (elf demo)
@@ -219,12 +219,77 @@ data 0x00402000..0x0040202A (43 bytes)
 entry point 0x00401087
 data 0x00403030..0x00403043 (20 bytes)
 307 data bytes, 0 bad record(s)` },
-      `A HEX file stores only the 307 real bytes and says where each run goes. That is the practical difference from a \`.bin\`: no padding, addresses included, and a per-record integrity check. That check catches file corruption. It is not a security feature: anyone can recompute it.`,
+      `### The map file
+
+The linker can write a fourth view, the **map file** (\`-Wl,-Map=fw.map\` with GCC; the demo's Makefile does this). It is the linker's own account of what it placed where, and it answers questions the ELF tools cannot: *which object file* contributed these bytes, where padding went, and what was thrown away. This excerpt is from the demo build (the object file's temporary name is shortened):
+
+\`\`\`
+.rodata         0x0000000000402000       0x2b
+ .rodata.str1.1 0x0000000000402000        0x6 fw.o
+ *fill*         0x0000000000402006        0xa
+ .rodata        0x0000000000402010       0x1b fw.o
+                0x0000000000402010                banner
+
+.data           0x0000000000403030       0x14
+ .data          0x0000000000403030       0x14 fw.o
+                0x0000000000403030                device_key
+                0x0000000000403040                boot_count
+                0x0000000000403044                _edata = .
+                0x0000000000403060                __bss_start = .
+
+.bss            0x0000000000403060      0x108
+ .bss           0x0000000000403060      0x104 fw.o
+                0x0000000000403060                rx_buffer
+ *fill*         0x0000000000403164        0x4
+\`\`\`
+
+Read it from the left margin inwards. A line starting in column 0 is an **output section** with its address and total size. Indented lines are the **input sections** that went into it, each with the object file it came from. Further-indented lines are **global symbols**. \`*fill*\` is alignment padding: ten bytes were spent so that \`banner\` could start on a 16-byte boundary. \`_edata\` and \`__bss_start\` are symbols the linker script itself defines; in firmware, the startup code uses exactly such symbols as the limits of its copy and zero loops. Static symbols such as \`ticks\` do not appear: for those use \`nm\`.
+
+On a firmware project the map also begins with a **memory configuration** table (the \`FLASH\` and \`RAM\` regions from the linker script) and a list of **discarded input sections**, which is where you look when a function you expected is missing or when you want proof that \`--gc-sections\` removed dead code.
+
+### The order of work on any ELF
+
+1. \`readelf -h\`: what machine is it for, and what is the entry point?
+2. \`size\`: does it fit? Flash = text + data, RAM = data + bss + stack.
+3. \`readelf -S\`: which sections exist, at which run addresses, and which are \`NOBITS\`?
+4. \`readelf -l\` (or \`objdump -h\`): for each loadable piece, compare the run address (VirtAddr/VMA) with the load address (PhysAddr/LMA). Where they differ, startup code must copy.
+5. \`nm -n\` and \`nm -S --size-sort\`: what is at an address, and what is big?
+6. The map file: which object file is responsible, where is padding, what was discarded?
+7. \`objdump -d -S\` only for the one function you now know you care about.
+
+### LMA and VMA, step by step
+
+This is the idea people most often get wrong, so here it is with numbers. The figures are illustrative, for a Cortex-M part with flash at \`0x1000_0000\`:
+
+\`\`\`
+  Type  Offset   VirtAddr   PhysAddr   FileSiz MemSiz  Flg
+  LOAD  0x010000 0x10000000 0x10000000 0x04a30 0x04a30 R E
+  LOAD  0x020000 0x20000000 0x10004a30 0x00200 0x01400 RW
+\`\`\`
+
+- The second segment is \`.data\` plus \`.bss\`. Its **VirtAddr** \`0x20000000\` is in RAM: that is the address compiled code uses for these variables, and the address \`nm\` and the debugger show.
+- Its **PhysAddr** \`0x10004a30\` is in flash, directly after the code: that is where a flashing tool writes the \`0x200\` bytes of initial values.
+- A variable that \`nm\` puts at \`0x20000010\` is \`0x10\` bytes into the segment, so its initial value is stored at \`0x10004a30 + 0x10 = 0x10004a40\`, which is offset \`0x4a40\` in a \`.bin\` whose first byte is \`0x10000000\`.
+- \`MemSiz − FileSiz = 0x1200\` bytes have no stored value at all: that is \`.bss\`, zeroed at run time.
+- Nothing connects the two addresses except the startup code's copy loop. Halt at the reset vector and read \`0x20000010\`, and you see whatever was in RAM, not the initial value.
+
+A HEX file stores only the 307 real bytes and says where each run goes. That is the practical difference from a \`.bin\`: no padding, addresses included, and a per-record integrity check. That check catches file corruption. It is not a security feature: anyone can recompute it.`,
       `### The ESP32 application image
 
-Espressif chips do not boot a raw binary. The build converts the ELF into an **image** the ROM and second-stage bootloader understand: a header beginning with the magic byte \`0xE9\`, a segment count, SPI flash parameters and the entry address, then each segment preceded by its load address and length, then a checksum, and optionally an appended SHA-256 digest. With secure boot, a signature block follows.
+Espressif chips do not boot a raw binary. The build converts the ELF into an **image** the ROM and second-stage bootloader understand. ESP-IDF v6.1 defines it in \`esp_app_format.h\`:
 
-Do not decode it by hand from memory: use the tool that defines it. \`esptool.py image_info build/app.bin\` prints the header fields and the segment table (newer esptool releases also accept the hyphenated spelling \`image-info\`; check \`esptool.py --help\`). The exact layout is in the esptool and ESP-IDF documentation.`,
+| File offset | Field | Meaning |
+|---|---|---|
+| 0 | \`magic\` | Always \`0xE9\` |
+| 1 | \`segment_count\` | Number of segments that follow (at most 16) |
+| 2 | \`spi_mode\` | Flash read mode |
+| 3 | \`spi_speed\` (low 4 bits), \`spi_size\` (high 4 bits) | Flash frequency and chip size codes |
+| 4–7 | \`entry_addr\` | Entry address, little-endian |
+| 8–23 | extended header | WP pin, pin drive settings, chip ID, chip revision limits, and \`hash_appended\` in the last byte |
+
+The header is 24 bytes. Each segment then has an 8-byte header (\`load_addr\`, \`data_len\`) followed by its data, so the first segment's data begins at file offset \`0x18 + 8\`. After the last segment comes a single checksum byte, placed so the image is padded to a 16-byte boundary, and, if \`hash_appended\` is 1, a 32-byte SHA-256 of everything before it. Both detect corruption only. With secure boot, a signature block follows.
+
+For real work use the tool that defines the format: \`esptool --chip esp32 image-info build/app.bin\` prints the header fields and the segment table. That is the spelling of esptool v5, which ESP-IDF v6.1 documents; esptool v4 and earlier were invoked as \`esptool.py image_info\`. Check \`esptool --help\` on your installation.`,
       { t: 'predict', q: 'You add `static uint8_t log_buffer[4096];` (no initialiser) to a firmware project and rebuild. How do the sizes of `firmware.bin` and of RAM usage change?',
         choices: [
           { t: 'Both grow by about 4096 bytes', why: 'This assumes every variable needs bytes in the image. Zero-initialised storage is described by a size only.' },
@@ -232,13 +297,14 @@ Do not decode it by hand from memory: use the tool that defines it. \`esptool.py
           { t: 'The .bin grows by 4096 bytes; RAM use is unchanged', why: 'That would be the behaviour of a large `const` table, which lives in flash. A writable array lives in RAM.' },
         ],
         reveal: `Now change it to \`static uint8_t log_buffer[4096] = {1};\`. A single nonzero initialiser moves the whole array to \`.data\`, and the image grows by 4096 bytes of initial values that are copied to RAM at every boot. On a part with 32 kB of flash that is a costly typo. \`size\` before and after shows it immediately.` },
-      { t: 'callout', kind: 'mistake', title: 'Reading flash usage from the ELF\'s file size', md: `An ELF's size on disk is dominated by debug information and says nothing about what goes on the chip. The demo ELF is 12,792 bytes and contains 307 bytes of loadable content. Use \`size\` (or \`size -A\` for a per-section list), and compare \`text + data\` with the flash region and \`data + bss\` plus stack with the RAM region in the linker script.` },
+      { t: 'callout', kind: 'mistake', title: 'Reading flash usage from the ELF\'s file size', md: `An ELF's size on disk is dominated by debug information and says nothing about what goes on the chip. The demo ELF is about 12.8 kB (the exact size varies by a few dozen bytes with the build directory, which the debug information records) and contains 307 bytes of loadable content. Use \`size\` (or \`size -A\` for a per-section list), and compare \`text + data\` with the flash region and \`data + bss\` plus stack with the RAM region in the linker script.` },
       { t: 'callout', kind: 'decision', title: 'Which file do I give to which tool?', md: `- **Debugger**: the ELF, always. It is the only file with symbols and line numbers.\n- **Flashing through a debug probe**: ELF or HEX, because they carry addresses and the tool cannot put them in the wrong place.\n- **A bootloader's update protocol**: whatever that bootloader defines, usually a \`.bin\` or a vendor image, at an address the protocol fixes. The eCTF flows for 2024–2026 produce a \`.bin\` for the competition bootloader.\n- **Release archive**: keep the ELF that matches every shipped binary. Without it you cannot decode a crash address from the field.` },
       { t: 'widget', name: 'firmware-inspector', props: { image: 'demo' }, caption: 'A synthetic Cortex-M0+ firmware with its ELF available. Find where the initial value of a .data variable is stored in flash, and how many bytes of the .bin belong to .bss.' },
       { t: 'exercise', prompt: `In a firmware ELF, \`size\` reports \`text 18432, data 512, bss 3072\`. The linker script reserves 1024 bytes for the stack and there is no heap. (a) How many bytes of flash does the image need? (b) How many bytes of RAM? Enter the **RAM** figure.`,
         hints: [
-          'Flash holds code, constants and the initial values of .data.',
-          'RAM holds the live copy of .data, all of .bss, and the stack.',
+          'Which of the three columns describe bytes that must exist in the image, and which describe memory that only needs to exist at run time?',
+          'One column is counted in both memories. Which one has an initial value that must be stored and a live copy that must be writable?',
+          'Method: flash = text + data. RAM = data + bss, plus anything the linker script reserves that `size` does not report.',
         ],
         answer: { type: 'number', value: 4608, tol: 0, unit: 'bytes' },
         solution: `(a) Flash = text + data = 18432 + 512 = 18,944 bytes. (b) RAM = data + bss + stack = 512 + 3072 + 1024 = **4608 bytes**. \`.data\` is counted in both because it exists twice: initial values in flash, working copy in RAM.` },
@@ -255,7 +321,8 @@ You are about to publish a firmware update on a website. For each artefact, list
 
 The conclusion to draw is uncomfortable and correct: **stripping and raw formats are not protection**. They remove convenience, not information. Every string and constant in \`fw.bin\` was found above with one command. If something must stay secret, it must not be in the image in recoverable form, or the image must be encrypted with a key that is itself protected by hardware. Verification is the same exercise from the other side: run \`strings\` and a hex viewer over your own release file and look for anything you would not want read.`,
       { t: 'refs', items: [
-        { title: 'esptool (image format, image_info, elf2image)', url: 'https://github.com/espressif/esptool' },
+        { title: 'esptool (image format, image-info, elf2image)', url: 'https://github.com/espressif/esptool' },
+        { title: 'ESP-IDF v6.1: esp_app_format.h (image and segment headers)', url: 'https://github.com/espressif/esp-idf/blob/v6.1/components/bootloader_support/include/esp_app_format.h' },
         { title: 'eCTF 2025 reference design Dockerfile (arm-none-eabi-gcc, gdb-multiarch)', url: 'https://github.com/mitre-cyber-academy/2025-ectf-insecure-example/blob/master/decoder/Dockerfile' },
         { title: 'eCTF 2026 reference design Dockerfile (TI Arm Clang)', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example/blob/release/firmware/Dockerfile' },
       ] },
@@ -280,6 +347,12 @@ The conclusion to draw is uncomfortable and correct: **stripping and raw formats
         { t: 'It is a file-local (static) variable in .bss', ok: true, why: 'B/b means the bss section and lower case means local binding.' },
         { t: 'It is a function in a boot section', why: 'Functions appear with T or t, for the text section. The letter b refers to zero-initialised data.' },
         { t: 'It is a byte-sized constant', why: 'The letter encodes the section and linkage, not the type or width. Sizes are shown with -S.' },
+      ] },
+      { q: 'A global is defined as `uint32_t period_ms = 250;`. You connect a debugger, run `monitor reset halt` and `print period_ms`. It shows 0, or a leftover value. The build and flash are correct. Why?', kind: 'arch', choices: [
+        { t: 'The variable lives in RAM, and the startup code that copies its initial value from flash has not run yet', ok: true, why: 'The debugger reads the run address (VMA). At the reset vector that RAM has not been initialised: the 250 is still only at the load address in flash.' },
+        { t: 'The debugger reads the load address in flash, where initial values are stored in compressed form', why: 'GDB uses the symbol\'s run address, which is in RAM, and objcopy stores initial values as plain bytes. The flash copy would read as 250.' },
+        { t: 'Initialised globals are placed in .bss, which a reset clears to zero before the core is halted', why: 'A nonzero initialiser puts the variable in .data, not .bss, and a reset does not clear RAM: the startup code does, later.' },
+        { t: 'The ELF given to GDB must be stale, because a correct ELF always shows the initial value', why: 'The ELF supplies the address and type, never the value. Values always come from target memory, which at this moment has not been set up.' },
       ] },
       { q: 'What does the Intel HEX checksum protect against?', kind: 'security', choices: [
         { t: 'Accidental corruption of a record, such as a damaged file or transfer error', ok: true, why: 'It is a simple sum that anyone can recompute, so it detects mistakes but offers no resistance to deliberate change.' },
@@ -337,7 +410,7 @@ Some products have the marking sanded or lasered off. The supporting evidence re
 
 ### External memory is a separate chip
 
-An 8-pin SOIC or small WSON near the processor is often **SPI NOR flash**. It is identified the same way, and also electrically: the standard JEDEC "read ID" command (\`0x9F\`) returns a manufacturer byte, a memory-type byte and a capacity byte, which tools such as esptool's \`flash_id\` print for you. The original ESP32 keeps its firmware in such a chip, inside the module's metal can.`,
+An 8-pin SOIC or small WSON near the processor is often **SPI NOR flash**. It is identified the same way, and also electrically: the standard JEDEC "read ID" command (\`0x9F\`) returns a manufacturer byte, a memory-type byte and a capacity byte, which tools such as esptool's \`flash-id\` command print for you. The original ESP32 keeps its firmware in such a chip, inside the module's metal can.`,
       `## Theory: three ways firmware leaves a board
 
 | Path | Uses | Needs |
@@ -352,11 +425,11 @@ All three are ordinary engineering operations with vendor support. Each has a co
 ### ESP32 family: the ROM bootloader
 
 Espressif's ROM bootloader implements flash read and write over UART (and over USB on chips with the USB Serial/JTAG controller). \`esptool\` drives it. This is the same path \`idf.py flash\` uses.`,
-      { t: 'code', lang: 'sh', status: 'reviewed', caption: 'Backing up an ESP32 board you own. Written against the esptool documentation; not run on a board here. Newer esptool releases use hyphenated command names (read-flash, flash-id, image-info) and accept the older ones; check esptool.py --help.',
-        code: String.raw`esptool.py --port /dev/ttyUSB0 flash_id                       # manufacturer, device, detected size
-esptool.py --port /dev/ttyUSB0 read_flash 0 0x400000 full.bin  # whole 4 MB chip
-esptool.py --port /dev/ttyUSB0 read_flash 0x8000 0x1000 ptable.bin
-esptool.py image_info full_app.bin                            # header and segments of an app image`,
+      { t: 'code', lang: 'sh', status: 'reviewed', caption: 'Backing up an ESP32 board you own. Spelling is that of esptool v5, as used throughout the ESP-IDF v6.1 documentation (esptool, hyphenated commands). esptool v4 and earlier: esptool.py flash_id, read_flash, image_info. Not run on a board here; check esptool --help.',
+        code: String.raw`esptool --port /dev/ttyUSB0 flash-id                       # manufacturer, device, detected size
+esptool --port /dev/ttyUSB0 read-flash 0 0x400000 full.bin  # whole 4 MB chip
+esptool --port /dev/ttyUSB0 read-flash 0x8000 0x1000 ptable.bin
+esptool --chip esp32 image-info full_app.bin               # header and segments of an app image`,
         explain: [
           { lines: '1', md: 'Sends the JEDEC ID command to the SPI flash through the ROM loader and reports its size. Use the size it reports in the next command; 0x400000 assumes 4 MB.' },
           { lines: '2', md: 'Reads from offset 0 for the given length into a file. The offsets are flash offsets, not CPU addresses.' },
@@ -375,7 +448,7 @@ On an unlocked MAX78000 or MSPM0L2228 the debug port reads flash like any memory
 > dump_image mspm0_flash.bin    0x00000000 0x40000     # MSPM0L2228: 256 KB at 0x0000_0000
 \`\`\`
 
-TI's UniFlash offers a memory read for MSPM0 as a supported operation, and the MSPM0 ROM bootstrap loader (BSL) is a second path, governed by its own configuration in NONMAIN. Check TI's BSL documentation for the interfaces and commands it provides.
+TI's UniFlash is the vendor's programming tool for MSPM0, and the MSPM0 ROM bootstrap loader (BSL) is a second path, with its own configuration block in NONMAIN. This project has not verified which read-back operations either offers on the L2228: check TI's UniFlash and BSL documentation for the interfaces and commands they provide.
 
 On the eCTF boards for 2024–2026 a MITRE-provided bootloader occupies the start of flash (\`0x1000_0000\`–\`0x1000_DFFF\` on the MAX78000; \`0x0000_0000\`–\`0x0000_5FFF\` in the 2026 MSPM0 layout), and team firmware is installed through it. What that bootloader permits in each competition phase is set by that year's rules.
 
@@ -389,7 +462,7 @@ You have \`full.bin\` from an ESP32 development board you own. Before any disass
 1. **Size check.** 4,194,304 bytes = 4 MB: matches \`flash_id\`.
 2. **Bootloader.** Offset \`0x1000\` should begin with \`E9\`, the image magic.
 3. **Partition table.** Read \`0x8000\`–\`0x8FFF\`. ESP-IDF's \`gen_esp32part.py\` converts the binary table back to readable CSV. Suppose it lists \`nvs\` at \`0x9000\`, \`phy_init\` at \`0xF000\` and \`factory\` at \`0x10000\`, size 1 MB.
-4. **Application.** Offset \`0x10000\` should again begin with \`E9\`. \`image_info\` on that region lists its segments and their load addresses, which is everything a disassembler needs.
+4. **Application.** Offset \`0x10000\` should again begin with \`E9\`. Suppose the first eight bytes there are \`E9 06 02 10 14 12 08 40\`. By the header layout from the file-formats lesson: magic, 6 segments, flash mode code 2, and an entry address stored little-endian in bytes 4–7. \`image-info\` on that region lists the segments and their load addresses, which is everything a disassembler needs.
 5. **Strings.** \`strings -n 8 full.bin | less\`: project name, ESP-IDF version, compile date, log format strings, URLs, and anything the developers left in.
 6. **NVS.** The \`nvs\` partition holds key-value settings. On a device that has been used, that can include Wi-Fi credentials in plain form unless NVS encryption is enabled. This is why a second-hand IoT device is a privacy problem as well as a security one.
 
@@ -407,21 +480,22 @@ If the dump from offset \`0x1000\` onward looks like uniform noise with no \`E9\
 | Path | Lock | Platform notes |
 |---|---|---|
 | Debug port | Disable or password-protect debug access | **MSPM0L2228**: NONMAIN boot configuration (debug access enabled / password / disabled; SWD port enable). **ESP32 family**: JTAG-disable eFuses, set automatically when secure boot or flash encryption release mode is enabled; see the security guides for the eFuse names on your chip. **MAX78000**: consult the user guide and datasheet for the part's debug-lock mechanism |
-| ROM / serial bootloader | Disable it, restrict it, or require a password | **MSPM0L2228**: BSL configuration in NONMAIN, including invocation pin and password. **ESP32 family**: secure download mode or disabling UART download mode by eFuse |
+| ROM / serial bootloader | Disable it, restrict it, or require a password | **MSPM0L2228**: the NONMAIN boot configuration has a BSL pin-invoke option and a bootloader-mode setting, and a separate BSL configuration block; take the details (interfaces, password) from TI's BSL documentation, which this project has not verified. **ESP32 family**: secure download mode or disabling UART download mode by eFuse |
 | External flash | Encrypt what is stored; keep keys inside the processor | **ESP32 family**: flash encryption (AES-256 with an eFuse key on the original ESP32; XTS-AES on newer chips). Parts with internal flash, such as the MAX78000 and MSPM0L2228, have no external bus to clip onto |
 | Factory reset / mass erase | Decide whether it is allowed and what it wipes | **MSPM0L2228**: mass erase and factory reset can each be enabled, password-protected or disabled in NONMAIN |
 | Everything else | Assume a determined attacker eventually reads one device | Per-device keys, so one extraction does not break every unit; no global secret in firmware |
 
 Many of these settings are **one-way**. An eFuse cannot be un-burned, and a NONMAIN configuration that disables both debug and the bootloader with no recovery path leaves a board that can never be reprogrammed. Practise on a board you are prepared to lose, and keep a written record of what was set.`,
       { t: 'callout', kind: 'decision', title: 'Why not rely on the lock alone?', md: `Readout protection is a check performed by hardware and boot code, and checks can sometimes be glitched or have implementation flaws; several chip families have had published bypasses. So a sound design layers: lock the ports, encrypt stored secrets, authenticate what boots, and give each device its own keys so that the worst case is one compromised unit. The security section covers fault injection and how to make checks harder to skip.` },
-      { t: 'widget', name: 'firmware-inspector', props: { image: 'lockbox' }, caption: 'lockbox.bin is a raw dump with no ELF and no symbols, as if read from a device. Work out its load address from the reset vector, then see what it gives away.' },
-      { t: 'exercise', prompt: `An ESP32 (original) dump is 4 MB. Using the default layout, at what **flash offset** would you expect the partition table, and how many bytes does it occupy? Enter the offset in hex.`,
+      { t: 'widget', name: 'firmware-inspector', props: { image: 'lockbox' }, caption: 'lockbox.bin is a raw dump with no ELF and no symbols, as if read from a device. For this lesson open the Strings view and do the credential task: what does one read-out give away? The load-address task uses the vector-table method of the next lesson; come back to it then.' },
+      { t: 'exercise', prompt: `You carve the application out of an ESP32 dump at the offset the partition table gives. Its first eight bytes are \`E9 06 02 10 14 12 08 40\`. What is the image's **entry address**? Give it in hex.`,
         hints: [
-          'This is an ESP-IDF default that the build prints when flashing.',
-          'It sits between the bootloader at 0x1000 and the first data partition at 0x9000.',
+          'Which byte tells you this really is an image, and which of the following bytes are one-byte fields?',
+          'The header starts with four one-byte fields (magic, segment count, flash mode, speed/size). The entry address is the 32-bit field after them. In which byte order does an ESP32 store it?',
+          'Method: take bytes 4 to 7 and read them as a little-endian word, last byte most significant.',
         ],
-        answer: { type: 'text', accept: ['^\\s*(0[xX])?0*8000\\s*$'], nudge: 'The default partition-table offset in ESP-IDF, one sector below 0x9000.' },
-        solution: `The default partition table offset is **0x8000**. The table itself is 0xC00 bytes (up to 95 entries, followed by an MD5), and it occupies one 0x1000 flash sector, so read 0x1000 bytes from 0x8000. Projects can move it with a configuration option, so if nothing sensible is there, look for the table's entry magic nearby.` },
+        answer: { type: 'text', accept: ['^\\s*(0[xX])?40081214\\s*$'], nudge: 'Bytes 4–7 are 14 12 08 40. Reverse them to read the little-endian word.' },
+        solution: `Byte 0 is the magic \`0xE9\`, byte 1 says 6 segments, byte 2 is the flash mode and byte 3 packs the flash frequency (low nibble) and size (high nibble). Bytes 4–7, \`14 12 08 40\`, are the entry address, little-endian: **0x40081214**. That is an address in the ESP32's internal RAM region for code (IRAM, \`0x4008_0000\` upward), which is where the application's start-up function is placed. It is not a flash offset: the segment table that follows says which bytes of the file are loaded or mapped at which address. If byte 0 were not \`E9\` you would be at the wrong offset, or looking at encrypted flash.` },
       `## Harder application: an extraction threat model for your own product
 
 Your product is an ESP32-C3 sensor node. Firmware holds a device certificate and private key for a cloud service and the customer's Wi-Fi credentials. Fill in the table for the product as built *without* any security configuration, then with one.
@@ -530,21 +604,36 @@ Inspecting a live device's memory with \`x/\` in GDB or \`mdw\` in OpenOCD, and 
 A dump from a Cortex-M0+ device begins:
 
 \`\`\`
-00000000: 00 10 00 20  41 40 00 08  81 40 00 08  83 40 00 08
+00000000: 00 10 00 20  41 20 00 08  81 20 00 08  83 20 00 08
 \`\`\`
 
 Read as little-endian words:
 
 - \`0x20001000\`: initial SP. RAM is at \`0x2000_0000\` and the stack starts 4 kB above its base.
-- \`0x08004041\`: reset vector. Odd, so Thumb; the handler is at \`0x08004040\`.
-- \`0x08004081\`, \`0x08004083\`: NMI and HardFault handlers at \`0x08004080\` and \`0x08004082\`. Two bytes apart: each is a single 2-byte instruction, an infinite loop \`b .\` (\`fe e7\`).
+- \`0x08002041\`: reset vector. Odd, so Thumb; the handler is at \`0x08002040\`.
+- \`0x08002081\`, \`0x08002083\`: NMI and HardFault handlers at \`0x08002080\` and \`0x08002082\`. Two bytes apart: each is a single 2-byte instruction, an infinite loop \`b .\` (\`fe e7\`).
 
-The vector table of a Cortex-M0+ with 16 exception slots is 0x40 bytes. If the reset handler directly follows it, the image base is \`0x08004040 − 0x40 = 0x08004000\`.
+The vector table of a Cortex-M0+ with 16 exception slots is 0x40 bytes. If the reset handler directly follows it, the image base is \`0x08002040 − 0x40 = 0x08002000\`.
 
-That is not the start of flash on a part whose flash begins at \`0x0800_0000\`. The first \`0x4000\` bytes belong to something else: a **bootloader**. You have learned the device's boot architecture from four words. The eCTF layouts are the same pattern: team firmware linked at \`0x1000_E000\` behind a bootloader at \`0x1000_0000\` (2024, 2025), or at \`0x0000_6000\` (2026).
+That is not the start of flash on a part whose flash begins at \`0x0800_0000\`. The first \`0x2000\` bytes (8 KiB) belong to something else: a **bootloader**. You have learned the device's boot architecture from four words. The eCTF layouts are the same pattern: team firmware linked at \`0x1000_E000\` behind a bootloader at \`0x1000_0000\` (2024, 2025), or at \`0x0000_6000\` (2026).
 
-Check the hypothesis: with base \`0x08004000\`, every literal-pool pointer into flash should land on something sensible, such as the start of a string. If they land mid-string, the base is wrong.`,
-      { t: 'widget', name: 'firmware-inspector', props: { image: 'lockbox' }, caption: 'Do the triage on lockbox.bin: vectors, load address, strings. Then find the credential and compute the memory address it lives at.' },
+Check the hypothesis: with base \`0x08002000\`, every literal-pool pointer into flash should land on something sensible, such as the start of a string. If they land mid-string, the base is wrong.
+
+### The triage order
+
+Do these in order on any raw image, and write each result down before the next:
+
+1. **Size and shape.** How long is the file? Is the end padded with \`FF\` or \`00\`?
+2. **First 16 bytes as four little-endian words.** A RAM address followed by odd flash addresses is a Cortex-M vector table; \`E9\` is an ESP image; \`7F 45 4C 46\` is an ELF you were not expecting.
+3. **Initial SP** → RAM base and a lower bound on RAM size.
+4. **Reset vector** → clear bit 0, subtract its offset in the file → **load address**. Test it: every non-zero vector must fall inside \`base … base + file length\`.
+5. **Does the base equal the start of flash?** If not, something else boots first.
+6. **Strings**, with offsets. Add the base to get the addresses that code will use to refer to them.
+7. **Constants and entropy**: known tables name the algorithms; high-entropy blocks are compressed or encrypted; flat runs are padding.
+8. Only now **disassemble**, starting from the reset handler and from the code that refers to the interesting strings.
+
+The inspector below gives you a different image from the worked example. Its base is not the one above: derive it.`,
+      { t: 'widget', name: 'firmware-inspector', props: { image: 'lockbox' }, caption: 'Do the triage on lockbox.bin in the order above: Vectors view for steps 2–5, Strings view for step 6. The tool checks your load address, the credential, and the memory address the credential lives at.' },
       `## Reading disassembly
 
 You do not need to write assembly. You need to recognise a handful of shapes. Arguments arrive in \`r0\`–\`r3\` on Arm and \`a0\`–\`a7\` on RISC-V; the return value leaves in \`r0\` or \`a0\`.
@@ -646,9 +735,9 @@ For peripheral registers, compare addresses with the chip's reference manual or 
       { t: 'callout', kind: 'decision', title: 'objdump or Ghidra?', md: `For a file with symbols, or a quick look at one function, \`objdump -d\` (or \`llvm-objdump\`) is immediate and scriptable. For a raw image of any size, Ghidra's cross-references and decompiler repay the setup time many times over. Use the hex viewer and \`strings\` first in both cases: they cost nothing and decide where to look.` },
       { t: 'exercise', prompt: `A raw Cortex-M image's first two words are \`0x20008000\` and \`0x000060C1\`. The vector table is 0xC0 bytes long and the reset handler follows it directly. What is the image's load address? Give it in hex.`,
         hints: [
-          'Clear the Thumb bit of the reset vector to get the handler\'s address.',
-          'The handler starts right after the table, so subtract the table length.',
-          '0x60C0 − 0xC0.',
+          'Which of the two words is an address inside the image, and what does its odd low bit mean?',
+          'You know where the reset handler is in memory and, from the table length, where it is in the file. How do those two facts give the address of the file\'s first byte?',
+          'Method: load address = (reset vector with bit 0 cleared) − (offset of the handler in the file). Here the handler\'s offset equals the table length.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0[xX])?0*6000\\s*$'], nudge: 'Reset handler address (bit 0 cleared) minus the size of the vector table.' },
         solution: `Reset handler = \`0x60C1 & ~1 = 0x60C0\`. Load address = \`0x60C0 − 0xC0\` = **0x6000**. The initial SP \`0x20008000\` says RAM tops out at \`0x20008000\`. An image at \`0x6000\` on a part whose flash starts at 0 means something else owns the first 24 kB: this is the shape of the 2026 eCTF layout, where the bootloader occupies \`0x0000\`–\`0x5FFF\`.` },
@@ -754,7 +843,7 @@ Then two questions about the chain as a whole:
 
 Without secure boot, the image format's checksum and optional appended SHA-256 detect corruption. They do not authenticate anything.
 
-With **Secure Boot V2**, the ROM verifies the second-stage bootloader's signature (RSA-PSS with RSA-3072 by default) using a public-key digest held in eFuse, and the bootloader verifies the application the same way. Secure Boot V2 is available on the original ESP32 from chip revision v3.0. The older V1 scheme applies to earlier ESP32 revisions and works differently. Flash encryption is a separate feature that provides confidentiality; the two are designed to be used together.
+With **Secure Boot V2**, the ROM verifies the second-stage bootloader's signature using a public-key digest held in eFuse, and the bootloader verifies the application the same way. The scheme is RSA-PSS with an RSA-3072 key on the original ESP32, the S3 and the C3; the ESP32-C6 offers RSA-3072 or ECDSA P-256. Secure Boot V2 is available on the original ESP32 from chip revision v3.0 and on the ESP32-C3 from v0.3. The older V1 scheme applies to earlier ESP32 revisions and works differently. Flash encryption is a separate feature that provides confidentiality; the two are designed to be used together.
 
 ### MSPM0L2228
 

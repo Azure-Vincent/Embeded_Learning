@@ -1,6 +1,6 @@
 // Practice scenarios 3, 4 and 5. Original course exercises; not MITRE material.
-import { SCENARIO_NOTE, METHOD } from './sc-a.js';
-import { UPDATE_SOL, UPDATE_START, KEYPOL_SOL, KEYPOL_START, FRAME_C } from './code.js';
+import { SCENARIO_NOTE, METHOD, refStep } from './sc-a.js';
+import { UPDATE_SOL, UPDATE_START, KEYPOL_SOL, KEYPOL_START, FRAME_C, RELAY_REF, RELAY_REF_OUT, FIELDBUS_REF, FIELDBUS_REF_OUT, KEYKEEPER_REF, KEYKEEPER_REF_OUT } from './code.js';
 
 const relay = {
   id: 'ectf-sc-relay',
@@ -32,6 +32,7 @@ const relay = {
       'F4. If power is lost at any point during an update, the device still boots a valid image afterwards.',
       'F5. Two devices of the same deployment connected by a serial link can each establish that the other belongs to the deployment before exchanging application data.',
       'F6. The application image may be up to 128 KiB.',
+      'F7. The device answers an update with one status: accepted or refused. A refused update leaves the running image, the stored version and every other part of flash exactly as they were.',
     ],
     security: [
       'S1. A device installs and runs only application images produced by the deployment\'s packaging tool with the deployment\'s release key.',
@@ -51,7 +52,27 @@ Relay devices sit in the field and receive new firmware over a serial link. They
 ${METHOD}`,
     { t: 'callout', kind: 'note', title: 'How this relates to real eCTF years',
       md: `In the 2024, 2025 and 2026 example designs, teams did not write the first-stage bootloader: a MITRE-supplied bootloader occupies the start of flash and the team's firmware starts at a fixed address after it. An earlier year (2017) had teams build a secure bootloader, and 2022 a firmware installation routine. This scenario teaches the general technique on a generic model. It does not reproduce any of those systems.` },
+    `## Interface specification
+
+**Reference update file** (to be replaced by your signed format). All integers are 32-bit little-endian.
+
+| Offset | Size | Field | Meaning in the reference design |
+|---|---|---|---|
+| 0 | 4 | magic | the ASCII bytes \`RLY1\` |
+| 4 | 4 | version | release number |
+| 8 | 4 | length | number of image bytes that follow the header |
+| 12 | 4 | flags | bit 0 = "force install" |
+| 16 | 4 | crc | CRC-32 (reflected, polynomial 0xEDB88320, as used by zip) of the image bytes |
+| 20 | length | image | the application |
+
+**Device boundary in the host build.** Flash is an array. \`dev_factory(version, image, len)\` is the factory installation of the first image. \`dev_update(file, n)\` is called when an update file of \`n\` bytes has arrived and returns \`UPD_OK\` or \`UPD_REFUSED\` (F7). \`dev_boot()\` is a reset: it returns the version of the image that would start, or 0 if the device stays in its loader. \`dev_test_active_image()\` gives the tests a pointer to the bytes that would execute, so they can check that a *complete* genuine image is there and can alter flash behind the device's back (T-S5-1). \`pkg_make()\` is the packaging tool of F2.
+
+**Power loss.** \`flash_budget\` is the number of flash operations (one erase, or one byte programmed) that still succeed; after that every flash operation is silently lost, which is the state the device would be found in at the next power-up. The harness sets it, calls \`dev_update()\`, restores it and calls \`dev_boot()\`. A real page interrupted mid-write can also hold indeterminate data; the model does not show that, so record it as residual risk.
+
+**Signatures in the host build.** The reference design needs no key. Yours needs a signature to be created in \`pkg_make()\` and verified in the device part: link a maintained library (on a PC, OpenSSL's EVP interface with \`-lcrypto\`) and do not write the arithmetic yourself. A boolean stand-in is acceptable while you debug the slot logic, but it is not evidence for S1, S3 or S4.`,
     `## The insecure reference design
+
+Rows marked † describe parts of the reference system that are not in the step 2 listing (the later symmetric-key variant and the device-to-device handshake); review them from the description.
 
 | Aspect of the reference design | Requirement it falls short of | Why, at design level |
 |---|---|---|
@@ -59,11 +80,11 @@ ${METHOD}`,
 | Header is \`{version, length, flags}\` and is not covered by any check | S2, S6 | The fields that drive the decision can be edited independently of the image. |
 | \`flags\` bit 0 is "force install", used in the factory | S2 | A mode that overrides the version check exists and is reachable from the update file. |
 | Version compared with "older than" only, so the same version re-installs | S2 | Non-strict comparison allows re-installation of a known image. |
-| One symmetric "update key" in every device of every deployment authenticates a later variant of the format | S1, S3, S4 | The key that verifies also creates; one opened device can authorise updates everywhere. |
+| † One symmetric "update key" in every device of every deployment authenticates a later variant of the format | S1, S3, S4 | The key that verifies also creates; one opened device can authorise updates everywhere. |
 | The loader erases the running application, then receives and checks | F4, S5 | Unverified data replaces the working image; failure leaves nothing bootable. |
 | \`length\` from the header sizes the flash write | S6 | A length larger than the application area writes beyond it; arithmetic on it can wrap. |
 | The check happens once, at install | S5 | Nothing re-examines the image if flash changes afterwards. |
-| Device-to-device "handshake" compares a deployment ID sent in clear | S4 | Identity is asserted, not proven. |`,
+| † Device-to-device "handshake" compares a deployment ID sent in clear | S4 | Identity is asserted, not proven. |`,
     `## Design notes
 
 **Signature, not MAC, for S1 and S4.** The device stores the public half of the release key. Nothing extractable from a device can sign.
@@ -100,6 +121,7 @@ ${METHOD}`,
   steps: [
     { title: 'Requirements, assumptions and the trace',
       md: `Tabulate the requirements. Then write the **trace** of the reference design: a numbered list from "first byte of the update arrives" to "first instruction of the new image executes", with, at each step, what has been checked so far and what has been modified so far. Every step where "modified" runs ahead of "checked" is a finding.` },
+    refStep('relay_ref', RELAY_REF, RELAY_REF_OUT, `The reference loader, its packaging tool and a model of flash are 70 lines of C. Use it to check the trace you wrote in step 1: put a \`printf\` after each flash operation if you want to watch "modified" run ahead of "checked".`),
     { title: 'Review the reference design',
       md: `Use the simulations to see three of the reference design's classes concretely: a rollback accepted by an updater, what an update image reveals when inspected, and a header length that passes a wrapping check. Write each as a finding with defence and verification test.`,
       blocks: [
@@ -125,16 +147,16 @@ Try signing and tampering in the tool below to see which changes a signature det
         { t: 'widget', name: 'c-lab', title: 'C lab: the update acceptance decision',
           props: {
             title: 'Update decision',
-            prompt: `\`update_decision()\` returns a code for each of seven update headers presented to device \`0x1001\`, whose stored minimum version is 7. (In this exercise the header's first field identifies the target; in your design it is the deployment ID.)
+            prompt: `\`update_decision()\` returns a code for each of eight update headers presented to device \`0x1001\`, whose stored minimum version is 7. (In this exercise the header's first field identifies the target; in your design it is the deployment ID.)
 
 The reference logic honours the "force" flag, compares the version non-strictly, checks the signature late, and never looks at the target or the length.
 
-Required output: \`0123344\`, meaning accepted, bad signature, wrong target, rollback (same version), rollback (old version with the force flag), bad length (too long), bad length (zero).
+Required output: \`01233441\`, meaning accepted, bad signature, wrong target, rollback (same version), rollback (old version with the force flag), bad length (too long), bad length (zero), and bad signature for a header in which *every* field is wrong: when the signature does not verify, that is the only thing the device may report, because nothing else in the header can be believed.
 
 Fix \`update_decision()\`. Do not change \`main\`.`,
             starter: UPDATE_START,
             solution: UPDATE_SOL,
-            tests: [{ name: 'forged, foreign, old, forced and oversized updates refused', stdout: '0123344\n' }],
+            tests: [{ name: 'forged, foreign, old, forced and oversized updates refused; signature checked first', stdout: '01233441\n' }],
             hints: [
               'Which check must come first, so that no later check reads a field nobody has vouched for?',
               'The fifth header sets the force flag. S2 says no flag overrides the version rule: the right amount of code handling that flag is none.',
@@ -153,7 +175,9 @@ Decide when the minimum version is raised, and defend the decision in the S2 arg
 
 Then specify the F5 handshake: each side sends its identity statement and a fresh nonce; each verifies the other's statement with the deployment public key and requires a signature, made with the device key, over both nonces and both device IDs.` },
     { title: 'Build the host tooling and tests; optional hardware observation',
-      md: `Write a small packaging tool on your PC (Python with a maintained cryptography library is suitable) that produces update files in your format, and a host-compiled test of your bootloader logic that reads such files. Generate the negative-test files with the tool: flipped bit, wrong key, older version, other deployment, oversized length.
+      md: `Replace the device part of \`relay_ref.c\` with your design (two slots, the two-copy boot record, verification in \`dev_update()\` and again in \`dev_boot()\`) and \`pkg_make()\` with your signed format, keeping the function names so the harness links. Work until every harness line prints PASS under the sanitizer build. Then add the tests the harness lists at its end, and extend T-F4 into a loop that sets \`flash_budget\` to **every** value from 0 up to the number of operations a complete update needs: after each interrupted update a complete image must still run. That loop is the power-loss table of step 6, executed.
+
+If you prefer a separate packaging tool (Python with a maintained cryptography library is suitable), have it write the same files and feed them to the harness. Generate the negative-test files with the tool: flipped bit, wrong key, older version, other deployment, oversized length.
 
 **Optional, on an ESP32 you own:** the vendor's SDK already implements signed application images, rollback protection and two-slot updates. Reading how it does so, and running its update examples *without* enabling secure boot, is a useful comparison with your design. Do not enable Secure Boot or flash encryption on a board you want to reuse freely: both burn eFuses and are permanent. The available schemes depend on the chip and its revision (see the security section).` },
   ],
@@ -169,7 +193,7 @@ Then specify the F5 handshake: each side sends its identity statement and a fres
 
 **On the device**, receiving into the inactive slot means the flash write itself is the only effect of unverified data, and it is confined to an area that is never executed until verified. At boot the same verification runs again over the active slot, so a change made to flash after installation is caught before any of it executes.`,
   testing: [
-    `Generate every negative-test file with your own packaging tool.
+    `Generate every negative-test file with your own packaging tool. The harness in step 2 automates T-F3, T-F4 (one interruption point), T-F6, T-S1-1, T-S1-4, T-S2-1, T-S2-2, a forced-rollback test, T-S5-1 and T-S6-1/2; note that it does not accept "the device reports version 2" as proof, it also compares the bytes that would execute with the genuine image.
 
 | ID | Requirement | Test | You should see |
 |---|---|---|---|
@@ -199,11 +223,11 @@ Then specify the F5 handshake: each side sends its identity statement and a fres
   ],
   challenge: `Add **confidentiality** of the image in transit (a requirement S7 that you write) without weakening S4: the image must be unreadable to someone holding the update file, yet opening one device must not expose a key that decrypts updates for all other devices *and* must still allow one update file per release, not one per device. Decide whether both are achievable together, and if not, which requirement you would ask to have clarified. No solution is given.`,
   rubric: [
-    { criterion: 'Trace and review of the reference design', points: 20, evidence: 'Step-by-step trace with checked/modified columns; findings for CRC, unsigned header, force flag, shared key, erase-before-verify, unbounded length, install-only check.' },
-    { criterion: 'Image format and verification order', points: 20, evidence: 'Byte-level header specification; ordered checks with justification; C lab passed.' },
-    { criterion: 'Anti-rollback and power-loss design (S2, F4)', points: 20, evidence: 'Boot record specification; per-step power-loss table; T-S2 and T-F4 results.' },
-    { criterion: 'Provisioning and device-to-device trust (S3, S4)', points: 20, evidence: 'Key inventory (who generates, where stored); handshake specification; T-S3, T-S4 results including image search.' },
-    { criterion: 'Verify before use, every boot; bounded parsing (S5, S6)', points: 10, evidence: 'T-S5, T-S6 results; sanitizer log.' },
+    { criterion: 'Trace and review of the reference design', points: 20, evidence: 'Step-by-step trace with checked/modified columns; one finding per FAIL line of the reference harness (CRC, force flag, non-strict version, erase-before-verify, unbounded length, install-only check) plus the two † rows; each names the failing test ID.' },
+    { criterion: 'Image format and verification order', points: 20, evidence: 'Header table with offset, size and byte order of every field and the exact byte range signed; ordered checks with justification; C lab passed (`01233441`).' },
+    { criterion: 'Anti-rollback and power-loss design (S2, F4)', points: 20, evidence: 'Boot record layout; per-step power-loss table; harness PASS for T-S2-1, T-S2-2, the forced-rollback test and T-S2-3; log of the T-F4 loop over every flash_budget value with a complete image running after each.' },
+    { criterion: 'Provisioning and device-to-device trust (S3, S4)', points: 20, evidence: 'Key inventory (who generates, where stored, which devices hold which half); handshake message table; PASS for T-S3-1 and T-S4-2; `strings`/hex search of a device image showing no private release or deployment key.' },
+    { criterion: 'Verify before use, every boot; bounded parsing (S5, S6)', points: 10, evidence: 'Harness PASS for T-S5-1 and T-S6-1/2 including length 0xFFFFFFFF; run of random and truncated files under -fsanitize=address,undefined ending without a report.' },
     { criterion: 'Security arguments and residual risk', points: 10, evidence: 'Six-part argument per requirement; honest statement about what the first boot stage and the hardware are relied on for.' },
   ],
   quiz: [
@@ -266,6 +290,7 @@ const fieldbus = {
       'F4. A complete exchange (request and response) finishes within 100 ms.',
       'F5. The controller stores the 32 most recent readings in flash and can output them on its console after PIN login.',
       'F6. A node can be replaced by building a new node with the same ID for the same deployment, without rebuilding the others.',
+      'F7. A frame that is not accepted is dropped silently: no reply, no action, no change of stored state. The controller treats a missing reply after 100 ms as a failed exchange and continues with the next poll.',
     ],
     security: [
       'S1. A device acts only on messages produced by the legitimate peer for this deployment; a modified message is rejected.',
@@ -285,18 +310,35 @@ Four devices share two wires. The adversary can attach to the bus, observe every
 The multi-board I2C arrangement resembles the general shape of the 2024 eCTF example system (one application processor as I2C controller, components as peripherals). This scenario is an original exercise on that generic shape and reproduces neither that system nor its requirements.
 
 ${METHOD}`,
+    `## Interface specification
+
+**Reference frame** (to be replaced): \`src(1) dst(1) len(1) payload(len) crc(1)\`, where \`crc\` is CRC-8 with polynomial 0x07 and initial value 0 over the first \`3 + len\` bytes, and \`len\` is at most 64. A poll request carries the one-byte payload \`R\`; a sensor answers with its reading; the actuator answers a command with the one-byte payload \`A\`.
+
+**Device boundary in the host build.** One frame in, at most one frame out.
+
+| Function | Contract |
+|---|---|
+| \`node_init(nd, deployment, id)\`, \`ctrl_init(c, deployment)\` | Stand for the secrets step and the per-device build. Different \`deployment\` numbers stand for different runs of the secrets step. |
+| \`ctrl_poll(c, node, out)\`, \`ctrl_command(c, node, cmd, len, out)\` | The controller builds a request frame and returns its length. |
+| \`node_rx(nd, frame, n, reply)\` | A node received \`n\` bytes. Returns the reply length, or 0 if the frame was dropped (F7). The actuator counts executed commands in \`ram.actions\`. |
+| \`ctrl_rx(c, frame, n)\` | The controller received a reply. Returns 1 if accepted (the reading is stored and logged), 0 if dropped. |
+| \`ctrl_log_read(c, i, out)\` | Log record \`i\` as the console would print it after login; \`-1\` if the record is empty or fails its integrity check. \`c.flash\` is the log's flash, which the tests may inspect and alter. |
+
+The harness always passes frames in a 300-byte zero-filled buffer, so a device that believes an over-long length field reads defined bytes. The PIN login of F5 is scenario 1's mechanism and is not repeated in this harness. \`fixup()\` in the harness is "everything a party without keys can recompute after editing a frame": the CRC in the reference design, and nothing at all in yours.`,
     `## The insecure reference design
+
+Rows marked † describe parts of the reference system that are not in the step 2 listing; review them from the description.
 
 | Aspect of the reference design | Requirement it falls short of | Why, at design level |
 |---|---|---|
 | Frames are \`src, dst, len, payload, CRC-8\` in clear | S1, S2 | No secrecy; the CRC involves no key, so any device can produce valid frames. |
 | A node acts on any frame whose \`dst\` is its own ID | S1, S3 | The source field is a claim nobody verifies. |
 | No counter or nonce | S3 | Every valid frame remains valid indefinitely. |
-| Request and response share one layout and no direction marker | S3 | A device's own frame can be presented back to it. |
-| Receiver copies \`len\` bytes into a 64-byte buffer | S6 | The length field is trusted; values above 64 write past the buffer. |
-| A later revision "encrypts" payloads with one AES key compiled into every device, fixed IV | S2, S5 | Equal plaintexts give equal ciphertexts; one opened node reads everything; still no integrity. |
+| Request and response share one layout and no direction marker | S3 | With \`src\` and \`dst\` exchanged (both are unverified claims) the controller's own request is accepted as a node's reply. |
+| Receiver copies \`len\` bytes into a 64-byte buffer, before checking the CRC | S6 | The length field is trusted; values above 64 write past the buffer, and the write happens even for a frame that is then dropped. |
+| † A later revision "encrypts" payloads with one AES key compiled into every device, fixed IV | S2, S5 | Equal plaintexts give equal ciphertexts; one opened node reads everything; still no integrity. |
 | Log records are written to flash in clear, appended in order | S4 | Readable from flash; any record can be altered or the log truncated. |
-| The actuator's handler runs in interrupt context and parses the frame there | S6 (supporting), F4 | Unbounded work on attacker-controlled input at the highest priority. |`,
+| † The actuator's handler runs in interrupt context and parses the frame there | S6 (supporting), F4 | Unbounded work on attacker-controlled input at the highest priority. |`,
     `## Design notes
 
 **Keys.** Pairwise: \`k_n = KDF(deployment_secret, "bus" || node_id)\`, computed by the build system. Node \`n\` is built with \`k_n\`; the controller is built with all three (F6: a replacement node with the same ID gets the same \`k_n\`, which raises a question you must answer in step 4). The deployment secret itself is in no image. Derive separate subkeys per direction.
@@ -329,6 +371,7 @@ ${METHOD}`,
   steps: [
     { title: 'Requirements, assumptions and threat model',
       md: `Tabulate the requirements with verification methods. Record the assumptions: bus fully observable and injectable; one sensor node extracted; controller flash not readable; jamming out of scope. List assets per device and the entry points: the bus (every frame type, both directions), the controller console, each device's flash.` },
+    refStep('fieldbus_ref', FIELDBUS_REF, FIELDBUS_REF_OUT, `The reference controller and nodes are 60 lines of C. The reading used by the tests is the text \`21.5C;humidity=40\`; two tests simply search for its first bytes on the bus and in the controller's flash.`),
     { title: 'Review the reference design: frames',
       md: `Take one reference frame and ask the four protocol questions (replay, redirect, reflect, re-type), then walk the memory-safety class over the receive path. Use the simulations to examine a frame with a trusted length field and a check value that involves no key.`,
       blocks: [
@@ -348,10 +391,22 @@ ${METHOD}`,
 - **Frame**: fields, sizes, byte order; associated data; nonce layout.
 - **Receive order**: length checks; destination is me; source is a peer I have a session with; tag verifies; counter strictly greater than last accepted for that peer and direction; then update the counter and act.` },
     { title: 'Implement the frame parser and nonce construction',
-      md: `This is the code at the trust boundary. Read it, compile it on your PC, and extend its tests. It parses a frame without trusting the length field and builds a nonce in which the two directions can never collide.`,
+      md: `This is the code at the trust boundary, for the protected frame of the design notes. Read it, compile it on your PC, and extend its tests. It parses a frame without trusting the length field and builds a nonce in which the two directions can never collide. You should see exactly this output:
+
+\`\`\`
+exact      0
+counter    42
+truncated  -1
+trailing   -1
+len=200    -1
+tiny       -1
+nonces differ by direction: 1
+\`\`\`
+
+Compare it line by line with the reference \`node_rx()\` from step 2: which of the three length checks does the reference have, and in which order relative to the copy?`,
       code: FRAME_C, lang: 'c', status: 'host-tested' },
     { title: 'Implement the protected exchange',
-      md: `Around the parser, implement \`send_frame\` and \`recv_frame\` as hardware-independent C, calling a library AEAD. Drive two instances against each other in a host test, passing bytes between them through a function you control, so that your tests can drop, duplicate, alter and re-address frames.
+      md: `Replace the device part of \`fieldbus_ref.c\` with your design, built around \`parse_frame()\` and \`build_nonce()\`, keeping the function names and contracts of the interface specification. Call a library AEAD (on a PC, OpenSSL's EVP interface offers AES-GCM and ChaCha20-Poly1305; link with \`-lcrypto\`). Empty the body of \`fixup()\`, since in your design a party without keys can recompute nothing. Work until every harness line prints PASS under the sanitizer build, then add the tests listed at the end of the harness; for the reset tests, add a \`node_reset()\` and \`ctrl_reset()\` that clear exactly what a power cycle would clear.
 
 On boards you own, the same files sit on top of the I2C driver. Keep the interrupt handler minimal: store bytes into a bounded buffer and wake a task; parse and verify in the task. Measure the time for a full exchange against F4, since AEAD on a small core is not free, and record the measurement method.` },
     { title: 'Design and test protected storage; write the report',
@@ -373,7 +428,9 @@ On boards you own, the same files sit on top of the I2C driver. Keep the interru
 
 **What the parser does not do** is decide authenticity. It establishes only that the bytes have the shape of a frame. The fields it returns are still claims until the AEAD tag verifies.`,
   testing: [
-    `| ID | Requirement | Test | You should see |
+    `The harness in step 2 automates T-F2, T-F3, T-F5, T-S1-1, T-S1-2, T-S2-1 (two forms), T-S3-1, T-S3-2, T-S3-3, T-S4-1, T-S4-2 and T-S6-1 on single exchanges; the table is the full plan.
+
+| ID | Requirement | Test | You should see |
 |---|---|---|---|
 | T-F2 | F2 | Poll both sensors for 60 s | 60 readings each, correct contents |
 | T-F4 | F4 | Time 100 exchanges with maximum-length payloads | Each under 100 ms (hardware only; state how you measured) |
@@ -403,11 +460,11 @@ On boards you own, the same files sit on top of the I2C driver. Keep the interru
   ],
   challenge: `Remove the assumption that the controller's flash cannot be read. The controller holds every node key, so today its extraction exposes the whole bus. Propose a redesign that limits what extraction of the controller yields about *past* traffic (the term to research is forward secrecy), estimate its cost in time per session on a small microcontroller, and state which requirement you would add to the specification to demand it. No solution is given.`,
   rubric: [
-    { criterion: 'Review of the reference design', points: 20, evidence: 'Findings for unauthenticated frames, missing freshness and direction, trusted length, fixed-IV shared-key encryption, clear-text log; each with defence and test.' },
+    { criterion: 'Review of the reference design', points: 20, evidence: 'One finding per FAIL line of the reference harness (unkeyed check, no deployment binding, clear payload, replay, re-addressing, reflection, trusted length, clear and unprotected log) plus the two † rows; each names the failing test ID.' },
     { criterion: 'Key and session design (S5, nonce uniqueness)', points: 20, evidence: 'Key inventory per device; session establishment specification; written argument that no (key, nonce) pair can repeat, including across resets.' },
-    { criterion: 'Frame protection (S1, S2, S3)', points: 20, evidence: 'Frame specification with associated data; T-S1, T-S2, T-S3 results.' },
-    { criterion: 'Boundary code (S6)', points: 15, evidence: 'Parser with extended tests; T-S6 results; sanitizer log.' },
-    { criterion: 'Protected storage (S4)', points: 15, evidence: 'Record format; power-loss table; T-S4 results.' },
+    { criterion: 'Frame protection (S1, S2, S3)', points: 20, evidence: 'Frame table with every field, size and byte order, the associated-data bytes and the nonce layout; harness PASS for all T-S1, T-S2 and T-S3 lines with fixup() empty.' },
+    { criterion: 'Boundary code (S6)', points: 15, evidence: 'Harness PASS for T-S6-1 at len 64, 65, 66 and 255; log of one million random and mutated frames under -fsanitize=address,undefined with no report and unchanged counters.' },
+    { criterion: 'Protected storage (S4)', points: 15, evidence: 'Record layout with its associated data; power-loss table for an append; harness PASS for T-S4-1, T-S4-2 and your added T-S4-3 (older record substituted, record moved).' },
     { criterion: 'Security arguments and residual risk', points: 10, evidence: 'Argument per requirement; jamming, controller extraction and the F6 replacement trade-off stated plainly.' },
   ],
   quiz: [
@@ -469,6 +526,7 @@ const keykeeper = {
       'F4. Data for `encrypt`, `decrypt` and `sign` is up to 256 bytes per command.',
       'F5. A key exported from one Keykeeper can be imported by another Keykeeper of the same deployment over the transfer interface.',
       'F6. Every command completes within 2 seconds.',
+      'F7. Every command line receives exactly one response line: `ok`, optionally followed by one result field, or `err`.',
     ],
     security: [
       'S1. No command, response, error or interface returns secret key material in clear.',
@@ -489,20 +547,44 @@ const keykeeper = {
 A key-handling device exists so that keys can be *used* without being *seen*. The host asks for an operation; the device performs it inside and returns only the result. The adversary controls the host completely, so they can send any command sequence, knows the PIN in some tests and not in others (the threat model must cover both: a legitimate but curious user is an adversary for S1, S3 and S4), observes the transfer link, and owns a Keykeeper from another deployment.
 
 ${METHOD}`,
+    `## Interface specification
+
+The control interface is line-based ASCII, one command per line, fields separated by single spaces. Binary values are lowercase hex, two digits per byte.
+
+| Command | Success response | Notes |
+|---|---|---|
+| \`login <pin>\` | \`ok\` | PIN is 6 decimal digits. |
+| \`logout\` | \`ok\` | Ends the session. |
+| \`generate <slot> <type> <attrs>\` | \`ok\` | \`<slot>\` is 0 to 3 and must be empty. \`<type>\` is \`aes\` (256-bit symmetric) or \`p256\`. \`<attrs>\` is a string of letters: \`e\` encrypt, \`d\` decrypt, \`s\` sign, \`w\` wrap, \`x\` exportable. |
+| \`list\` | \`ok\` and four fields | One field per slot: \`<n>:-\` if empty, otherwise \`<n>:<type>:<attrs>\`, with \`:<public key hex>\` added for a signing key. |
+| \`encrypt <slot> <data>\` | \`ok <blob>\` | 1 to 256 bytes of data. The blob contains the nonce the device chose, the ciphertext and the tag. |
+| \`decrypt <slot> <blob>\` | \`ok <data>\` | |
+| \`sign <slot> <data>\` | \`ok <signature>\` | 1 to 256 bytes of data. |
+| \`export <slot> <wrap-slot>\` | \`ok <blob>\` | The key of \`<slot>\`, wrapped under the key of \`<wrap-slot>\`. |
+| \`import <slot> <blob>\` | \`ok\` | \`<slot>\` must be empty. |
+| \`destroy <slot>\` | \`ok\` | Erases the key and its attributes. |
+
+**Every failure** (unknown command, wrong number of fields, bad hex, bad slot, no session, policy refusal, failed cryptographic check, random generator failure) is answered with the three characters \`err\` and nothing more, and changes no state.
+
+In the host build, \`kk_line(in, out, cap)\` takes one command line and writes the response; \`kk_reset()\` is a reset or power cycle; \`kk_factory()\` is a freshly provisioned device (PIN \`271828\` in the reference build); \`kk_test_key(slot)\` gives the tests the key bytes of a slot so that they can search the device's output for them.
+
+**Scope of the listing.** The step 2 reference design covers the symmetric commands (\`login\`, \`logout\`, \`generate … aes\`, \`list\`, \`encrypt\`, \`decrypt\`, \`export\`, \`destroy\`). So that it needs no library, its "cipher" is a labelled stand-in with none of the properties of encryption; that is one more finding, and your design replaces it with a library AEAD. \`sign\`, \`import\` and the transfer interface are specified here and left for you to build.`,
     `## The insecure reference design
+
+Rows marked † describe parts of the reference system that are not in the step 2 listing; review them from the description.
 
 | Aspect of the reference design | Requirement it falls short of | Why, at design level |
 |---|---|---|
 | \`export <slot>\` returns the raw key "for backup" | S1, S4 | The primary asset leaves in clear by design. |
-| A second, undocumented export exists "for factory test" and needs no login | S1, S2, S7 | An unauthenticated path to key material outside the specification. |
+| A second, undocumented export (\`ftest\`) exists "for factory test" and needs no login | S1, S2, S7 | An unauthenticated path to key material outside the specification. |
 | Slot attributes are stored but only \`generate\` reads them | S3 | Policy is recorded and never enforced. |
-| The host supplies the IV for \`encrypt\` | S5 | The party the device is protecting against controls nonce uniqueness. |
+| \`encrypt\` uses an IV supplied by the host as an extra field, or a constant if there is none | S5 | The party the device is protecting against controls nonce uniqueness. |
 | Keys are generated with the C library pseudo-random generator seeded from uptime | S5 | Key material is predictable from a small, guessable seed. |
-| \`decrypt\` returns "bad padding" or "bad MAC" as different errors | S6 | Distinguishable failures give a caller a way to learn about plaintext without the key. |
+| \`decrypt\` returns "bad format" or "bad mac" as different errors, and other commands name their failure too | S6 | Distinguishable failures give a caller a way to learn about plaintext without the key. |
 | The slot number is parsed as a signed integer and only checked against the upper bound | S7, S1 | A negative index addresses memory before the slot table. |
 | The session flag is set at login and never cleared; the failed-PIN count is in RAM | S2 | Sessions outlive their user; resets restore guesses. |
-| Keys are copied to a stack buffer for each operation and left there | S1 (supporting) | Key bytes persist in RAM where another defect can expose them. |
-| Peer devices are "recognised" by a constant handshake string | S4 | Any device that sends the string is accepted as a Keykeeper. |`,
+| † Keys are copied to a stack buffer for each operation and left there | S1 (supporting) | Key bytes persist in RAM where another defect can expose them. |
+| † Peer devices are "recognised" by a constant handshake string | S4 | Any device that sends the string is accepted as a Keykeeper. |`,
     `## Design notes
 
 **Policy is data, enforcement is one function.** Every operation calls a single \`authorise(op, slot, …)\` before any key byte is touched. Its default result is refusal.
@@ -540,6 +622,7 @@ ${METHOD}`,
     { title: 'Requirements, assumptions and threat model',
       md: `Tabulate the requirements. Then build the threat model. Two adversaries need separate rows: an outsider without the PIN, and a **logged-in user** who should be able to use keys but never obtain them. Most of the interesting requirements here (S1, S3, S4, S5) are about the second.`,
       blocks: [{ t: 'widget', name: 'threat-model', props: { template: 'hsm' }, title: 'Threat model worksheet', caption: 'A generic key-handling template. List every command as an entry point and, for each, what it returns on success and on each failure. Export to your notebook.' }] },
+    refStep('keykeeper_ref', KEYKEEPER_REF, KEYKEEPER_REF_OUT, `The reference device is 90 lines of C. Its storage is modelled as one array in which the device's own record (starting with the PIN) sits directly before key slot 0; keep that in mind when you read how the slot number is checked.`),
     { title: 'Review the reference design: what leaves the device',
       md: `For S1 the review question is exhaustive: for **every** command and **every** error path, what bytes are returned, and can any of them depend on secret key material other than as the intended cryptographic result? Add timing as an output. The simulations show three classes from the reference design; write a finding for each.`,
       blocks: [
@@ -560,7 +643,7 @@ ${METHOD}`,
 
 The reference version allows any operation to any logged-in caller, permits plaintext export to anyone, and checks only the upper bound of the slot index.
 
-Make it enforce the policy. The test bench makes ten requests; the required output is \`0233033311\`:
+Make it enforce the policy. The test bench makes twelve requests; the required output is \`023303331111\`:
 
 1. encrypt with the data key → 0 allowed
 2. the same without a session → 2 not authenticated
@@ -572,11 +655,13 @@ Make it enforce the policy. The test bench makes ten requests; the required outp
 8. plaintext export → 3 denied, always
 9. slot 7 → 1 no such slot
 10. slot -1 → 1 no such slot
+11. wrapped export under slot 9 → 1 no such slot
+12. wrapped export under slot -1 → 1 no such slot
 
 Do not change \`main\` or the slot table.`,
             starter: KEYPOL_START,
             solution: KEYPOL_SOL,
-            tests: [{ name: 'usage policy, export rules and slot bounds enforced', stdout: '0233033311\n' }],
+            tests: [{ name: 'usage policy, export rules and slot bounds enforced', stdout: '023303331111\n' }],
             hints: [
               'Start with the index: `slot` is a signed `int`. Which values does `slot >= SLOTS` fail to catch?',
               'Each operation needs one specific attribute bit. A `switch` on the operation with `default: return R_DENIED;` gives you default deny.',
@@ -600,7 +685,9 @@ Do not change \`main\` or the slot table.`,
 
 Decide and document: how two devices come to share a wrapping key; whether an imported key keeps its exportable attribute; and what stops an exported blob being imported twice or into a different slot type.` },
     { title: 'Implement, test and report',
-      md: `Implement the command parser (bounded; one fixed format per command), the session logic and the policy engine as host-testable C. Use a library for all cryptography. Run the tests below, then write the findings for the reference design, the argument for each of S1–S7 and the residual risks.` },
+      md: `Replace the device part of \`keykeeper_ref.c\` with your design, keeping \`kk_line\`, \`kk_reset\`, \`kk_factory\` and \`kk_test_key\`: a bounded parser with one fixed format per command, the session logic, the \`authorise()\` function from the C lab, and a library for all cryptography and for random numbers (on a PC, OpenSSL's EVP interface and \`RAND_bytes()\`, linked with \`-lcrypto\`; check every return value). Convert slot numbers with \`strtol\`, check the end pointer and the range, and only then narrow to \`int\`.
+
+Work until every harness line prints PASS under the sanitizer build, then add the tests listed at the end of the harness. Finally write the findings for the reference design, the argument for each of S1–S7 and the residual risks.` },
   ],
   walkthrough: `## What the important lines do
 
@@ -616,7 +703,7 @@ Decide and document: how two devices come to share a wrapping key; whether an im
 
 **What surrounds this function on a device.** The caller acts only on \`R_OK\`, compared explicitly. Any other value, including one this function was never written to return, is a refusal.`,
   testing: [
-    `Run every policy test twice: without a session, and with a valid session. The second run is the one that tests S1, S3 and S4.
+    `Run every policy test twice: without a session, and with a valid session. The second run is the one that tests S1, S3 and S4. The harness in step 2 automates one or more checks for each of T-F1, T-F3, T-S1-1, T-S2-1, T-S2-2, T-S3-1, T-S4-1, T-S4-3, T-S5-1, T-S5-3, T-S6-1, T-S7-1 and T-S7-2, plus a check that two fresh devices generate different keys. One line of the reference output is a warning about test design: T-S4-3 prints PASS on the reference only because its stand-in check value happens to reject the input, not because any policy exists. A PASS on the insecure design means the test cannot yet tell the two apart; note it, and confirm on your own design by temporarily disabling the wrap/decrypt separation and seeing the test fail.
 
 | ID | Requirement | Test | You should see |
 |---|---|---|---|
@@ -627,7 +714,7 @@ Decide and document: how two devices come to share a wrapping key; whether an im
 | T-S2-1 | S2 | Each command without login | Refused, except login and list |
 | T-S2-2 | S2 | Three wrong PINs, reset, correct PIN | Refused |
 | T-S2-3 | S2 | Login, reset, then a key command | Refused: session did not survive |
-| T-S3-1 | S3 | For every (operation, slot) pair not permitted by attributes, with a valid session | Refused; C lab output \`0233033311\` |
+| T-S3-1 | S3 | For every (operation, slot) pair not permitted by attributes, with a valid session | Refused; C lab output \`023303331111\` |
 | T-S3-2 | S3 | Any command sequence attempting to alter attributes of an existing slot | No such path; attributes unchanged in list |
 | T-S4-1 | S4 | Export a non-exportable key; export under a non-wrapping key; export to a slot wrapping itself | Refused |
 | T-S4-2 | S4 | Transfer handshake with a Keykeeper built from another deployment's secrets | Refused; no blob sent |
@@ -650,11 +737,11 @@ Decide and document: how two devices come to share a wrapping key; whether an im
   ],
   challenge: `Add a requirement of your own: **S8. A user who knows the PIN must not be able to use the device as a general decryption service for data they did not encrypt with it.** Decide whether this is achievable with the command set in F2, what it would mean precisely, and which command semantics or attributes would have to change. Write the requirement in testable form, its negative tests and its security argument, or a reasoned explanation of why it conflicts with a functional requirement. No solution is given.`,
   rubric: [
-    { criterion: 'Review of the reference design', points: 20, evidence: 'Per-command table of everything returned on success and failure; findings for plaintext export, unauthenticated path, unenforced attributes, host-chosen IV, weak randomness, distinguishable errors, signed index, session lifetime.' },
-    { criterion: 'Policy design and enforcement (S3, S4)', points: 20, evidence: 'Attribute and operation table; C lab passed; T-S3 and T-S4 results with a valid session.' },
-    { criterion: 'No plaintext key exposure (S1, S7)', points: 20, evidence: 'T-S1 output-capture and image-search results; T-S7 results; description of key lifetime in RAM with wipe verified.' },
-    { criterion: 'Device-owned randomness and nonces (S5)', points: 15, evidence: 'Nonce uniqueness argument including resets; T-S5 results including forced generator failure.' },
-    { criterion: 'Sessions and uniform failure (S2, S6)', points: 15, evidence: 'T-S2 and T-S6 results, with the timing measurement method stated.' },
+    { criterion: 'Review of the reference design', points: 20, evidence: 'Per-command table of everything returned on success and failure; one finding per FAIL line of the reference harness (plaintext export, unauthenticated `ftest`, unenforced attributes, host-chosen and constant IV, predictable keys, distinguishable errors, signed index, session lifetime, RAM attempt counter) plus the stand-in cipher and the two † rows.' },
+    { criterion: 'Policy design and enforcement (S3, S4)', points: 20, evidence: 'Attribute and operation table; C lab passed (`023303331111`); harness PASS for T-S3-1, T-S4-1 and T-S4-3 with a valid session, and T-S4-3 shown to FAIL when the wrap/decrypt separation is disabled.' },
+    { criterion: 'No plaintext key exposure (S1, S7)', points: 20, evidence: 'Harness PASS for T-S1-1, T-S7-1 and T-S7-2; `strings` of the device object file with no export or diagnostic handler name; disassembly excerpt showing the key wipe present on the exit path.' },
+    { criterion: 'Device-owned randomness and nonces (S5)', points: 15, evidence: 'Written nonce-uniqueness argument including resets; harness PASS for T-S5-1, T-S5-3 and the fresh-device key test; your added T-S5-2 (generator forced to fail) showing `err` and an empty slot.' },
+    { criterion: 'Sessions and uniform failure (S2, S6)', points: 15, evidence: 'Harness PASS for T-S2-1 (both forms), T-S2-2 and T-S6-1; T-S6-2 timing table (failure type, number of runs, mean and spread) with the measurement method stated.' },
     { criterion: 'Security arguments and residual risk', points: 10, evidence: 'Argument for each of S1–S7; explicit assumptions about flash read-out and hardware key storage; no unverified claims about chip features.' },
   ],
   quiz: [

@@ -171,7 +171,9 @@ handler. The opposite mistake, clearing *all* flags with \`|=\`, discards events
       title: 'Debug: pulses that go missing',
       prompt: `A timer interrupt stands in for the flow-meter pulse: each one adds to \`produced\` and \`pending\`. The main loop takes pulses off \`pending\` one at a time and counts them in \`handled\`. At the end \`produced - handled\` should be 0.
 
-The decrement is written as three statements to match the load, modify and store instructions a compiler emits for \`pending--\`. Run it and look at \`lost\`: the pulses arrive while main is in the middle of a decrement. Then make the decrement safe with a critical section (\`irq_disable()\` / \`irq_enable()\`). Keep the critical section as short as you can.`,
+The decrement is written as three statements to match the load, modify and store instructions a compiler emits for \`pending--\`. Run it and look at \`lost\`: the pulses arrive while main is in the middle of a decrement. Then make the decrement safe with a critical section (\`irq_disable()\` / \`irq_enable()\`). Keep the critical section as short as you can.
+
+Keep the three statements. Folding them back into \`pending--\` makes the loss disappear **only in this simulator**, which delivers interrupts between statements; a real CPU can take the interrupt between the load and the store inside that one statement.`,
       starter: C`
 #include <stdint.h>
 #include <stdio.h>
@@ -258,9 +260,9 @@ int main(void)
 `,
       tests: [{ name: 'no pulse is lost', stdout: 'lost=0\n' }],
       hints: [
-        'A pulse is lost when the ISR runs after `tmp = pending` and before `pending = tmp`. The store puts back a value that does not include the ISR\'s increment.',
-        'Those three statements must not be separated by the interrupt. Mask interrupts just before the load and unmask just after the store.',
-        '`handled++` is a local variable of `main` that the ISR never touches. It does not need to be inside the critical section.',
+        'Suppose `pending` is 5 and the interrupt arrives right after `tmp = pending`. Follow `pending` and `tmp` through the ISR and the two remaining statements. What should `pending` be at the end, and what is it?',
+        'A pulse is lost when the ISR runs after `tmp = pending` and before `pending = tmp`: the store puts back a value that does not include the ISR\'s increment.',
+        'Those three statements must not be separated by the interrupt. Mask interrupts just before the load and unmask just after the store. `handled++` is a local of `main` that the ISR never touches, so it stays outside.',
       ],
       explain: `With interrupts masked for three statements, the timer's request simply waits and is served right after \`irq_enable()\`, so nothing is lost and the delay is tiny. \`volatile\` was present all along and did not help: it guarantees the accesses happen, not that they stay together. Bench-MCU delivers interrupts between statements, which is why the decrement was spelled out; on real hardware the single statement \`pending--\` has the same three-step window.`,
     }),
@@ -271,7 +273,9 @@ int main(void)
 - \`rb_put(rb, byte)\` (the producer, normally an ISR): if the buffer is full return \`false\` and store nothing. Otherwise write the byte at \`head\`, **then** advance \`head\`, and return \`true\`.
 - \`rb_get(rb, &byte)\` (the consumer, normally main): if the buffer is empty return \`false\`. Otherwise read the byte at \`tail\`, advance \`tail\`, and return \`true\`.
 
-\`RB_SIZE\` is a power of two, so an index wraps with \`& (RB_SIZE - 1)\`. \`rb_put\` must never write \`tail\` and \`rb_get\` must never write \`head\`.`,
+\`RB_SIZE\` is a power of two, so an index wraps with \`& (RB_SIZE - 1)\`. \`rb_put\` must never write \`tail\` and \`rb_get\` must never write \`head\`.
+
+\`main\` first tests the two functions on their own. In phase 2 it produces 200 bytes while a timer interrupt consumes them between the statements of your \`rb_put\`. Every byte must arrive, and none may be a stale one.`,
       starter: C`
 #include <stdbool.h>
 #include <stdint.h>
@@ -298,6 +302,19 @@ static bool rb_get(ring_t *rb, uint8_t *out)
 }
 
 static ring_t rb;
+
+static volatile uint32_t got;           /* phase 2: bytes the interrupt-side consumer received */
+static volatile uint32_t wrong;         /* ... and how many of them were not the byte that was sent */
+
+static void consumer_isr(void)          /* phase 2: the consumer runs as a timer interrupt */
+{
+    uint8_t c;
+    TIM_STATUS = 1u;
+    while (rb_get(&rb, &c)) {
+        got++;
+        if (c != 0x55u) wrong++;
+    }
+}
 
 static void drain(int max)
 {
@@ -329,6 +346,17 @@ int main(void)
 
     uint8_t c = '?';
     printf("get on empty: %d %c\n", rb_get(&rb, &c), c);
+
+    /* Phase 2: main produces 200 bytes of 0x55 while a timer interrupt consumes them. */
+    irq_attach(IRQ_TIMER, consumer_isr);
+    TIM_LOAD = 5;
+    TIM_CTRL = 0x7u;                                /* ENABLE | AUTO_RELOAD | IRQ_EN */
+    for (int i = 0; i < 200; i++) {
+        while (!rb_put(&rb, 0x55u)) { }             /* full: wait for the consumer */
+    }
+    while (got < 200) { }                           /* let the consumer finish */
+    TIM_CTRL = 0;
+    printf("stream: got %u, wrong %u\n", got, wrong);
     return 0;
 }
 `,
@@ -370,6 +398,19 @@ static bool rb_get(ring_t *rb, uint8_t *out)
 
 static ring_t rb;
 
+static volatile uint32_t got;           /* phase 2: bytes the interrupt-side consumer received */
+static volatile uint32_t wrong;         /* ... and how many of them were not the byte that was sent */
+
+static void consumer_isr(void)          /* phase 2: the consumer runs as a timer interrupt */
+{
+    uint8_t c;
+    TIM_STATUS = 1u;
+    while (rb_get(&rb, &c)) {
+        got++;
+        if (c != 0x55u) wrong++;
+    }
+}
+
 static void drain(int max)
 {
     uint8_t c;
@@ -400,16 +441,27 @@ int main(void)
 
     uint8_t c = '?';
     printf("get on empty: %d %c\n", rb_get(&rb, &c), c);
+
+    /* Phase 2: main produces 200 bytes of 0x55 while a timer interrupt consumes them. */
+    irq_attach(IRQ_TIMER, consumer_isr);
+    TIM_LOAD = 5;
+    TIM_CTRL = 0x7u;                                /* ENABLE | AUTO_RELOAD | IRQ_EN */
+    for (int i = 0; i < 200; i++) {
+        while (!rb_put(&rb, 0x55u)) { }             /* full: wait for the consumer */
+    }
+    while (got < 200) { }                           /* let the consumer finish */
+    TIM_CTRL = 0;
+    printf("stream: got %u, wrong %u\n", got, wrong);
     return 0;
 }
 `,
-      tests: [{ name: 'fill, overflow, wrap-around and empty', stdout: 'accepted 7\nabc\naccepted 3\ndefgWXY\nget on empty: 0 ?\n' }],
+      tests: [{ name: 'fill, overflow, wrap-around and empty', stdout: 'accepted 7\nabc\naccepted 3\ndefgWXY\nget on empty: 0 ?\nstream: got 200, wrong 0\n' }],
       hints: [
+        'How do you tell an empty buffer from a full one if all you have is two indices? And in `rb_put`: at which statement does the consumer first become able to see the new slot?',
         'Empty is `head == tail`. Full is `((head + 1) & (RB_SIZE - 1)) == tail`.',
-        'In `rb_put`: compute `next`, return `false` if it equals `tail`, otherwise store the byte at `data[head]` and only then assign `head = next`.',
-        'In `rb_get`: if `tail == head` return `false`; otherwise copy `data[tail]` to `*out` and advance `tail` with the same wrap expression.',
+        'In `rb_put`: compute `next`, return `false` if it equals `tail`, otherwise store the byte at `data[head]` and only then assign `head = next`. In `rb_get`: if `tail == head` return `false`; otherwise copy `data[tail]` to `*out` and advance `tail` with the same wrap expression.',
       ],
-      explain: `Seven of the ten bytes fit because one slot is kept empty to tell "full" from "empty". After three are read, three more fit, and the second batch wraps past the end of the array to index 0. The order inside \`rb_put\` is the whole safety argument: until \`head\` is updated, the consumer cannot see the slot, so it never reads a byte that has not been written. Each function reads its own index into a local once and writes it once.`,
+      explain: `Seven of the ten bytes fit because one slot is kept empty to tell "full" from "empty". After three are read, three more fit, and the second batch wraps past the end of the array to index 0. The order inside \`rb_put\` is the whole safety argument: until \`head\` is updated, the consumer cannot see the slot, so it never reads a byte that has not been written. Each function reads its own index into a local once and writes it once. Phase 2 is the proof: swap the two statements in \`rb_put\` (advance \`head\`, then store) and the interrupt occasionally runs between them, reads the slot before it is filled, and \`wrong\` is no longer 0.`,
     }),
     clab({
       title: 'Modify: receive by interrupt instead of polling',
@@ -420,7 +472,9 @@ Add the missing half:
 1. Write \`uart_rx_isr\`: read the received byte from \`UART_DATA\` (this also clears the request) and \`rb_put\` it. If the buffer is full, count the byte in \`dropped\`.
 2. In \`main\`, attach the handler to \`IRQ_UART_RX\` and enable the UART with its receive interrupt (\`UART_CTRL\` bit 0 \`ENABLE\`, bit 1 \`RX_IRQ_EN\`).
 
-The ISR must not transmit or print anything.`,
+The ISR must not transmit or print anything.
+
+The second test sends a burst of 20 bytes while \`main\` is still busy starting up. The ring holds 15, so exactly 5 must be counted as dropped, and the line that arrives later must still get through.`,
       starter: C`
 #include <stdbool.h>
 #include <stdint.h>
@@ -471,6 +525,9 @@ int main(void)
 {
     /* TODO: attach the handler and enable the UART with its RX interrupt */
     UART_CTRL = 0x1u;
+
+    /* Start-up work that takes a while. The sender does not wait for it. */
+    for (volatile uint32_t i = 0; i < 300; i++) { }
 
     bool done = false;
     while (!done) {
@@ -543,6 +600,9 @@ int main(void)
     irq_attach(IRQ_UART_RX, uart_rx_isr);
     UART_CTRL = 0x3u;                   /* ENABLE | RX_IRQ_EN */
 
+    /* Start-up work that takes a while. The sender does not wait for it. */
+    for (volatile uint32_t i = 0; i < 300; i++) { }
+
     bool done = false;
     while (!done) {
         uint8_t c;
@@ -560,13 +620,16 @@ int main(void)
     return 0;
 }
 `,
-      tests: [{ name: 'a line is received by interrupt and echoed in upper case', uartRx: 'bench mcu\n', uartTx: 'BENCH MCU\n', stdout: 'dropped=0\n' }],
-      hints: [
-        'The ISR is two statements: read `UART_DATA` into a local, then `rb_put` it (and increment `dropped` if that returns `false`).',
-        '`irq_attach(IRQ_UART_RX, uart_rx_isr);` registers the handler. It only runs if the peripheral\'s interrupt enable bit is also set.',
-        '`UART_CTRL = 0x3u;` sets both `ENABLE` and `RX_IRQ_EN`.',
+      tests: [
+        { name: 'a line is received by interrupt and echoed in upper case', uartRx: 'bench mcu\n', uartTx: 'BENCH MCU\n', stdout: 'dropped=0\n' },
+        { name: 'a 20-byte burst during start-up: 15 kept, 5 counted as dropped', uartRx: [[0, 'abcdefghijklmnopqrst'], [3000, 'done\n']], uartTx: 'ABCDEFGHIJKLMNODONE\n', stdout: 'dropped=5\n' },
       ],
-      explain: `The ISR does the one urgent thing, emptying the receiver before the next byte arrives, and defers everything else. The slow part (waiting for \`TX_READY\`) happens in \`main\`, where being interrupted is harmless. The ISR is the only writer of \`head\` and \`main\` the only writer of \`tail\`, so no critical section is needed. Counting dropped bytes instead of silently discarding them gives you a number to check when sizing the buffer.`,
+      hints: [
+        'Three things must all be true before a handler runs: it is attached, the peripheral\'s interrupt enable bit is set, and the request is pending. Which of them does the starter provide? And what makes the request go away again?',
+        'The ISR is two statements: read `UART_DATA` into a local, then `rb_put` it (and increment `dropped` if that returns `false`).',
+        '`irq_attach(IRQ_UART_RX, uart_rx_isr);` registers the handler. It only runs if the peripheral\'s interrupt enable bit is also set: `UART_CTRL = 0x3u;` sets both `ENABLE` and `RX_IRQ_EN`.',
+      ],
+      explain: `The ISR does the one urgent thing, emptying the receiver before the next byte arrives, and defers everything else. The slow part (waiting for \`TX_READY\`) happens in \`main\`, where being interrupted is harmless. The ISR is the only writer of \`head\` and \`main\` the only writer of \`tail\`, so no critical section is needed. Counting dropped bytes instead of silently discarding them gives you a number to check when sizing the buffer. The burst test shows why polling from the main loop is not an alternative: while \`main\` is busy, nobody empties the receiver. Here the interrupt moved 15 bytes to the ring and counted 5 it had no room for; a polling design would have left the bytes in the UART's own small FIFO and lost the overflow without any count.`,
     }),
     { t: 'exercise',
       prompt: 'An ISR updates a `struct { int16_t x, y, z; }` accelerometer sample in a global variable. The main loop copies the struct with `sample_t s = latest;` and computes the vector magnitude. Occasionally the magnitude is implausible. Explain why, and give two different fixes.',
@@ -805,7 +868,8 @@ compilers turn a small fixed-size \`memcpy\` into the best instruction sequence 
 The program must still print the same field values. Expected output:
 
 \`size=8\`
-\`7 1000 3 500\``,
+\`7 100000 3 500\`
+\`aligned=1\``,
       starter: C`
 #include <stdint.h>
 #include <stdio.h>
@@ -821,12 +885,14 @@ int main(void)
 {
     log_entry_t e;
     e.id = 7;
-    e.timestamp = 1000;
+    e.timestamp = 100000;
     e.flags = 3;
     e.value = 500;
 
     printf("size=%d\n", (int)sizeof(log_entry_t));
     printf("%d %u %d %d\n", e.id, e.timestamp, e.flags, e.value);
+    printf("aligned=%d\n", ((uint8_t *)&e.timestamp - (uint8_t *)&e) % 4 == 0 &&
+                           ((uint8_t *)&e.value - (uint8_t *)&e) % 2 == 0);
     return 0;
 }
 `,
@@ -845,20 +911,22 @@ int main(void)
 {
     log_entry_t e;
     e.id = 7;
-    e.timestamp = 1000;
+    e.timestamp = 100000;
     e.flags = 3;
     e.value = 500;
 
     printf("size=%d\n", (int)sizeof(log_entry_t));
     printf("%d %u %d %d\n", e.id, e.timestamp, e.flags, e.value);
+    printf("aligned=%d\n", ((uint8_t *)&e.timestamp - (uint8_t *)&e) % 4 == 0 &&
+                           ((uint8_t *)&e.value - (uint8_t *)&e) % 2 == 0);
     return 0;
 }
 `,
-      tests: [{ name: 'eight bytes, same contents', stdout: 'size=8\n7 1000 3 500\n' }],
+      tests: [{ name: 'eight bytes, same contents, every field still aligned', stdout: 'size=8\n7 100000 3 500\naligned=1\n' }],
       hints: [
-        'Write the offsets of the original: `id` 0, padding 1–3, `timestamp` 4–7, `flags` 8, padding 9, `value` 10–11.',
-        'Padding appears whenever a field with a larger alignment follows a smaller one.',
-        'Order the fields from largest to smallest: the 4-byte field, then the 2-byte field, then the two single bytes.',
+        'Write down the offset of every field in the original, and mark the bytes that belong to no field. Why did the compiler leave each gap?',
+        'The original: `id` 0, padding 1–3, `timestamp` 4–7, `flags` 8, padding 9, `value` 10–11.',
+        'Padding appears whenever a field with a larger alignment follows a smaller one. Order the fields from largest to smallest: the 4-byte field, then the 2-byte field, then the two single bytes.',
       ],
       explain: `Largest-first ordering puts every field on a multiple of its own size with no gaps: \`timestamp\` 0–3, \`value\` 4–5, \`id\` 6, \`flags\` 7. Across 500 records that saves 2000 bytes of RAM, every access stays aligned and fast, and the code that uses the fields by name did not change.`,
     }),
@@ -901,7 +969,8 @@ int main(void)
     reading_t r = { 0x2A, 0x01020304u, -2 };
     uint8_t wire[WIRE_SIZE] = { 0 };
 
-    printf("too small: %d\n", (int)pack_reading(wire, 6, &r));
+    printf("too small: %d", (int)pack_reading(wire, 6, &r));
+    printf(" (wire[0] still %02X)\n", wire[0]);
 
     size_t n = pack_reading(wire, sizeof(wire), &r);
     printf("packed %d:", (int)n);
@@ -911,7 +980,8 @@ int main(void)
     printf("\n");
 
     reading_t back = { 0, 0, 0 };
-    printf("short input: %d\n", unpack_reading(wire, 6, &back));
+    printf("short input: %d", unpack_reading(wire, 6, &back));
+    printf(" (id still %d)\n", back.id);
     if (unpack_reading(wire, sizeof(wire), &back)) {
         printf("%d %u %d\n", back.id, back.timestamp, back.temp_centi);
     }
@@ -966,7 +1036,8 @@ int main(void)
     reading_t r = { 0x2A, 0x01020304u, -2 };
     uint8_t wire[WIRE_SIZE] = { 0 };
 
-    printf("too small: %d\n", (int)pack_reading(wire, 6, &r));
+    printf("too small: %d", (int)pack_reading(wire, 6, &r));
+    printf(" (wire[0] still %02X)\n", wire[0]);
 
     size_t n = pack_reading(wire, sizeof(wire), &r);
     printf("packed %d:", (int)n);
@@ -976,7 +1047,8 @@ int main(void)
     printf("\n");
 
     reading_t back = { 0, 0, 0 };
-    printf("short input: %d\n", unpack_reading(wire, 6, &back));
+    printf("short input: %d", unpack_reading(wire, 6, &back));
+    printf(" (id still %d)\n", back.id);
     if (unpack_reading(wire, sizeof(wire), &back)) {
         printf("%d %u %d\n", back.id, back.timestamp, back.temp_centi);
     }
@@ -984,11 +1056,11 @@ int main(void)
     return 0;
 }
 `,
-      tests: [{ name: 'seven wire bytes, round trip, short buffers rejected', stdout: 'too small: 0\npacked 7: 2A 01 02 03 04 FF FE\nshort input: 0\n42 16909060 -2\nstruct is 12 bytes in memory\n' }],
+      tests: [{ name: 'seven wire bytes, round trip, short buffers rejected', stdout: 'too small: 0 (wire[0] still 00)\npacked 7: 2A 01 02 03 04 FF FE\nshort input: 0 (id still 0)\n42 16909060 -2\nstruct is 12 bytes in memory\n' }],
       hints: [
-        'Check the size first in both functions. A serialiser that writes into a too-small buffer is a buffer overflow.',
-        'Big-endian means most significant byte first: `out[1] = (uint8_t)(r->timestamp >> 24);` and so on down to a shift of 0.',
-        'For the signed field, convert to `uint16_t` before shifting when packing, and assemble a `uint16_t` then cast to `int16_t` when unpacking.',
+        'Two questions before any code: what must each function check before it touches a single byte, and which byte of a big-endian field goes first on the wire?',
+        'Check the size first in both functions, before any store. A serialiser that writes into a too-small buffer is a buffer overflow.',
+        'Big-endian means most significant byte first: `out[1] = (uint8_t)(r->timestamp >> 24);` and so on down to a shift of 0. For the signed field, convert to `uint16_t` before shifting when packing, and assemble a `uint16_t` then cast to `int16_t` when unpacking.',
       ],
       explain: `The in-memory struct is 12 bytes with padding and little-endian fields; the wire form is 7 bytes, big-endian, no padding. The two functions are the only place that knows both. −2 is \`0xFFFE\` in 16-bit two's complement, so the last two bytes are \`FF FE\`. Converting the signed value to unsigned before shifting avoids shifting a negative number, and the cast back relies on GCC's documented conversion behaviour.`,
     }),
@@ -1139,7 +1211,8 @@ parameter is 4, not the buffer size.` },
 Fix \`set_name\` so that the name field always holds a properly terminated string. Expected output:
 
 \`hello ALEXAND\`
-\`hello bo\``,
+\`hello bo\`
+\`pin intact: 1\``,
       starter: C`
 #include <stdio.h>
 #include <string.h>
@@ -1157,6 +1230,7 @@ static void set_name(account_t *a, const char *name)
 int main(void)
 {
     account_t acct;
+    memset(&acct, '#', sizeof(acct));         /* stand-in for whatever was in this memory before */
     strcpy(acct.pin, "4321");
 
     set_name(&acct, "ALEXANDRA");
@@ -1164,6 +1238,7 @@ int main(void)
 
     set_name(&acct, "bo");
     printf("hello %s\n", acct.name);
+    printf("pin intact: %d\n", strcmp(acct.pin, "4321") == 0);
     return 0;
 }
 `,
@@ -1185,6 +1260,7 @@ static void set_name(account_t *a, const char *name)
 int main(void)
 {
     account_t acct;
+    memset(&acct, '#', sizeof(acct));         /* stand-in for whatever was in this memory before */
     strcpy(acct.pin, "4321");
 
     set_name(&acct, "ALEXANDRA");
@@ -1192,12 +1268,13 @@ int main(void)
 
     set_name(&acct, "bo");
     printf("hello %s\n", acct.name);
+    printf("pin intact: %d\n", strcmp(acct.pin, "4321") == 0);
     return 0;
 }
 `,
-      tests: [{ name: 'names are terminated and the PIN stays private', stdout: 'hello ALEXAND\nhello bo\n' }],
+      tests: [{ name: 'names are terminated and the PIN stays private', stdout: 'hello ALEXAND\nhello bo\npin intact: 1\n' }],
       hints: [
-        'After the first `set_name`, look at the 8 bytes of `name`. Is any of them zero?',
+        'How does `printf("%s")` know where a string ends? After the first `set_name`, look at the 8 bytes of `name`: is the thing it looks for among them?',
         '`printf("%s")` prints until it meets a zero byte. With none in `name`, it continues into the next field of the struct.',
         'Copy at most 7 characters and store `\'\\0\'` in `name[7]` unconditionally.',
       ],
@@ -1344,7 +1421,7 @@ int main(void)
       tests: [{ name: 'fits, exactly fits, overflows by one, wraps', stdout: 'append 10: 1 (len 10)\nappend 6: 1 (len 16)\nappend 1: 0 (len 16)\nappend huge: 0 (len 10)\n' }],
       hints: [
         'Compute `10 + 0xFFFFFFFA` in 32 bits. What does the check compare with 16?',
-        'The sum wraps to 4, which is not greater than 16, so the copy of four billion bytes goes ahead.',
+        'The sum wraps to 4, which is not greater than 16, so the copy of four billion bytes goes ahead. Which of the two operands do you trust, and can you rearrange the test so that the untrusted one is never added to anything?',
         'Avoid the addition. The free space is `MSG_CAP - b->len` (safe once you know `len <= MSG_CAP`); reject if `n` is greater than that.',
       ],
       explain: `\`len + n\` wrapped modulo 2³² and the check approved the copy. \`n > MSG_CAP - len\` has no operation that can wrap: \`len\` is at most 16, so the subtraction stays in range, and the comparison is against the untouched \`n\`. Checking \`len > MSG_CAP\` first protects the subtraction even if the struct itself has been corrupted.`,
@@ -1378,7 +1455,7 @@ Return the text length on success. Return −1, and make \`out\` an empty string
 - the length byte claims more bytes than the packet actually contains, or
 - the text plus its terminator does not fit in \`out\`.
 
-\`pkt_len\` is the number of bytes really received, including the length byte.`,
+\`pkt_len\` is the number of bytes really received, including the length byte. With \`out_size\` 0 there is no room even for a terminator: return −1 and write nothing at all (the last line of the test).`,
       starter: C`
 #include <stddef.h>
 #include <stdint.h>
@@ -1415,6 +1492,7 @@ int main(void)
     show("zero-length text", empty, sizeof(empty), 8);
     show("no bytes received", ok, 0, 8);
     show("truncated packet", ok, 3, 8);
+    show("no output space at all", ok, sizeof(ok), 0);
     return 0;
 }
 `,
@@ -1468,14 +1546,15 @@ int main(void)
     show("zero-length text", empty, sizeof(empty), 8);
     show("no bytes received", ok, 0, 8);
     show("truncated packet", ok, 3, 8);
+    show("no output space at all", ok, sizeof(ok), 0);
     return 0;
 }
 `,
-      tests: [{ name: 'valid, lying, oversized, exact, empty and truncated packets', stdout: 'ok: 3 [LED]\nclaims 200, has 2: -1 []\n8 chars into 8 bytes: -1 []\n7 chars into 8 bytes: 7 [ABCDEFG]\nzero-length text: 0 []\nno bytes received: -1 []\ntruncated packet: -1 []\n' }],
+      tests: [{ name: 'valid, lying, oversized, exact, empty and truncated packets', stdout: 'ok: 3 [LED]\nclaims 200, has 2: -1 []\n8 chars into 8 bytes: -1 []\n7 chars into 8 bytes: 7 [ABCDEFG]\nzero-length text: 0 []\nno bytes received: -1 []\ntruncated packet: -1 []\nno output space at all: -1 [xxxxxxx]\n' }],
       hints: [
-        'Do not read `pkt[0]` until you know `pkt_len` is at least 1.',
-        'Two separate comparisons: `len > pkt_len - 1` (input too short for its claim) and `len > out_size - 1` (output too small, counting the terminator). Make sure neither subtraction can go below zero.',
-        'Set `out[0] = \'\\0\'` at the very top (when `out_size > 0`) so that every error path leaves an empty string, then overwrite it on success.',
+        'List every array index and every subtraction your function will perform. For each one: which earlier check guarantees it is in range, or cannot go below zero?',
+        'Do not read `pkt[0]` until you know `pkt_len` is at least 1, and do not write `out[0]` unless `out_size` is at least 1.',
+        'Two separate comparisons: `len > pkt_len - 1` (input too short for its claim) and `len > out_size - 1` (output too small, counting the terminator). Make sure neither subtraction can go below zero. Set `out[0] = \'\\0\'` at the very top (when `out_size > 0`) so that every error path leaves an empty string, then overwrite it on success.',
       ],
       explain: `The length byte is checked against the real input size (no over-read: the "claims 200" packet would otherwise copy 198 bytes of whatever follows it in memory) and against the output capacity including the terminator (no overflow: 8 characters need 9 bytes). Writing the failure result first and the success result last is the fail-closed shape: a forgotten check cannot leave stale data in \`out\`.`,
     }),

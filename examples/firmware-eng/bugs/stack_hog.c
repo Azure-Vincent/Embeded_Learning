@@ -1,4 +1,4 @@
-/* stack_hog.c - three functions with very different stack appetites.
+/* stack_hog.c - four functions with very different stack appetites.
  * `make su` compiles this with -fstack-usage and prints the .su file. */
 #include <stdint.h>
 #include <stdio.h>

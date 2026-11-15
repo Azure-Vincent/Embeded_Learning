@@ -172,7 +172,7 @@ int update_decision(const struct upd_header *h, bool sig_ok,
 }
 
 int main(void) {
-    struct upd_header h[7] = {
+    struct upd_header h[8] = {
         { 0x1001, 8, 0x4000, 0 },      /* good */
         { 0x1001, 8, 0x4000, 0 },      /* good header, signature does not verify */
         { 0x1002, 8, 0x4000, 0 },      /* signed for another device */
@@ -180,9 +180,10 @@ int main(void) {
         { 0x1001, 3, 0x4000, 1 },      /* old version with the force flag set */
         { 0x1001, 9, 0x9000, 0 },      /* longer than the slot */
         { 0x1001, 9, 0,      0 },      /* empty */
+        { 0x1002, 3, 0x9000, 1 },      /* everything wrong, and the signature does not verify */
     };
-    bool sig[7] = { true, false, true, true, true, true, true };
-    for (int i = 0; i < 7; i++) printf("%d", update_decision(&h[i], sig[i], 0x1001, 7));
+    bool sig[8] = { true, false, true, true, true, true, true, false };
+    for (int i = 0; i < 8; i++) printf("%d", update_decision(&h[i], sig[i], 0x1001, 7));
     printf("\n");
     return 0;
 }
@@ -214,7 +215,7 @@ int update_decision(const struct upd_header *h, bool sig_ok,
 }
 
 int main(void) {
-    struct upd_header h[7] = {
+    struct upd_header h[8] = {
         { 0x1001, 8, 0x4000, 0 },      /* good */
         { 0x1001, 8, 0x4000, 0 },      /* good header, signature does not verify */
         { 0x1002, 8, 0x4000, 0 },      /* signed for another device */
@@ -222,9 +223,10 @@ int main(void) {
         { 0x1001, 3, 0x4000, 1 },      /* old version with the force flag set */
         { 0x1001, 9, 0x9000, 0 },      /* longer than the slot */
         { 0x1001, 9, 0,      0 },      /* empty */
+        { 0x1002, 3, 0x9000, 1 },      /* everything wrong, and the signature does not verify */
     };
-    bool sig[7] = { true, false, true, true, true, true, true };
-    for (int i = 0; i < 7; i++) printf("%d", update_decision(&h[i], sig[i], 0x1001, 7));
+    bool sig[8] = { true, false, true, true, true, true, true, false };
+    for (int i = 0; i < 8; i++) printf("%d", update_decision(&h[i], sig[i], 0x1001, 7));
     printf("\n");
     return 0;
 }
@@ -285,6 +287,8 @@ int main(void) {
     printf("%d", authorise(OP_EXPORT_PLAIN, 3, -1, true));     /* 3 never */
     printf("%d", authorise(OP_ENCRYPT, 7, -1, true));          /* 1 no such slot */
     printf("%d", authorise(OP_ENCRYPT, -1, -1, true));         /* 1 negative index */
+    printf("%d", authorise(OP_EXPORT_WRAPPED, 3, 9, true));    /* 1 no such wrapping slot */
+    printf("%d", authorise(OP_EXPORT_WRAPPED, 3, -1, true));   /* 1 negative wrapping slot */
     printf("\n");
     return 0;
 }
@@ -334,6 +338,8 @@ int main(void) {
     printf("%d", authorise(OP_EXPORT_PLAIN, 3, -1, true));     /* 3 never */
     printf("%d", authorise(OP_ENCRYPT, 7, -1, true));          /* 1 no such slot */
     printf("%d", authorise(OP_ENCRYPT, -1, -1, true));         /* 1 negative index */
+    printf("%d", authorise(OP_EXPORT_WRAPPED, 3, 9, true));    /* 1 no such wrapping slot */
+    printf("%d", authorise(OP_EXPORT_WRAPPED, 3, -1, true));   /* 1 negative wrapping slot */
     printf("\n");
     return 0;
 }

@@ -186,7 +186,9 @@ export function renderBlocks(blocks, keyPrefix) {
       const badge = h('div', { class: 'practice-state' });
       const draw = () => { const d = store.isDone(key); badge.className = 'practice-state' + (d ? ' done' : ''); badge.textContent = (d ? 'Done: ' : 'To do: ') + practiceLabel(b).toLowerCase(); };
       draw();
-      const unsub = store.subscribe(() => (el.isConnected ? draw() : unsub()));
+      // the block is built before it is attached, so only unsubscribe once it has been on the page and left it
+      let seen = false;
+      const unsub = store.subscribe(() => { if (el.isConnected) { seen = true; draw(); } else if (seen) unsub(); });
       el.prepend(badge);
     }
     return el;

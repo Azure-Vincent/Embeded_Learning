@@ -104,7 +104,7 @@ The secret that the computation depends on: a PIN or MAC tag from a comparison, 
 
 A software-only countermeasure that is perfect against timing does not stop power analysis; the channels need separate answers.`,
     { t: 'predict', q: 'In the timing model below, each matching byte adds 8 time units to a comparison and each measurement has random noise with a spread of about 6 units. With one measurement per candidate, the right candidate is often not the slowest. What does averaging 25 measurements per candidate do?', choices: [
-      { t: 'The noise in each average shrinks by about a factor of 5, while the 8-unit difference stays, so the right candidate separates clearly', ok: true, why: 'Averaging N independent samples reduces random spread by √N. The systematic difference is not reduced, because it is the same every time.' },
+      { t: 'The noise in each average shrinks about fivefold while the 8-unit difference stays', ok: true, why: 'The right candidate then separates clearly. Averaging N independent samples reduces random spread by √N. The systematic difference is not reduced, because it is the same every time.' },
       { t: 'Nothing useful: noise is random, so averaging cannot remove it', why: 'Randomness is what makes averaging work: independent errors partly cancel, and a fixed offset does not.' },
       { t: 'It reduces both the noise and the 8-unit difference by the same factor, so nothing is gained', why: 'The difference is present in every sample with the same sign, so the mean keeps it in full.' },
       { t: 'It makes the measurement 25 times more accurate', why: 'The improvement follows the square root of the number of samples, so 25 samples give a factor of 5.' },
@@ -198,7 +198,7 @@ A firmware team implements the PIN limiter of lesson 3 correctly: the attempt co
   ],
   quiz: [
     { q: 'Why does the supply current of a CMOS microcontroller carry information about the data it is processing?', kind: 'circuit', choices: [
-      { t: 'Charge is drawn from the supply mainly when nodes switch, so the current in a clock cycle depends on how many bits change or are set', ok: true, why: 'Dynamic power comes from charging and discharging capacitances; the count of switching bits varies with the data.' },
+      { t: 'Current is drawn mainly when nodes switch, and how many bits switch depends on the data', ok: true, why: 'Dynamic power comes from charging and discharging capacitances; the count of switching bits varies with the data.' },
       { t: 'Because ones are stored at a higher voltage than zeros and therefore leak more', why: 'Static levels draw almost no current in CMOS. The data dependence comes from transitions.' },
       { t: 'Because the processor slows its clock when handling secret data', why: 'The clock is fixed by the oscillator and is unaware of what the data means.' },
       { t: 'It does not; current depends only on which instruction is executing', why: 'The instruction sets the large-scale shape of the current, but the operand bits modulate it measurably.' },
@@ -211,31 +211,31 @@ bool check(const uint8_t *in, const uint8_t *key, size_t n)   /* 1 */
     }
     return true;                                                /* 4 */
 }`, kind: 'code', choices: [
-      { t: 'Line 3: the return inside the loop ends the function at the first mismatch, so duration reveals the number of leading matching bytes', ok: true, why: 'A secret-dependent early exit makes the iteration count, and therefore the time, a function of the secret.' },
+      { t: 'Line 3: the return inside the loop ends it at the first mismatch', ok: true, why: 'Duration then reveals the number of leading matching bytes. A secret-dependent early exit makes the iteration count, and therefore the time, a function of the secret.' },
       { t: 'Line 2: a `for` loop always has variable timing', why: 'A loop with a public, fixed bound runs the same number of iterations every time. It is the exit condition inside it that varies.' },
       { t: 'Line 4: returning `true` takes longer than returning `false`', why: 'Both returns are a register load and a branch. The difference lies in how many iterations preceded them.' },
       { t: 'Line 1: passing the key by pointer exposes its address', why: 'The address of the key is not the secret and is not what an observer of response time learns.' },
     ] },
     { q: 'A team adds a random delay of 0–2 ms before answering a PIN attempt, instead of making the comparison constant-time. What is the effect?', kind: 'security', choices: [
-      { t: 'The leak remains and can be recovered by averaging more measurements; the delay raises the cost and does not remove the signal', ok: true, why: 'Independent random delay averages out, while the systematic difference between candidates persists in the mean.' },
+      { t: 'The leak remains: averaging more measurements recovers it, at higher cost', ok: true, why: 'Independent random delay averages out, while the systematic difference between candidates persists in the mean.' },
       { t: 'The leak is removed, because the response time is now random', why: 'The response time is the sum of a random part and a secret-dependent part. Adding randomness does not subtract the dependent part.' },
-      { t: 'The leak becomes worse, because delays make measurements easier', why: 'Added jitter makes each measurement less informative, which is some benefit. It just is not a complete one.' },
-      { t: 'The comparison becomes constant-time', why: 'Constant-time is a property of the comparison code itself; a delay elsewhere does not change which instructions the comparison executes.' },
+      { t: 'The leak becomes worse, because the added delays make each measurement easier to take', why: 'Added jitter makes each measurement less informative, which is some benefit. It just is not a complete one.' },
+      { t: 'The comparison becomes constant-time on average', why: 'Constant-time is a property of the comparison code itself; a delay elsewhere does not change which instructions the comparison executes.' },
     ] },
     { q: 'Your constant-time compare passes code review. Which additional step addresses the largest remaining risk?', kind: 'concept', choices: [
-      { t: 'Inspect the disassembly of the release build and measure two input classes on the target, because the compiler may have reintroduced a data-dependent branch', ok: true, why: 'The property that matters belongs to the machine code running on the device, and optimisation can change it without changing results.' },
+      { t: 'Inspect the release disassembly and time two input classes on the target', ok: true, why: 'The compiler may have reintroduced a data-dependent branch. The property that matters belongs to the machine code running on the device, and optimisation can change it without changing results.' },
       { t: 'Run the unit tests under AddressSanitizer', why: 'ASan finds memory errors. A timing dependence involves no invalid access and is invisible to it.' },
       { t: 'Increase the optimisation level so the function runs faster', why: 'Speed is not the goal, and a higher optimisation level gives the compiler more freedom to restructure the loop.' },
-      { t: 'Declare the key `const`', why: '`const` prevents writes through that name. It has no bearing on how long reads and comparisons take.' },
+      { t: 'Declare the key `const` so the compiler treats it as fixed', why: '`const` prevents writes through that name. It has no bearing on how long reads and comparisons take.' },
     ] },
     { q: 'What does first-order masking of a cipher implementation aim to achieve?', kind: 'concept', choices: [
-      { t: 'No single intermediate value depends on the secret alone, because each is combined with fresh randomness, so per-cycle power no longer correlates with key-dependent data', ok: true, why: 'Splitting secrets into random shares removes the direct statistical link between one measured point and the key.' },
-      { t: 'The key is stored encrypted in flash', why: 'Storage protection concerns the key at rest. Masking concerns the values that exist during the computation.' },
-      { t: 'The cipher runs in constant time', why: 'Timing and per-cycle power are different channels; a constant-time cipher can still leak its key through data-dependent current.' },
+      { t: 'No intermediate value depends on the secret alone, only on random shares of it', ok: true, why: 'Per-cycle power then no longer correlates with key-dependent data. Splitting secrets into random shares removes the direct statistical link between one measured point and the key.' },
+      { t: 'The key is stored encrypted in flash and decrypted only at the moment it is used', why: 'Storage protection concerns the key at rest. Masking concerns the values that exist during the computation.' },
+      { t: 'The cipher runs in constant time for every key and input', why: 'Timing and per-cycle power are different channels; a constant-time cipher can still leak its key through data-dependent current.' },
       { t: 'The power supply is filtered so current cannot be measured', why: 'Filtering is a hiding measure applied in hardware. Masking is a change to the computation itself.' },
     ] },
     { q: 'For which product is investing in a secure element with evaluated side-channel countermeasures most clearly justified?', kind: 'security', choices: [
-      { t: 'A pay-TV decoder in which every unit holds the same long-term content key and units are sold to the public', ok: true, why: 'Adversaries have unlimited physical access to a device they own, and one extracted key compromises the whole system.' },
+      { t: 'A pay-TV decoder sold to the public, with the same content key in every unit', ok: true, why: 'Adversaries have unlimited physical access to a device they own, and one extracted key compromises the whole system.' },
       { t: 'A temperature logger whose only secret is a per-device Wi-Fi password chosen by its owner', why: 'The person with physical access is the owner, who already knows the password, and extraction affects one device.' },
       { t: 'A development board used in a classroom', why: 'There is no asset on it that outlives the exercise.' },
       { t: 'Any product at all, because software countermeasures never work', why: 'Constant-time code is effective against timing, and whether power analysis is in scope depends on the adversary and the asset.' },

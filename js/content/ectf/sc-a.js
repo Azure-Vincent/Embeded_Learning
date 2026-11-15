@@ -1,6 +1,6 @@
 // Practice scenarios 1 and 2. Original course exercises; not MITRE material.
 import { FRAMING } from './prep-a.js';
-import { LIMITER_SOL, LIMITER_START } from './code.js';
+import { LIMITER_SOL, LIMITER_START, STRONGBOX_REF, STRONGBOX_REF_OUT, GATEKEEPER_REF, GATEKEEPER_REF_OUT } from './code.js';
 
 export const SCENARIO_NOTE = {
   t: 'callout', kind: 'note', title: 'An original course exercise',
@@ -14,6 +14,27 @@ export const METHOD = `Your work in every scenario has the same five parts:
 3. **Redesign**: threat model, keys and where they live, message or storage formats, and a security argument per requirement.
 4. **Implement** what you can: decision logic in the app's C lab or host-compiled C; the full device on hardware you own if you have it.
 5. **Demonstrate** with tests, including negative tests, that every security requirement now holds, and record the evidence.`;
+
+// The step every scenario shares: build and run the insecure reference design with its harness.
+export const refStep = (file, code, out, md) => ({
+  title: 'Build and run the reference design and its test harness',
+  md: `${md}
+
+Save the listing as \`${file}.c\`, then build and run it. It is one file with two parts: the **device** (the insecure reference design, which you will replace) and the **harness** (tests named after the test plan, which you keep and extend). The harness talks to the device only through the functions described in the interface specification, so it keeps working when you replace the device part.
+
+\`\`\`
+gcc -Wall -Wextra -std=c11 -o ${file} ${file}.c && ./${file}
+gcc -Wall -Wextra -std=c11 -g -fsanitize=address,undefined -o ${file}_san ${file}.c && ./${file}_san
+\`\`\`
+
+The second line is the build you use from now on while developing: it stops at the first out-of-bounds access or undefined operation. The reference design's memory is modelled as explicit arrays so that its defects give the same result on every machine; that is why the sanitizer stays quiet on the reference and reports only real errors in *your* code.
+
+Before reading the code, predict from the reference-design table which tests will print FAIL. Then run it and compare with the recorded output below. Every FAIL line is a finding you must be able to explain, and your finished design must print PASS on every line **without the harness tests being weakened**. The program's exit status is non-zero while any check fails, so it can gate a build.`,
+  blocks: [
+    { t: 'code', lang: 'c', status: 'host-tested', code, caption: `${file}.c: insecure reference design and test harness. Compiled with gcc -Wall -Wextra -std=c11 (also with -fsanitize=address,undefined) and run on a PC; not run on a microcontroller.` },
+    { t: 'code', lang: 'text', status: 'host-tested', code: out, caption: 'What the unmodified reference design prints. Functional tests pass; the security tests are your work list.' },
+  ],
+});
 
 const storage = {
   id: 'ectf-sc-strongbox',
@@ -45,6 +66,8 @@ const storage = {
       'F3. `status` reports `locked` or `unlocked` and the number of attempts remaining, and nothing else.',
       'F4. After a correct `unlock`, `read` returns the secret; `lock`, or a reset, returns the device to the locked state.',
       'F5. Every command receives a response within 1 second.',
+      'F6. Every input line receives exactly one response line. Anything that is not a well-formed command from F2 (unknown word, missing or extra argument, empty line, a line longer than 15 characters) is answered `error` and changes nothing.',
+      'F7. When no attempts remain, `unlock` answers `denied` without evaluating the PIN. This lasts until the device is re-provisioned (rebuilt and reflashed).',
     ],
     security: [
       'S1. The secret is released only while the device is unlocked, and it is unlocked only by the provisioned PIN.',
@@ -62,18 +85,31 @@ const storage = {
 Strongbox is the smallest system that still has a real security problem: one device, one interface, one secret. The adversary has the device on their desk. They can type anything at the serial console, reset the device, remove power at any moment, measure how long responses take, and read the firmware update file. Whether they can also read the microcontroller's flash directly is an assumption you must write down for S3, because it changes what is achievable.
 
 ${METHOD}`,
+    `## Interface specification
+
+The console is 115200 baud, 8N1, ASCII. A command is one line ended by \`\\n\` (a \`\\r\` before it is ignored) and is at most **15 characters** long, not counting the line ending. The device sends exactly one response line per command line.
+
+| Command | Response | Rules |
+|---|---|---|
+| \`status\` | \`locked <n>\` or \`unlocked <n>\` | \`<n>\` is the number of attempts remaining, 0 to 3. Nothing else is reported. |
+| \`unlock <pin>\` | \`ok\` or \`denied\` | Any argument that is not the provisioned PIN (wrong digits, wrong length, non-digits) is one wrong guess: \`denied\`, one attempt charged. With 0 attempts remaining: \`denied\`, PIN not evaluated (F7). A correct PIN restores 3 attempts. |
+| \`read\` | \`secret <hex>\` or \`denied\` | Two lowercase hex digits per secret byte. \`denied\` whenever the device is locked. |
+| \`lock\` | \`ok\` | Always succeeds. |
+| anything else | \`error\` | Includes a line of 16 or more characters: the device discards input up to the line ending, answers \`error\` once, and changes no state (F6). |
+
+In the host build the device is two functions plus test-bench controls. \`dev_line(in, out, cap)\` takes one command line and writes the response line. \`dev_reset()\` is a reset or power cycle: RAM is lost, flash is kept. \`dev_factory()\` is re-provisioning: flash erased, counters back to their initial state. \`dev_work\` counts the bytes the PIN comparison has examined; the harness uses it as a deterministic stand-in for response time, so your comparison must keep incrementing it once per byte it looks at.`,
     `## The insecure reference design
 
-The reference design implements F1 to F5 and was written with no adversary in mind. It is described here at design level; you will meet the same weakness classes in the simulations.
+The reference design implements the functional requirements and was written with no adversary in mind. Its source is the listing in step 2; the simulations in steps 3 and 4 show the same weakness classes interactively.
 
 | Aspect of the reference design | Requirement it falls short of | Why, at design level |
 |---|---|---|
 | PIN and secret are string constants compiled into the image | S3 | Anything in the image in clear is readable by anyone holding the update file. |
 | PIN compared with a loop that stops at the first wrong digit | S4 | Work done, and so response time, depends on the number of correct leading digits. |
-| Different messages for "wrong length" and "wrong PIN" | S4 | The response content classifies the guess. |
+| Different messages for "wrong length" and "wrong PIN", and a wrong-length guess is not counted | S4, S2 | The response content classifies the guess, and some guesses are free. |
 | Failed-attempt counter is a RAM variable, incremented after the comparison | S2 | A reset restores all attempts; power removed after the comparison means the attempt was never charged. |
 | A \`dump\` command, used during development, prints memory | S1, S3, S5 | An unauthenticated path to the secret, outside the specified command set. |
-| Input line read into a 16-byte stack buffer until newline | S6, S1 | Input length is never compared with buffer size, so input controls memory beyond the buffer, including the lock flag and saved registers. |
+| Input line copied into a 16-byte buffer until the line ends | S6, S1 | Input length is never compared with buffer size, so input controls memory beyond the buffer, including the lock flag and saved registers. |
 | \`read\` checks a global \`unlocked\` flag that sits next to the input buffer | S1 | The decision depends on a variable that S6's weakness can alter. |`,
   ],
   diagram: [
@@ -97,6 +133,7 @@ The reference design implements F1 to F5 and was written with no adversary in mi
   steps: [
     { title: 'Number the requirements and record assumptions',
       md: `Copy the requirements into your notebook as a table with columns *ID, statement, verification method, status*. For S3, write the assumption explicitly: "flash read-out through the debug port is **in** scope" or "**out** of scope", and note what each choice would demand of the hardware. For each S requirement write at least one negative test in words now, before looking at any code.` },
+    refStep('strongbox_ref', STRONGBOX_REF, STRONGBOX_REF_OUT, `The reference design is 60 lines of C. Its PIN is \`407719\` and its secret is the six bytes \`c0 ff ee 15 90 0d\`; both are build parameters (F1), compiled in.`),
     { title: 'Review the reference design: the console',
       md: `Apply the interface list. Start with the serial console. The simulated devices below each exhibit one of the reference design's weaknesses. For each, record a finding: interface, class, requirement affected, defence, verification test.`,
       blocks: [
@@ -151,7 +188,11 @@ Do not change \`main\` or \`ct_equal\`, and keep one \`POWER_POINT()\` call insi
           caption: 'Runs in the app\'s C interpreter. `nv_fails` models persistent storage; it is not a real flash driver.' },
       ] },
     { title: 'Implement the rest (host C, or your own ESP32)',
-      md: `Write the bounded line reader and the four-entry command table as plain C with no hardware dependencies, plus a small host \`main\` that feeds it lines from standard input. Compile with \`gcc -Wall -Wextra -std=c11 -fsanitize=address,undefined\` and run your negative tests against it.
+      md: `Replace the device part of \`strongbox_ref.c\` with your design: the bounded line reader, the four-entry command table, the charge-first counter kept in the \`nv\` array (the flash model that survives \`dev_reset()\`), and the uniform responses. Keep the function names so the harness still links. Work until every harness line prints PASS under the sanitizer build, then add the tests the harness does not yet contain:
+
+- **T-S2-3**: a test-bench control that makes the device "lose power" at a chosen point inside \`unlock\`, as \`POWER_POINT()\` does in the C lab, and a test that ten interrupted wrong guesses still exhaust the attempts.
+- **T-S6-2**: a loop that feeds 100 000 random lines of random length (0 to 200 bytes) and checks after each that the device is still locked with an unchanged attempt count.
+- **T-S3-1**: split the file into \`strongbox.c\` (device) and \`test_strongbox.c\` (harness), compile the device alone with \`gcc -c\`, and run \`strings strongbox.o\`. On the reference design this shows the PIN; on yours neither the PIN nor the secret may appear. (The harness contains the PIN in its own test commands, which is why the device must be searched separately.)
 
 If you have an ESP32 board: put the same C files in an ESP-IDF project, read lines from the console UART, and keep the counter and protected secret in non-volatile storage. Use the library's AEAD and hash functions (ESP-IDF ships mbedTLS) rather than writing your own. Whether stored data is protected against flash read-out on your board depends on flash encryption, described in the security section; state in your S3 argument whether you enabled it. Enabling flash encryption or secure boot burns eFuses and is irreversible; do not do it on a board you need for other work.` },
     { title: 'Run the tests and write the report',
@@ -171,6 +212,8 @@ If you have an ESP32 board: put the same C files in an ESP-IDF project, read lin
   testing: [
     `Run every test against the build you would deliver. "You should see" below describes the required behaviour of a correct design; nothing here was measured on hardware by the authors.
 
+The harness in step 2 automates T-F3, T-F4, T-S1-1, T-S1-2, T-S2-1, T-S2-2, T-S4-1, T-S4-2 (as a count of compared bytes), T-S5-1 and T-S6-1. The others are yours to add, as described in step 7. A test counts as evidence only if it **fails on the reference design**: a negative test that the insecure design also passes shows nothing.
+
 | ID | Requirement | Test | You should see |
 |---|---|---|---|
 | T-F1 | F1 | Build with two different PIN/secret pairs | Each build accepts only its own PIN and returns its own secret |
@@ -184,7 +227,7 @@ If you have an ESP32 board: put the same C files in an ESP-IDF project, read lin
 | T-S3-1 | S3 | Search the update file for the PIN digits and the secret | Not found |
 | T-S3-2 | S3 | Capture all console output across every command and error | PIN and secret never appear, except the secret after a correct unlock |
 | T-S4-1 | S4 | Wrong PINs of length 5, 6 and 7; wrong in first digit; wrong in last digit | Byte-identical response |
-| T-S4-2 | S4 | Time many attempts with the first wrong digit at each position (on a build with the limit disabled for this test only) | No dependence on position |
+| T-S4-2 | S4 | Host: compare \`dev_work\` for guesses wrong in the first and in the last digit. Hardware: time many attempts with the first wrong digit at each position (on a build with the limit disabled for this test only) | Equal work counts; no dependence of time on position |
 | T-S5-1 | S5 | Every command name found in the reference design, plus random words | Generic error; no state change |
 | T-S5-2 | S5 | String search of the image for diagnostic command names | Not found |
 | T-S6-1 | S6 | Lines of maximum length, maximum + 1, and 10 000 bytes | Generic error; still locked; attempts unchanged |
@@ -199,12 +242,12 @@ If you have an ESP32 board: put the same C files in an ESP-IDF project, read lin
   ],
   challenge: `Extend the design to hold **four** secrets, each with its own PIN, without weakening S2 (a wrong PIN for one slot must not grant extra guesses at another) and without letting a holder of one PIN learn whether another slot is in use. Write the two new security requirements this implies, their negative tests, and the security arguments. No solution is given.`,
   rubric: [
-    { criterion: 'Review of the reference design', points: 20, evidence: 'Findings table: at least one finding per security requirement, each with interface, class, defence and verification test.' },
+    { criterion: 'Review of the reference design', points: 20, evidence: 'Findings table with one row per FAIL line of the reference harness plus the image and power-loss findings; every row names interface, class, requirement, defence and the test ID that fails on the reference design.' },
     { criterion: 'Redesign and security arguments', points: 25, evidence: 'Design note covering input handling, PIN and secret storage, counter and responses; six-part argument for S1–S6 with assumptions for S3 stated.' },
-    { criterion: 'Attempt limit holds across reset and power loss (S2)', points: 15, evidence: 'C lab passed; T-S2-1 to T-S2-3 results.' },
-    { criterion: 'No unauthenticated path to the secret (S1, S3, S5)', points: 15, evidence: 'T-S1, T-S3 and T-S5 results, including the image string search.' },
-    { criterion: 'Robust, uninformative input handling (S4, S6)', points: 15, evidence: 'T-S4 and T-S6 results; sanitizer run log from the host build.' },
-    { criterion: 'Functional requirements still met', points: 10, evidence: 'T-F results on the same build as the security tests.' },
+    { criterion: 'Attempt limit holds across reset and power loss (S2)', points: 15, evidence: 'C lab passed; harness output with PASS for T-S2-1 and T-S2-2; your added T-S2-3 (ten interrupted guesses) printing PASS on your design and FAIL on the reference.' },
+    { criterion: 'No unauthenticated path to the secret (S1, S3, S5)', points: 15, evidence: 'Harness PASS lines for T-S1-1, T-S1-2 and T-S5-1; the `strings` output of the device object file with no PIN, secret or diagnostic command name in it.' },
+    { criterion: 'Robust, uninformative input handling (S4, S6)', points: 15, evidence: 'Harness PASS lines for T-S4-1, T-S4-2 and T-S6-1; log of the 100 000-line random run under -fsanitize=address,undefined ending without a report.' },
+    { criterion: 'Functional requirements still met', points: 10, evidence: 'T-F3 and T-F4 PASS in the same harness run as the security tests; the final line reads `0 check(s) failed`.' },
   ],
   quiz: [
     { q: 'Why must the attempt counter be written before the PIN is compared?', kind: 'security', choices: [
@@ -264,6 +307,8 @@ const gatekeeper = {
       'F3. When the credential\'s button is pressed while it is connected to a reader, the reader grants or denies within 1 second and indicates the result.',
       'F4. A reader supports at least 16 credentials without being rebuilt when a new credential is issued.',
       'F5. Reader and credential communicate over a 3-wire UART link at 115200 baud.',
+      'F6. A message that is not completed within 500 ms of its first byte is discarded by the receiver, which returns to idle.',
+      'F7. The reader reports only grant or deny. The credential is told nothing about why a request was denied.',
     ],
     security: [
       'S1. A reader grants only to a credential provisioned for the same deployment.',
@@ -281,6 +326,21 @@ const gatekeeper = {
 A credential (a fob or card) asks a reader to open. The reader decides. The adversary can record and inject everything on the link, owns a genuine credential for a *different* reader in the same deployment, and can open one credential and read its flash. They cannot read a reader's flash (state this assumption; the challenge removes it).
 
 ${METHOD}`,
+    `## Interface specification
+
+The functional specification fixes what the two devices must do, not the bytes on the wire: **the message format is yours to design**, and writing it down precisely is step 5. What is fixed is the boundary the tests use, so that one harness can exercise the reference design and yours.
+
+| Function in the host build | Contract |
+|---|---|
+| \`provision_reader(r, deployment, id)\`, \`provision_cred(c, deployment, id, readers, n)\` | Stand for the secrets step and the per-device builds: afterwards the structure holds exactly what that device's flash would hold. Two different \`deployment\` numbers stand for two runs of the secrets step. |
+| \`cred_press(c)\` | The button was pressed (F3). |
+| \`cred_tx(c, out, cap)\`, \`reader_tx(r, out, cap)\` | Return the bytes this device wants to send now (0 if none) and empty its queue. |
+| \`cred_rx(c, p, n)\`, \`reader_rx(r, p, n, now_ms)\` | Bytes arrived. They may arrive in pieces of any size. \`now_ms\` is the reader's clock, for F3 and F6. |
+| \`reader_take_decision(r)\` | \`GRANT\`, \`DENY\`, or \`NONE\` if nothing was decided since the last call. Only an explicit \`GRANT\` opens. |
+
+The harness function \`exchange()\` carries bytes back and forth until both sides are quiet, so it works for a one-message protocol and for a three-message one. It can also record what the credential sent, exactly as an observer of the link would.
+
+**Reference wire format** (to be replaced): one 48-byte \`OPEN\` message from credential to reader, \`code(16) || perm[8]\`, where \`code\` is a constant and each \`perm\` entry is a 32-bit little-endian reader ID (unused entries are 0). The reader grants if the code matches and its own ID appears in \`perm\`.`,
     `## The insecure reference design
 
 | Aspect of the reference design | Requirement it falls short of | Why, at design level |
@@ -289,7 +349,7 @@ ${METHOD}`,
 | The same code is compiled into every credential and reader | S1, S4 | One opened device yields the secret of all devices. |
 | The credential sends its permission list as a plain field and the reader uses it | S3 | The requester states its own rights. |
 | No reader ID or credential ID in the message | S5 | Nothing ties a message to one pair of devices. |
-| The reader reads bytes into a struct until 20 arrive, with no timeout | S6 | A partial message leaves the reader waiting with half-filled state; the next bytes complete it. |
+| The reader collects bytes until 48 have arrived, with no timeout | S6 | A partial message leaves the reader waiting with half-filled state; the next bytes complete it. |
 | The reader compares the code with \`memcmp\` | S1 (supporting) | Early-exit comparison leaks the position of the first mismatch through timing. |`,
     `## Design notes
 
@@ -326,6 +386,7 @@ ${METHOD}`,
     { title: 'Requirements, assumptions and threat model',
       md: `Tabulate F1–F5 and S1–S6 with a verification method each. Record the adversary's capabilities from the background section as assumptions. Fill in a threat model: assets (reader key, credential keys, the grant decision), entry points (the UART link in both directions, the button, each device's flash).`,
       blocks: [{ t: 'widget', name: 'threat-model', props: { template: 'smart-lock' }, title: 'Threat model worksheet', caption: 'Start from the smart-lock template and adapt it to the credential and reader. Export it to your notebook.' }] },
+    refStep('gatekeeper_ref', GATEKEEPER_REF, GATEKEEPER_REF_OUT, `The reference credential and reader together are 50 lines of C. Two tests are marked *format-specific*: they reach into the reference message layout or the credential structure, and you rewrite them for your own format. All the others are black-box and must not change.`),
     { title: 'Review the reference design',
       md: `Draw the reference design's message sequence (it is one message). For that message, answer the four protocol questions from the review lesson: can it be **replayed**, **redirected** to another reader, **reflected**, or **re-typed**? Then walk the catalogue for authentication, access control and memory safety. Use the simulations to see the first of these concretely, then write the findings.`,
       blocks: [
@@ -350,7 +411,9 @@ ${METHOD}`,
 Use the HMAC tab below to see the tag change when any bound field changes.`,
       blocks: [{ t: 'widget', name: 'crypto-lab', props: { tab: 'hmac' }, title: 'HMAC over bound fields', caption: 'Real WebCrypto HMAC. Change one character of the message (an ID, the nonce) and compare tags.' }] },
     { title: 'Implement the reader logic',
-      md: `Implement the reader's state machine and message parser as hardware-independent C: a function that takes one received message and the current time and returns the reply and the decision. Take the MAC and random functions as parameters so that a host test can supply a library implementation and fixed test nonces. Compile with sanitizers and drive it from a test \`main\`.
+      md: `Replace the device part of \`gatekeeper_ref.c\` with your design, keeping the function names and contracts from the interface specification. The reader is a state machine driven by \`reader_rx()\`; it must cope with bytes arriving one at a time. Reach the MAC and the random number generator through two function pointers, so that the host build can link a library HMAC-SHA-256 (on a PC, OpenSSL's \`HMAC()\` with \`-lcrypto\`) and tests can substitute a generator that returns chosen nonces or reports failure. Do not write your own hash.
+
+Work until the harness prints PASS on every line under the sanitizer build, then add T-S1-2 (flip each bit of a recorded response in turn), T-S2-2 (response after the deadline), T-S5-2 (the reader's own bytes sent back to it), T-S6-2 (100 000 random byte strings; the reader must end idle and never grant) and T-S6-3 (generator failure).
 
 On two ESP32 boards of your own, wrap the same files with UART read/write, use the hardware random number generator through the SDK's API, and mbedTLS for HMAC. Keep the UART receive path bounded: a fixed-size buffer, an inter-byte timeout, and a reset to idle on any length or type error.`,
       code: `/* Reader, on receiving RESPONSE while in state CHALLENGED. Shape only. */
@@ -386,7 +449,9 @@ st.state = IDLE;`,
 
 **\`wipe(&st, …)\`** runs on every path. The nonce is used once whatever the outcome, which is what makes a second presentation of the same response fail.`,
   testing: [
-    `| ID | Requirement | Test | You should see |
+    `The harness in step 2 automates T-F3, T-S1-1, T-S2-1, T-S3-1, T-S3-2, T-S4-2, T-S5-1 and T-S6-1. Add the rest as you build. Each negative test must fail on the reference design or on a deliberately broken copy of your own (for example with the nonce held constant); otherwise it proves nothing.
+
+| ID | Requirement | Test | You should see |
 |---|---|---|---|
 | T-F3 | F3 | Valid credential, permitted reader | Grant within 1 s |
 | T-F4 | F4 | Issue a new credential after the reader was built | Grant without rebuilding the reader |
@@ -415,11 +480,11 @@ T-S5-1 needs a test build in which the nonce can be forced, because two readers 
   ],
   challenge: `Remove the assumption that reader flash cannot be read. Redesign so that extracting **one reader** does not allow making credentials for it. (Hint at the direction, not the solution: the reader would have to verify without holding anything that can create a valid response.) State what this costs on a small microcontroller, and how you would measure whether F3's one-second limit still holds on your hardware.`,
   rubric: [
-    { criterion: 'Review of the reference design', points: 20, evidence: 'Findings covering replay, shared secret, self-asserted permissions, missing identity binding and unbounded receive, each with defence and test.' },
-    { criterion: 'Protocol specification', points: 20, evidence: 'Message formats, authenticated data, state machine and provisioning written precisely enough to implement from.' },
-    { criterion: 'Freshness decision justified and verified (S2)', points: 15, evidence: 'Decision note; T-S2-1 to T-S2-3 results.' },
-    { criterion: 'Per-credential keys and permissions (S3, S4)', points: 15, evidence: 'Provisioning output for two credentials; T-S3 and T-S4 results.' },
-    { criterion: 'Identity binding and fail-closed reader (S1, S5, S6)', points: 20, evidence: 'T-S1, T-S5, T-S6 results; sanitizer log.' },
+    { criterion: 'Review of the reference design', points: 20, evidence: 'One finding per FAIL line of the reference harness (shared secret, replay, self-asserted permissions, no identity binding, receive without timeout) plus the early-exit comparison; each names the test ID that fails on the reference design.' },
+    { criterion: 'Protocol specification', points: 20, evidence: 'A table per message giving every field, its size and byte order; the exact byte string that enters the MAC; a state table for the reader with every exit to idle; the list of what each device image contains.' },
+    { criterion: 'Freshness decision justified and verified (S2)', points: 15, evidence: 'Decision note naming the mechanism and its failure behaviour; harness PASS for T-S2-1 and your added T-S2-2 and T-S2-3.' },
+    { criterion: 'Per-credential keys and permissions (S3, S4)', points: 15, evidence: 'Hex dump of the secret material of two provisioned credentials with no bytes in common (T-S4-2 PASS); T-S3-1, T-S3-2 and T-S4-1 PASS.' },
+    { criterion: 'Identity binding and fail-closed reader (S1, S5, S6)', points: 20, evidence: 'Harness PASS for T-S1-1, T-S5-1, T-S6-1 and your added T-S1-2, T-S5-2, T-S6-2, T-S6-3; random-input run under sanitizers ending without a report and without a grant.' },
     { criterion: 'Security arguments with residual risk', points: 10, evidence: 'Six-part argument per requirement; relay and random-number quality addressed honestly.' },
   ],
   quiz: [

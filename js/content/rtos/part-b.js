@@ -203,12 +203,12 @@ They are not on one scale. The relationship is absolute:
 
 The scheduler only gets to choose a task when no handler is active. And an ISR is not a task: it has no TCB, so it cannot be placed on a waiting list, so it **cannot block**. Any API that might block — taking a mutex, waiting on a queue, \`vTaskDelay\`, most \`printf\`/logging paths, anything that allocates — is forbidden in an ISR. In the opening problem, the ISR tries to block on a mutex held by a task; that task can never run to release it because the ISR is in the way.`,
       { t: 'callout', kind: 'warn', title: 'The numbers run in opposite directions on Cortex-M',
-        md: `FreeRTOS **task** priorities: a larger number is more urgent. Cortex-M **interrupt** priorities: a *smaller* number is more urgent (0 is the highest). Also, only the top few bits of the 8-bit priority field are implemented — the MSPM0L2228's Cortex-M0+ has 2 priority bits, i.e. 4 levels (docs/FACTS.md). Say "logically higher" and "numerically lower" out loud when you configure these.` },
+        md: `FreeRTOS **task** priorities: a larger number is more urgent. Cortex-M **interrupt** priorities: a *smaller* number is more urgent (0 is the highest). Also, only the top few bits of the 8-bit priority field are implemented — the MSPM0L2228's Cortex-M0+ has 2 priority bits, i.e. 4 levels (as on every Cortex-M0+). Say "logically higher" and "numerically lower" out loud when you configure these.` },
 
       `## The FromISR API
 
 Kernel functions that are safe in an ISR have names ending in \`FromISR\`. They differ from the task versions in two ways: they **never block** (they return a failure code instead), and instead of switching tasks themselves they **tell you** whether a switch is needed, through an out-parameter usually called \`pxHigherPriorityTaskWoken\`.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Deferred interrupt handling on ESP-IDF with a direct-to-task notification.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Deferred interrupt handling on ESP-IDF with a direct-to-task notification. Calls checked against the ESP-IDF v6.1 headers; `handle_press()` is your own code. Not compiled as a whole or run on a board here.',
         code: C`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -230,6 +230,7 @@ static void button_task(void *arg)
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);     /* sleep until the ISR signals */
         vTaskDelay(pdMS_TO_TICKS(20));               /* let contact bounce settle   */
+        ulTaskNotifyTake(pdTRUE, 0);                 /* forget edges seen while bouncing */
         if (gpio_get_level(BUTTON_GPIO) == 0) {
             handle_press();                          /* may block, log, take a mutex */
         }
@@ -256,12 +257,32 @@ void app_main(void)
           { lines: '12', md: 'Must start as `pdFALSE`. The kernel only ever sets it to `pdTRUE`; it never clears it.' },
           { lines: '13', md: 'Increments the task\'s notification value and, if the task was blocked waiting for it, moves the TCB to its ready list. If that task has a higher priority than the one that was interrupted, `woken` becomes `pdTRUE`.' },
           { lines: '14', md: 'If `woken` is true, requests a context switch so the interrupt returns straight into `button_task` instead of the task that was interrupted. Without this line the woken task waits until the next tick or the next blocking call — up to a whole tick of extra latency.' },
-          { lines: '20', md: 'The task is Blocked here and uses no CPU. `pdTRUE` clears the count on exit, so several bounces collapse into one wake-up.' },
-          { lines: '38-41', md: 'The task is created **before** the interrupt is enabled, so the ISR never uses an uninitialised handle.' },
+          { lines: '20', md: 'The task is Blocked here and uses no CPU. `pdTRUE` clears the count on exit, so edges that arrived before the task got here collapse into one wake-up.' },
+          { lines: '21-22', md: 'A bouncing contact produces more falling edges during the 20 ms wait, and each one sets the notification again. The second take, with a timeout of 0, clears them without blocking. Leave it out and the loop comes round, finds a notification already pending, waits 20 ms, sees the button still held and reports the same press a second time.' },
+          { lines: '39-42', md: 'The task is created **before** the interrupt is enabled, so the ISR never uses an uninitialised handle.' },
         ] },
       `This is **[[Deferred interrupt handling]]**: the ISR does only what must happen at interrupt level — acknowledge the hardware, capture volatile data — and hands the rest to a task. The task's *task priority* then decides how soon the rest runs relative to other tasks, which puts the decision back under the scheduler's control. A deferred handler given a high task priority runs immediately after the ISR, almost as if it were part of it, but it is allowed to block.`,
       { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'isr-defer' }, title: 'ISR, then the task it wakes',
-        caption: 'Watch the interrupt cut into the running task, and the handler task run immediately afterwards when its priority is high enough. Lower the handler task\'s priority and see the response wait.' },
+        caption: 'The simulator starts with the deferred handler wrongly placed: Handler has priority 1, below a Worker (priority 2) that never blocks. Run it, then raise Handler above Worker and compare with the trace below.' },
+      { t: 'ascii', caption: 'The simulator\'s two outcomes, tick by tick. ! = the ISR (1 tick), H = Handler (2 ticks of work per byte), W = Worker. The interrupt fires at ticks 4, 12, 20 and 28.',
+        text: `tick:               0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22
+
+Handler priority 1 (below Worker): the ISR runs, the handling never does
+runs:               W  W  W  W  !  W  W  W  W  W  W  W  !  W  W  W  W  W  W  W  !  W  W
+  tick 4   ISR preempts Worker, gives the semaphore (count 0 -> 1), returns.
+  tick 5   Handler is Ready, but Worker (2) outranks it (1) and never blocks: Worker runs.
+  tick 12  ISR gives again. The count is already 1 and cannot go higher: this event is LOST.
+  ticks 20, 28: lost again. Handler has not run once.
+
+Handler priority 3 (above Worker): deferred handling as intended
+runs:               W  W  W  W  !  H  H  W  W  W  W  W  !  H  H  W  W  W  W  W  !  H  H
+  tick 0   Handler is picked first, finds the semaphore empty and Blocks at once
+           (the call takes no time in this model), so Worker has the whole tick.
+  tick 4   ISR preempts Worker, gives the semaphore: Handler becomes Ready.
+  tick 5   On the way out of the ISR the scheduler picks Handler (3 > 2), not Worker.
+  ticks 5-6  Handler does its 2 ticks of work, takes the semaphore again and Blocks.
+  tick 7   Worker resumes where it was interrupted. Nothing is lost.` },
+      `Two lessons in that trace. The ISR always runs at once, whatever the task priorities — but the *work* is done by a task, and a task waits its turn. And a binary semaphore remembers one event, so a handler that falls behind does not just respond late: it loses events. With equal priorities (try Handler = 2) the simulator shows the middle case: Handler gets its turn one tick late, by round-robin.`,
       { t: 'predict',
         q: 'An ISR calls `xSemaphoreGiveFromISR(sem, &woken)` and then returns **without** calling `portYIELD_FROM_ISR(woken)`. The task waiting on the semaphore has the highest priority in the system. The tick is 10 ms. When does that task run?',
         choices: [
@@ -432,8 +453,10 @@ int main(void) {
           tests: [
             { name: 'echoes one line in upper case', uartRx: 'bench\n', stdout: 'BENCH\n' },
             { name: 'non-letters pass through', uartRx: 'irq 7 ok\n', stdout: 'IRQ 7 OK\n' },
+            { name: 'a line longer than the buffer: head must wrap', uartRx: 'deferred interrupt handling wraps\n', stdout: 'DEFERRED INTERRUPT HANDLING WRAPS\n' },
           ],
           hints: [
+            'What makes the interrupt request go away, and what happens to an ISR that returns while the request is still there? And once `head` reaches the end of the array, where must the next byte go?',
             'Reading `UART_DATA` pops the byte and is what clears the interrupt condition. An ISR that does not read it will be re-entered forever.',
             'Store first, then advance: `buf[head] = b; head = (head + 1) % BUF_SIZE;` — the main loop treats everything before `head` as valid.',
             'Full means "advancing head would make it equal to tail". In that case read the byte (to clear the interrupt) but do not store it.',
@@ -525,7 +548,7 @@ Both operations take a **timeout in ticks**:
 | \`xQueueReceive(q, &buf, ticks)\` on an empty queue | caller Blocks until an item arrives or the timeout expires; returns \`pdFALSE\` on timeout |
 
 A timeout of 0 means "try, do not wait". \`portMAX_DELAY\` means "wait forever". If several tasks are blocked on the same queue, the highest-priority one is served first.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Producer and consumer exchanging a struct by value.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Producer and consumer exchanging a struct by value. A fragment: `read_adc()`, `process()` and `dropped_samples` are your own; the FreeRTOS calls were checked against the ESP-IDF v6.1 headers.',
         code: C`typedef struct {
     uint32_t timestamp_ms;
     int16_t  raw;
@@ -745,6 +768,17 @@ Almost nothing in C is atomic. \`pulses++\` compiles to three steps:`,
    ── return ─────────────────────────────────
  task   STORE pulses ← r0      (pulses = 60)   ← the pulse is gone` },
       `The window is two instructions wide — well under a microsecond — and it is only hit when an interrupt lands inside it. That is why the failure is rare, why it vanishes when timing shifts, and why "it passed a week of soak testing" proves nothing.`,
+      { t: 'ascii', caption: 'The same failure in the form the simulator below uses: two tasks each run counter++ once, starting from 0. One order of the six steps that loses an update.',
+        text: `step  who     does               A's r0   B's r0   counter
+ 1    Task A  LOAD  r0 <- counter    0        -         0
+ 2    Task B  LOAD  r0 <- counter    0        0         0     <- B reads before A has stored
+ 3    Task B  ADD   r0 <- r0 + 1     0        1         0
+ 4    Task B  STORE counter <- r0    0        1         1
+ 5    Task A  ADD   r0 <- r0 + 1     1        1         1
+ 6    Task A  STORE counter <- r0    1        1         1     <- A overwrites 1 with 1
+
+Two increments ran; counter is 1. Any order in which the second LOAD comes before
+the first STORE gives this result. Only "A completely, then B" (or B then A) gives 2.` },
       { t: 'widget', name: 'race-condition', props: { scenario: 'counter' }, title: 'Make an update disappear',
         caption: 'Interleave the load/add/store steps of two contexts by hand until the final count is wrong. Then enable the critical section and try again.' },
 
@@ -782,7 +816,7 @@ If the answers are "more than one", "yes", "no", "yes", you need protection — 
 \`taskENTER_CRITICAL()\` … \`taskEXIT_CRITICAL()\` masks interrupts (up to the kernel's syscall threshold on Cortex-M3/4) so that neither an ISR nor a context switch can occur in between. The calls nest. It is the **only** tool that protects against an ISR, and the cheapest — a couple of instructions. The cost falls on everyone else: every masked interrupt is delayed by the length of the section. So critical sections must be **short and of bounded length**: a few assignments, never a loop over a variable-length buffer, never a function call you have not read, never anything that blocks.
 
 On ESP-IDF, the macros take a spinlock argument. Masking interrupts stops the current core only; the spinlock keeps the *other* core out.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'A critical section on ESP-IDF protecting data shared between a task and an ISR.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'A critical section on ESP-IDF protecting data shared between a task and an ISR. Macros and types checked against the ESP-IDF v6.1 FreeRTOS port headers.',
         code: C`static portMUX_TYPE s_pulse_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t s_pulses;                 /* shared: ISR increments, task consumes */
 
@@ -834,7 +868,9 @@ Prefer the last row. The best critical section is the one a design made unnecess
           title: 'Lost update between main code and an ISR',
           prompt: `The timer ISR and the main loop both add to \`shared\`. Each also keeps a private count of how many times it ran, so at the end \`shared\` should equal \`main_runs + isr_runs\`. Run the starter: some updates are lost, because the main loop's update is split across three statements and the ISR can run between them.
 
-Make the main loop's update indivisible with \`irq_disable()\` / \`irq_enable()\`. Keep the protected region as short as possible — only the three statements that touch \`shared\`. The program must print \`lost=0\`.`,
+Make the main loop's update indivisible with \`irq_disable()\` / \`irq_enable()\`. Keep the protected region as short as possible — only the three statements that touch \`shared\`. The program must print \`lost=0\`.
+
+Keep the update as three statements. They stand for the three machine instructions (load, add, store) that a real compiler emits for \`shared = shared + 1\`. Bench-MCU only lets an interrupt in *between statements*, so writing the update as one statement would hide the bug in this simulator without fixing it on any real processor.`,
           starter: C`#include <stdint.h>
 #include <stdio.h>
 

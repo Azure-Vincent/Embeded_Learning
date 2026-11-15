@@ -1,6 +1,8 @@
 /* cmd.c - corrected command-frame handler. Compare with review_me.c.
  * Order of checks: length, version, authenticity, freshness, then per-command ranges.
- * Nothing in ctx changes unless every check has passed. */
+ * Nothing in ctx changes unless the frame is well-formed, authentic and fresh. An
+ * authentic, fresh frame uses up its counter even if its command is then rejected for
+ * range, so the same bytes can never be presented again. */
 #include <string.h>
 #include "cmd.h"
 

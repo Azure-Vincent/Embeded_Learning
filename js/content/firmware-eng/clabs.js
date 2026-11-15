@@ -366,7 +366,7 @@ uint32_t stack_high_water(void)
   hints: [
     'Painting is a plain loop over all `STACK_WORDS` entries.',
     'Scan from index 0. The loop needs two conditions: still inside the array, and the word still equals `PAINT`.',
-    'Check the bound first: `while (n < STACK_WORDS && task_stack[n] == PAINT)`. With the tests the other way round you read one word past the array when the stack is completely untouched, and the test bench has put the pattern in that neighbouring word, so a scan that leaves the array reports 65 free words out of 64.',
+    'Check the bound first: `while (n < STACK_WORDS && task_stack[n] == PAINT)`. With the tests the other way round you read one word past the array when the stack is completely untouched. With no bound at all the scan walks on into the neighbouring object, where the test bench has put the same pattern, and reports 65 free words out of 64.',
   ],
   explain: `This is what FreeRTOS does for \`uxTaskGetStackHighWaterMark()\`: task stacks are filled with a known byte when the task is created, and the function counts how much of the fill survives. The answer is the *minimum free space ever observed*, which is why the fourth line still says 24.
 
@@ -1495,7 +1495,7 @@ void     hal_gpio_write(hal_pin_t pin, bool level);
 /* ======================= Board description for Bench-MCU ================================== */
 #define PIN_LATCH_BIT  (1u << 4)
 #define PIN_LED_BIT    (1u << 5)
-#define TICKS_PER_MS   1000u
+#define TICKS_PER_MS   100u    /* timer ticks per "millisecond": scaled down so the simulator can cover 5 s */
 #define TX_WAIT_LIMIT  1000u
 `;
 const ptApp = C`
@@ -1581,7 +1581,7 @@ static void lock_dispatch(lock_event_t ev, uint32_t now)
 
 static void reply(const char *s)
 {
-    while (*s != '\0') { hal_uart_write((uint8_t)*s); s++; }
+    while (*s != '\0') hal_uart_write((uint8_t)*s++);
     hal_uart_write('\n');
 }
 
@@ -1636,7 +1636,9 @@ int main(void)
 {
     uint32_t idle = 0;
     hal_init();
-    while (idle < 400u) {                       /* real firmware loops for ever; the simulator stops when input dries up */
+    /* Real firmware loops for ever. Here the loop ends once the input has dried up
+       and the latch has closed again, so the tests can see the relock timeout. */
+    while (idle < 400u || lock_state == LOCK_UNLOCKED) {
         if (app_poll()) idle = 0; else idle++;
     }
     return 0;
@@ -1654,7 +1656,9 @@ Write the Bench-MCU HAL above it: the five functions declared at the top.
 - \`hal_millis\`: each time the timer's \`EXPIRED\` flag is found set, clear it and add one to a millisecond counter; return the counter.
 - \`hal_gpio_write\`: drive the pin with \`GPIO_SET\` / \`GPIO_CLR\`.
 
-Register names and bit meanings are in the Bench-MCU reference (\`docs/BENCH_MCU.md\`).`,
+Register names and bit meanings are in the Bench-MCU reference (\`docs/BENCH_MCU.md\`).
+
+The tests check the UART replies, the pin directions, that the latch is **still open** 250 000 simulator ticks after a correct PIN (2500 timer periods: a \`hal_millis\` that counts calls instead of timer expiries has relocked by then) and that it **does close** once 5000 ms have been counted. If the simulator stops with "probably an infinite loop", your \`hal_millis\` is not advancing.`,
   starter: ptHead + C`
 /* ======================= Your port: the HAL for Bench-MCU ================================== */
 static uint32_t s_ms;
@@ -1734,7 +1738,8 @@ void hal_gpio_write(hal_pin_t pin, bool level)
 }
 ` + ptApp,
   tests: [
-    { name: 'status, wrong PIN, right PIN: latch pin goes high', uartRx: 'STATUS\nPIN 0000\nPIN 4921\nSTATUS\n', uartTx: 'LOCKED\nDENIED\nOK\nUNLOCKED\n', regs: { GPIO_OUT: 0x10 } },
+    { name: 'status, wrong PIN, right PIN: latch high and still high 2500 timer periods later', uartRx: 'STATUS\nPIN 0000\nPIN 4921\nSTATUS\n', ticks: 250000, uartTx: 'LOCKED\nDENIED\nOK\nUNLOCKED\n', regs: { GPIO_OUT: 0x10, GPIO_DIR: { value: 0x30, mask: 0x30 } } },
+    { name: 'the latch closes by itself once 5000 ms have been counted', uartRx: 'PIN 4921\n', uartTx: 'OK\n', gpioTrace: { mask: 0x30, values: [0x10, 0x00] }, regs: { GPIO_OUT: 0x00 } },
     { name: 'three wrong PINs: lockout LED on, right PIN refused', uartRx: 'PIN 1\r\nPIN 2\r\nPIN 3\r\nPIN 4921\r\n', uartTx: 'DENIED\nDENIED\nLOCKOUT\nLOCKOUT\n', regs: { GPIO_OUT: 0x20 } },
     { name: 'unlock then explicit lock: both pins low', uartRx: 'PIN 4921\nLOCK\nBOGUS\n', uartTx: 'OK\nOK\nERR\n', regs: { GPIO_OUT: 0x00 } },
   ],
@@ -1743,6 +1748,7 @@ void hal_gpio_write(hal_pin_t pin, bool level)
     '`hal_uart_write` is the same counted wait for `TX_READY` you wrote in the UART driver exercise.',
     '`hal_gpio_write`: map the pin enum to its bit, then write that bit to `GPIO_SET` or `GPIO_CLR`. Writing to `GPIO_OUT` directly would also work but needs a read-modify-write.',
     'Do not forget `GPIO_DIR` in `hal_init`: a pin that is not an output does not drive, whatever you write to the latch.',
+    '`hal_millis`: test bit 0 of `TIM_STATUS`. Only if it is set, write 1 to it (that clears it) and add one to `s_ms`. The timer needs `ENABLE` and `AUTO_RELOAD` in `TIM_CTRL`, or it expires once and never again.',
   ],
   explain: `You wrote about twenty lines of register code and a complete, already-tested application came up on a new target. The portable part was never modified, so the host tests still describe its behaviour.
 

@@ -32,7 +32,7 @@ test('every fact carries a source URL and unverified facts never print a value',
   const walk = (o, path) => {
     if (!o || typeof o !== 'object') return;
     if (Array.isArray(o)) return o.forEach((x, i) => walk(x, path + '[' + i + ']'));
-    if ('v' in o || ('base' in o && 'kind' in o)) assert.match(o.src || '', /^https:\/\/github\.com\//, path);
+    if ('v' in o || ('base' in o && 'kind' in o)) assert.match(o.src || '', /^https:\/\/(github\.com|www\.ti\.com|www\.espressif\.com|docs\.espressif\.com|rules\.ectf\.mitre\.org)\//, path);
     if ('v' in o && o.v == null) assert.ok(show(o).includes(UNVERIFIED), path);
     for (const [k, v] of Object.entries(o)) walk(v, path + '.' + k);
   };

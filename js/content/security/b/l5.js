@@ -39,6 +39,44 @@ upd_result_t update_check(const img_hdr_t *hdr, const uint8_t *body, const uint8
 }
 `;
 
+const BOOT_FIXED = C`
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#define IMG_MAGIC  0x424E4348u
+#define SLOT_SIZE  0x38000u         /* header + body + signature must fit in here */
+#define SIG_LEN    64u
+
+typedef struct {
+    uint32_t magic;
+    uint32_t version;               /* covered by the signature */
+    uint32_t length;                /* body bytes that follow the header */
+} img_hdr_t;
+
+bool sig_verify(const img_hdr_t *hdr, const uint8_t *body, const uint8_t *sig);  /* header + body */
+uint32_t min_version_read(void);    /* from fuses or protected flash */
+void jump_to(const uint8_t *entry);
+void recovery_mode(void);           /* accepts only images that pass these same checks; never returns */
+
+void boot(const img_hdr_t *hdr)     /* hdr points at the start of the application slot */
+{
+    const uint8_t *body = (const uint8_t *)hdr + sizeof *hdr;
+
+    if (hdr->magic == IMG_MAGIC
+        && hdr->length != 0u
+        && hdr->length <= SLOT_SIZE - sizeof *hdr - SIG_LEN) {      /* bounded before it is used */
+        const uint8_t *sig = body + hdr->length;                    /* now known to be inside the slot */
+
+        if (sig_verify(hdr, body, sig)                              /* at every boot; no cached verdict */
+            && hdr->version >= min_version_read()) {                /* signed version against the protected minimum */
+            jump_to(body);
+        }
+    }
+    recovery_mode();                /* every other path, including a jump_to() that came back */
+}
+`;
+
 export default {
   id: 'sec-b-boot-update-debug',
   title: 'Insecure bootloaders, update paths and exposed debug interfaces',
@@ -95,20 +133,22 @@ In every case the pattern is the same: the secure setting exists, it is not the 
 - From an **open debug port or serial bootloader**: the whole image and the RAM contents, including keys, and the ability to alter them. Condition: physical access to pads on the board.
 - From a **readable image**: every embedded secret, and a map of where to look for the other weaknesses in this half of the section.`,
     { t: 'callout', kind: 'sim', md: SCOPE },
-    widget('secure-boot-chain', { platform: 'generic' }, 'Start with secure boot off and tamper with the application; see what the chain does. Turn secure boot on and repeat. Then, with anti-rollback off, install an older signed version.'),
+    widget('secure-boot-chain', { platform: 'generic' }, 'Before each change, write down which stage you expect to stop the boot, or whether you expect it to complete. Start with secure boot off and tamper with the application; see what the chain does. Turn secure boot on and repeat. Then, with anti-rollback off, install an older signed version.'),
     { t: 'predict', q: 'A device has secure boot enabled and accepts only images signed by the vendor. Anti-rollback is not implemented. Version 1.0.3, signed by the vendor two years ago, contained a diagnostic command that prints stored keys. The device runs 1.4.2. What happens when it is offered the 1.0.3 image?', choices: [
-      { t: 'It verifies the signature, which is valid, installs 1.0.3 and the diagnostic command is back', ok: true, why: 'The signature answers "who built this", and the vendor did. Nothing in the check compares versions.' },
+      { t: 'It finds the signature valid and installs 1.0.3, diagnostic command included', ok: true, why: 'The signature answers "who built this", and the vendor did. Nothing in the check compares versions.' },
       { t: 'It rejects the image because the signature has expired', why: 'A signature is a mathematical relation between the image and the key and has no built-in lifetime. Expiry would need a trusted clock and a signed date, which small devices rarely have.' },
-      { t: 'It rejects the image because secure boot only allows the newest version', why: 'Secure boot checks authenticity. Knowing which version is newest requires state that this device does not keep.' },
+      { t: 'It rejects the image because secure boot only allows the newest signed version to run', why: 'Secure boot checks authenticity. Knowing which version is newest requires state that this device does not keep.' },
       { t: 'It installs 1.0.3 but the removed command stays removed', why: 'The command was removed by changing the code. The old image is the old code.' },
     ], reveal: 'Try it on the simulated updater below: its catalogue contains several signed images.' },
     widget('vuln-device', { device: 'rollback-updater' }, 'The updater checks signatures correctly. Read the release notes of each image in the catalogue before deciding what to try, and note which of the rejected images are rejected for the right reason.'),
     `### Debrief
 
+In the boot-chain simulation, with secure boot off the modified application simply ran: no stage asked a question. With it on, the stage *before* the modified one refused to continue, and a genuine older version still booted until anti-rollback was switched on.
+
 The updater rejected the unsigned image and the image signed with the engineering key, as it should. It accepted an older release because "signed" was the only question it asked. The fix has two parts: the version must be inside the signed data, and the device must hold a minimum version that only moves up.
 
 Now the other direction: what can be learned from an image.`,
-    widget('firmware-inspector', { image: 'lockbox' }, 'A raw dump of a fictional keypad lock, as it would come from an update file or a flash chip. Use the strings and hex views to complete the tasks.'),
+    widget('firmware-inspector', { image: 'lockbox' }, 'A raw dump of a fictional keypad lock, as it would come from an update file or a flash chip. Predict first: which of the things this lock must keep secret will be readable without any disassembly? Then use the strings and hex views to complete the tasks.'),
     `The service credential was a string constant. No disassembly was needed. Compare with the \`updater\` image in the Workbench: it contains a *public* key, which is meant to be public, and finding it gives an adversary nothing — provided the device cannot be made to replace it.
 
 ## How a team detects these
@@ -183,7 +223,14 @@ void boot(void)
 5. **Fail-open structure** — every failure path ends in a mode that accepts new code, and success is reached by several independent \`if\`s, each a single branch (lesson 7 returns to this).
 6. \`sig_of(hdr)\` and \`body_of(hdr)\` use \`hdr->length\` before it has been bounded.
 
-**Corrected order:** bound the header fields against the slot → verify the signature over header and body with the anchored key → compare the signed version with the protected minimum → jump. On any failure: stay in a state that accepts only an authenticated update, signalled by a status LED or message, and never a state that accepts arbitrary code. Enter the loader on request only if the loader applies the same checks before committing an image.` },
+**Corrected order:** bound the header fields against the slot → verify the signature over header and body with the anchored key → compare the signed version with the protected minimum → jump. On any failure: stay in a state that accepts only an authenticated update, signalled by a status LED or message, and never a state that accepts arbitrary code. Enter the loader on request only if the loader applies the same checks before committing an image.
+
+**Corrected version** (compiled with \`-Wall -Wextra -Wconversion\` and tested on the host under ASan/UBSan with stubs: bad magic, zero and oversized length, bad signature, older, equal and newer version, and a \`jump_to\` stub that returns):
+
+\`\`\`c
+${BOOT_FIXED}\`\`\`
+
+The jump is inside the success branch and every other path ends in recovery, so the structure fails closed; lesson 7 hardens the decision itself. **Tests on the product:** the image matrix from "Verifying the defences" above, plus a UART break held during reset, which must no longer open a loader that flashes unverified code.` },
     `## Harder application
 
 For the 2026 eCTF reference design, the linker script places a MITRE bootloader in the first 0x6000 bytes of flash and the team's firmware after it, and notes that the file allocation table address is fixed because the bootloader must know it. Using only that, list the questions you would need answered about that bootloader before you could say what your firmware may assume at start-up (what was verified, what state the debug port is in, what the bootloader leaves in RAM). Where would you look for each answer? Do not guess: the competition's own documentation is the source.`,
@@ -198,41 +245,41 @@ For the 2026 eCTF reference design, the linker script places a MITRE bootloader 
   ],
   quiz: [
     { q: 'A bootloader verifies an ECDSA signature over the application body. The header, which holds the body length and the entry offset, is not covered. What can go wrong?', kind: 'security', choices: [
-      { t: 'The header can be altered so that the verified region and the executed region differ, for example by changing the entry offset', ok: true, why: 'Fields outside the signature are attacker-controlled. If they influence what is hashed or where execution starts, the signature no longer protects what runs.' },
+      { t: 'The header can be altered so that the verified and the executed regions differ', ok: true, why: 'Changing the entry offset is one way. Fields outside the signature are attacker-controlled. If they influence what is hashed or where execution starts, the signature no longer protects what runs.' },
       { t: 'Nothing: the code itself is signed, and the header contains no code', why: 'The header decides which bytes count as "the code" and where execution begins, so it is as security-relevant as the code.' },
       { t: 'The signature becomes invalid whenever the header changes', why: 'That would be the desired behaviour, and it only happens if the header is part of the signed data.' },
       { t: 'ECDSA cannot sign data whose length is in a separate header', why: 'The algorithm signs a hash and has no knowledge of file formats. Coverage is a design decision.' },
     ] },
     { q: 'Where should a device keep the minimum firmware version used for rollback protection?', kind: 'arch', choices: [
-      { t: 'In one-time-programmable fuses or a flash region that only the verified boot stage can write, and that an update image cannot contain', ok: true, why: 'The value must survive any update and any reflash of the application area, and must only ever increase.' },
-      { t: 'In the header of the currently installed image', why: 'That header is replaced by the image being installed, so the incoming image would be supplying the limit it is checked against.' },
+      { t: 'In fuses or protected flash that an update image cannot rewrite', ok: true, why: 'Only the verified boot stage may write it. An update image must not be able to contain or rewrite it. The value must survive any update and any reflash of the application area, and must only ever increase.' },
+      { t: 'In the signed header of the currently installed image, next to its version', why: 'That header is replaced by the image being installed, so the incoming image would be supplying the limit it is checked against.' },
       { t: 'In a RAM variable initialised by the application', why: 'RAM is lost at every reset, which is exactly when the bootloader needs the value.' },
-      { t: 'On the update server only', why: 'The server can refuse to offer old images, but the device must also refuse images that arrive by another route.' },
+      { t: 'On the update server only, which then never offers old images', why: 'The server can refuse to offer old images, but the device must also refuse images that arrive by another route.' },
     ] },
     { q: 'A product ships with SWD pads unpopulated and the debug port left enabled in the chip configuration. How should a reviewer rate this?', kind: 'security', choices: [
-      { t: 'As an open debug interface: anyone who opens the case can attach to the pads, halt the core and read flash and RAM', ok: true, why: 'Access control is a property of the chip setting. A missing connector is a matter of a few minutes with a soldering iron or spring probes.' },
+      { t: 'As an open debug interface: the pads still give access to flash and RAM', ok: true, why: 'Anyone who opens the case can attach to them and halt the core. Access control is a property of the chip setting. A missing connector is a matter of a few minutes with a soldering iron or spring probes.' },
       { t: 'As closed, because no connector is fitted', why: 'The electrical interface is the pads and the silicon behind them. A connector is only a convenience.' },
       { t: 'As low risk, because SWD requires the vendor\'s proprietary software', why: 'SWD is a documented Arm interface supported by open-source tools and inexpensive probes.' },
       { t: 'As acceptable if the firmware disables the SWD pins after start-up', why: 'Firmware-applied settings take effect only after the firmware runs, and a debugger can attach under reset before then.' },
     ] },
     { q: 'An engineer proposes hiding an API key in the firmware by XOR-ing it with a constant, "so it does not show up in `strings`". What is the correct response?', kind: 'security', choices: [
-      { t: 'The image also contains the constant and the code that undoes the XOR, so anyone with the image can recover the key; it must be a per-device secret in protected storage instead', ok: true, why: 'Obscuring a value inside the same image that reveals how to recover it raises the effort slightly and changes nothing about who can do it.' },
+      { t: 'Anyone with the image can undo the XOR; the key must not be in the image at all', ok: true, why: 'It belongs in protected storage as a per-device secret. The image also contains the constant and the code that applies it. Obscuring a value inside the same image that reveals how to recover it raises the effort slightly and changes nothing about who can do it.' },
       { t: 'It is sufficient, because the key no longer appears as readable text', why: 'Readable text is only the easiest way to find a constant. The decoding routine in the same image leads straight to it.' },
       { t: 'It is sufficient if the XOR constant is 32 bits or longer', why: 'The length of the constant does not matter when the constant is stored next to the data it protects.' },
-      { t: 'It would be sufficient with AES instead of XOR, with the AES key in the firmware', why: 'A stronger cipher with its key in the same image has the same flaw: everything needed to decrypt is in one place.' },
+      { t: 'It would be sufficient with AES instead of XOR, with the AES key also in the firmware', why: 'A stronger cipher with its key in the same image has the same flaw: everything needed to decrypt is in one place.' },
     ] },
     { q: 'Which update test most directly checks rollback protection?', kind: 'code', choices: [
-      { t: 'Update to a release that raises the minimum version, let it boot and confirm, then offer the previous signed release and expect rejection', ok: true, why: 'It exercises the full mechanism: the minimum is raised by a real update, and a genuinely signed older image is then refused.' },
-      { t: 'Offer an unsigned image and expect rejection', why: 'That tests signature verification. A rollback image carries a valid signature.' },
+      { t: 'After a real update raises the minimum, offer the previous signed release', ok: true, why: 'Let the new release boot and confirm first, and expect the old one to be rejected. It exercises the full mechanism: the minimum is raised by a real update, and a genuinely signed older image is then refused.' },
+      { t: 'Offer an unsigned copy of an older release and expect rejection', why: 'That tests signature verification. A rollback image carries a valid signature.' },
       { t: 'Offer the current version again and expect rejection', why: 'Reinstalling the same version is normally permitted and reveals nothing about older ones.' },
-      { t: 'Offer a newer image and expect acceptance', why: 'That is the normal update path and passes with or without rollback protection.' },
+      { t: 'Offer a newer signed image and expect it to be accepted', why: 'That is the normal update path and passes with or without rollback protection.' },
     ] },
     { q: 'A bootloader stores "image verified = 1" in a flash word after a successful install and, on later boots, skips signature verification when the word is 1 to save 200 ms. What is the weakness?', kind: 'arch', choices: [
-      { t: 'Anything that can write flash — the update path, a programmer on the flash chip, a fault during the check — can set the word or change the image afterwards, and the image will run unverified', ok: true, why: 'A cached verdict is only as trustworthy as the storage it is in, and it says nothing about changes made after it was written.' },
+      { t: 'Anything that can write flash can set the word or swap the image afterwards', ok: true, why: 'The image then runs unverified. That includes the update path, a programmer on the flash chip, and a fault during the check. A cached verdict is only as trustworthy as the storage it is in, and it says nothing about changes made after it was written.' },
       { t: 'Flash words can only be written once, so the flag cannot be cleared for the next update', why: 'Flash can be erased and rewritten; the problem is the opposite, that the flag is too easy to set.' },
       { t: 'There is none: the image was verified when it was installed', why: 'Verification at install time speaks for the bytes as they were then. Boot-time verification speaks for the bytes about to be executed.' },
       { t: 'Skipping verification makes the boot time vary, which is a timing side channel', why: 'Boot duration here reveals only the flag, which is not a secret. The issue is that verification can be switched off.' },
     ] },
   ],
 };
-export const TESTED = { UPDATE_CHECK };
+export const TESTED = { UPDATE_CHECK, BOOT_FIXED };

@@ -113,30 +113,30 @@ Present jitter as a histogram. A test with no numbers attached does not count as
   ],
   challenge: `Add a second hard-deadline task whose period is not a multiple of the first, show by calculation whether the task set should be schedulable, and then show by measurement whether it is. If the two disagree, find out why.`,
   quiz: [
-    { q: 'A periodic task uses `vTaskDelay(pdMS_TO_TICKS(10))` at the end of a loop whose body takes 2–3 ms. What period will you measure?', kind: 'code', choices: [
-      { t: 'About 12–13 ms, varying with the body\'s run time', ok: true, why: 'Correct: a relative delay starts counting when the body finishes, so run time is added to every period.' },
-      { t: 'Exactly 10 ms', why: 'That is what an absolute delay (`vTaskDelayUntil`) gives; a relative delay cannot compensate for the work done before it.' },
-      { t: 'About 7–8 ms', why: 'The delay is not shortened by the body; nothing subtracts the run time for you.' },
+    { q: `The FreeRTOS tick rate is 1 kHz. A periodic task uses \`vTaskDelay(pdMS_TO_TICKS(10))\` at the end of a loop whose body takes 2–3 ms. What period will you measure?`, kind: 'code', choices: [
+      { t: `About 12–13 ms, because the delay only starts when the body has finished`, ok: true, why: 'Correct: a relative delay starts counting when the body finishes, so run time is added to every period.' },
+      { t: `Exactly 10 ms, because the delay is measured from the previous wake-up`, why: 'That is what an absolute delay (`vTaskDelayUntil`) gives; a relative delay cannot compensate for the work done before it.' },
+      { t: `About 7–8 ms, because the kernel subtracts the time the body used`, why: 'The delay is not shortened by the body; nothing subtracts the run time for you.' },
     ] },
     { q: 'Mean response time is 1.1 ms against a 2 ms deadline. Is the requirement met?', kind: 'concept', choices: [
-      { t: 'Unknown: the deadline is about the worst case, so you need the maximum and the count of misses', ok: true, why: 'Correct: a mean hides rare long responses, and those are exactly the failures a deadline exists to rule out.' },
-      { t: 'Yes, with almost 50% margin', why: 'Margin on the mean says nothing about the tail of the distribution.' },
-      { t: 'No, the mean must be below half the deadline', why: 'There is no such rule; the test is whether any activation exceeds the deadline.' },
+      { t: `Unknown: you need the maximum and the number of misses`, ok: true, why: 'Correct: a mean hides rare long responses, and those are exactly the failures a deadline exists to rule out.' },
+      { t: `Yes: 1.1 ms against 2 ms leaves almost 50% margin, which is ample`, why: 'Margin on the mean says nothing about the tail of the distribution.' },
+      { t: `No: for a hard deadline the mean must be below half the deadline`, why: 'There is no such rule; the test is whether any activation exceeds the deadline.' },
     ] },
     { q: 'High-priority task H waits for a lock held by low-priority L while medium-priority M runs for 50 ms. What is this, and what fixes it?', kind: 'arch', choices: [
-      { t: 'Priority inversion; use a mutex with priority inheritance so L runs at H\'s priority until it releases the lock', ok: true, why: 'Correct: inheritance stops M from pre-empting the lock holder, bounding H\'s wait to L\'s critical section.' },
-      { t: 'Deadlock; add a timeout', why: 'Nothing is waiting in a cycle here — L will finish eventually; the problem is that M delays it.' },
-      { t: 'Starvation; lower H\'s priority', why: 'Lowering H makes its response worse and does nothing about M running ahead of the lock holder.' },
+      { t: `Priority inversion; use a mutex with priority inheritance, so L finishes its critical section first`, ok: true, why: 'Correct: inheritance stops M from pre-empting the lock holder, bounding H\'s wait to L\'s critical section.' },
+      { t: `Deadlock; add a timeout to H's wait so that it gives up, releases what it holds and retries later`, why: 'Nothing is waiting in a cycle here — L will finish eventually; the problem is that M delays it.' },
+      { t: `Starvation of L; lower H's priority so that L gets enough processor time to finish and unlock`, why: 'Lowering H makes its response worse and does nothing about M running ahead of the lock holder.' },
     ] },
     { q: 'A task\'s stack high-water mark reads close to zero after a soak test. What does that tell you?', kind: 'concept', choices: [
-      { t: 'At some moment the task nearly exhausted its stack; a slightly deeper call path will overflow it', ok: true, why: 'Correct: the mark is the minimum free space ever seen, so near zero means almost no margin.' },
-      { t: 'The task uses almost no stack and can be shrunk', why: 'That is the opposite reading; the mark reports free space remaining at the worst moment, not space used.' },
-      { t: 'The task has leaked heap memory', why: 'The high-water mark concerns the task stack; heap use is reported separately.' },
+      { t: `At some moment the task nearly exhausted its stack; a slightly deeper call path would overflow it`, ok: true, why: 'Correct: the mark is the minimum free space ever seen, so near zero means almost no margin.' },
+      { t: `The task has used almost none of its stack, so the allocation can safely be reduced`, why: 'That is the opposite reading; the mark reports free space remaining at the worst moment, not space used.' },
+      { t: `The task has leaked heap memory, which the kernel reports through the same counter`, why: 'The high-water mark concerns the task stack; heap use is reported separately.' },
     ] },
     { q: 'On a dual-core ESP32, why is "the other task has lower priority, so it cannot run while I do" not a valid critical section?', kind: 'arch', choices: [
       { t: 'The lower-priority task can run at the same time on the other core', ok: true, why: 'Correct: with two cores, priority only orders tasks competing for the same core, so real mutual exclusion is required.' },
-      { t: 'Priorities are ignored on the ESP32', why: 'Priorities are honoured; the issue is true parallelism, not the scheduler ignoring them.' },
-      { t: 'Interrupts change task priorities', why: 'Interrupts pre-empt tasks but do not alter their priorities; the hazard here is the second core.' },
+      { t: `The dual-core scheduler ignores priorities and shares time equally between ready tasks`, why: 'Priorities are honoured; the issue is true parallelism, not the scheduler ignoring them.' },
+      { t: `An interrupt on the second core can raise the other task's priority above yours`, why: 'Interrupts pre-empt tasks but do not alter their priorities; the hazard here is the second core.' },
     ] },
   ],
   requirements: {

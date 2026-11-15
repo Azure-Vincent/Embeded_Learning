@@ -130,7 +130,7 @@ The same three levels as a buffer overflow — reset, changed data, changed cont
       { t: 'None: the sum is computed in 32 bits because of integer promotion, so it cannot wrap', why: 'Promotion does make the addition 32 bits wide, but the result is then stored in a 16-bit variable, which keeps only the low 16 bits.' },
     ], reveal: 'Promotion delays the wrap until the assignment to `end`. Had the code compared `offset + len > 256` directly, without the 16-bit temporary, this particular case would have been caught on a 32-bit target and missed again on a 16-bit one. Correctness that depends on the width of `int` is not correctness.' },
     { t: 'callout', kind: 'sim', md: SCOPE },
-    widget('integer-overflow', { challenge: 'length-check' }, 'Find an offset and length that the device accepts although the write does not fit. Then change the type the check is computed in and see whether your values still pass.'),
+    widget('integer-overflow', { challenge: 'length-check' }, 'Find an offset and length that the device accepts although the write does not fit. Then tick "use the corrected check" and confirm that the same values are now rejected. The buffer in the widget is 64 bytes, not 256; the reasoning is identical.'),
     widget('integer-overflow', { challenge: 'alloc-size' }, 'Now a multiplication: choose a record count and size whose true product is large but whose stored product is small.'),
     `### Debrief
 
@@ -167,9 +167,9 @@ Widening the type moves the problem; it does not remove it. A check done in 32 b
       { lines: '18-20', md: 'If `count` exceeds the largest value whose product with `size` still fits, the multiplication would wrap. The division uses only the constant limit and one operand, so it cannot overflow.' },
     ] }),
     code(BUILTINS, 'host-tested', { caption: 'The same intent with GCC/Clang checked-arithmetic builtins. C23 standardises equivalents in <stdckdint.h> (ckd_add, ckd_mul); check that your toolchain provides the header before relying on it.', explain: [
-      { lines: '8', md: 'The addition is performed as if with unlimited precision, the low 16 bits are stored in `*out`, and the return value says whether information was lost. On Arm this compiles to an add followed by a test of the carry, with no branches in your source.' },
+      { lines: '8', md: 'The addition is performed as if with unlimited precision, the low 16 bits are stored in `*out`, and the return value says whether information was lost. The compiler emits the add and then a test of whether the result still fits in 16 bits (for 32-bit operands, a test of the carry flag), so the check costs a couple of instructions.' },
     ] }),
-    { t: 'callout', kind: 'mistake', title: 'Checking for overflow after it happened, in signed arithmetic', md: `\`if (a + b < a)\` is a valid wrap test for **unsigned** operands. For signed operands the overflow in \`a + b\` is undefined behaviour, the compiler may assume it cannot happen, and at \`-O2\` it can remove the test entirely. Test before the operation (\`if (b > INT_MAX - a)\`), or use \`__builtin_add_overflow\`, which is defined for signed types.` },
+    { t: 'callout', kind: 'mistake', title: 'Checking for overflow after it happened, in signed arithmetic', md: `\`if (a + b < a)\` is a valid wrap test for operands of type \`unsigned int\` or wider. (For \`uint8_t\` or \`uint16_t\` operands on a 32-bit target it is simply always false: they are promoted to \`int\` and the sum does not wrap.) For signed operands the overflow in \`a + b\` is undefined behaviour, the compiler may assume it cannot happen, and at \`-O2\` it can remove the test entirely. Test before the operation (\`if (b > INT_MAX - a)\`), or use \`__builtin_add_overflow\`, which is defined for signed types.` },
     { t: 'callout', kind: 'decision', title: 'Reject or clamp?', md: `When a length is out of range you can refuse the message or clamp the length to what fits. Clamp only where a shorter result is still *correct*, such as filling a display line. For commands, firmware blocks, keys and anything covered by a MAC or CRC, clamping changes the meaning of the data and hides the fact that the peer is misbehaving. Reject, count the rejection, and make the counter visible in diagnostics.` },
     `## Verifying the defence
 
@@ -201,7 +201,7 @@ int store_write(const uint8_t *msg, uint8_t msg_len)
 
 1. **Header read without a length check** (CWE-125). With \`msg_len < 4\` the function reads bytes that were never received.
 2. **\`count\` is never compared with the received length.** A 6-byte message claiming \`count = 200\` makes \`memcpy\` read 198 bytes past the message: stale buffer contents, possibly secrets, are copied into the store where a later read command can return them.
-3. **16-bit wraparound in \`offset + count\`** (CWE-190). \`offset = 0xFFF0, count = 0x0020\` gives \`end = 0x0010\`, the check passes, and the write starts 65,520 bytes past the store.
+3. **16-bit wraparound in \`offset + count\`** (CWE-190). \`offset = 0xFFF0, count = 0x0020\` gives \`end = 0x0010\`, the check passes, and the write starts at \`store[65520]\`, far outside the 256-byte array.
 
 (\`msg_len\` being a \`uint8_t\` is a fourth smell: a caller with a longer buffer silently truncates the length.)
 
@@ -318,10 +318,10 @@ printf("%d %d\n", a + b, c);`, kind: 'code', choices: [
       { t: '`300 255`', why: 'C integer conversions truncate rather than saturate. Saturation exists only where you write it.' },
     ] },
     { q: 'A handler is declared `void rx(const uint8_t *p, int len)` and begins `if (len > 64) return; memcpy(buf, p, len);` with `uint8_t buf[64]`. Which input class defeats the check?', kind: 'security', choices: [
-      { t: 'A negative `len`: it is not greater than 64, and converts to a huge `size_t` in the call to `memcpy`', ok: true, why: 'The comparison is signed; the copy length is unsigned. The same bits mean two different numbers.' },
-      { t: '`len` equal to 64', why: 'Sixty-four bytes fit exactly in a 64-byte array, and no terminator is involved in a raw byte copy.' },
-      { t: '`len` equal to 0', why: 'A zero-length copy writes nothing. It may be a protocol error, but it is not a memory-safety defect.' },
-      { t: 'No input: the check is complete', why: 'The check has an upper bound but no lower bound, and the type allows values below zero.' },
+      { t: 'A negative `len`: it passes the test, then becomes a huge `size_t`', ok: true, why: 'The conversion happens in the call to `memcpy`. The comparison is signed; the copy length is unsigned. The same bits mean two different numbers.' },
+      { t: '`len` equal to 64, which fills the array to its last byte', why: 'Sixty-four bytes fit exactly in a 64-byte array, and no terminator is involved in a raw byte copy.' },
+      { t: '`len` equal to 0, a copy of no bytes at all', why: 'A zero-length copy writes nothing. It may be a protocol error, but it is not a memory-safety defect.' },
+      { t: 'No input: every `len` above 64 is rejected, so the check is complete', why: 'The check has an upper bound but no lower bound, and the type allows values below zero.' },
     ] },
     { q: 'Which rewrite of `if (offset + len > size) reject;` is safe for all `size_t` inputs?', kind: 'code', choices: [
       { t: '`if (offset > size || len > size - offset) reject;`', ok: true, why: 'After the first test the subtraction cannot wrap, and the untrusted length is only compared.' },
@@ -330,10 +330,10 @@ printf("%d %d\n", a + b, c);`, kind: 'code', choices: [
       { t: '`if (offset + len > size || offset + len < 0) reject;`', why: 'An unsigned value is never less than zero, so the added test is always false and the compiler removes it.' },
     ] },
     { q: 'Your host tests run with `-fsanitize=undefined` under GCC and pass. A colleague says this proves the 16-bit length arithmetic never wraps. Is that right?', kind: 'concept', choices: [
-      { t: 'No. Unsigned wraparound is defined behaviour, so UBSan does not report it; only its consequence, such as an out-of-bounds copy, may be caught by ASan', ok: true, why: 'UBSan reports undefined behaviour. Modulo arithmetic on unsigned types is fully defined by the standard.' },
-      { t: 'Yes. UBSan instruments every arithmetic operation', why: 'It instruments the operations whose overflow is undefined, which for integers means the signed ones.' },
+      { t: 'No. Unsigned wraparound is defined behaviour, so UBSan does not report it', ok: true, why: 'Only a consequence of the wrap, such as an out-of-bounds copy, may be caught, and by ASan. UBSan reports undefined behaviour. Modulo arithmetic on unsigned types is fully defined by the standard.' },
+      { t: 'Yes. UBSan instruments every arithmetic operation, signed or unsigned, and reports any wrap', why: 'It instruments the operations whose overflow is undefined, which for integers means the signed ones.' },
       { t: 'No, because sanitizers only work on 64-bit integers', why: 'Sanitizers instrument arithmetic at every width; the gap is about which overflows count as errors.' },
-      { t: 'Yes, provided the tests reach 100% line coverage', why: 'Coverage shows which lines ran, not which values flowed through them. A wrap needs particular operand values.' },
+      { t: 'Yes, provided the tests reach 100% line coverage of the length arithmetic', why: 'Coverage shows which lines ran, not which values flowed through them. A wrap needs particular operand values.' },
     ] },
     { q: 'A parser computes `payload_len = total_len - HEADER_LEN` where both are `size_t` and `HEADER_LEN` is 8. What is the required check, and where?', kind: 'security', choices: [
       { t: '`total_len >= HEADER_LEN`, before the subtraction', ok: true, why: 'With a shorter message the unsigned subtraction wraps to a number near SIZE_MAX, which then passes for a length.' },
@@ -342,7 +342,7 @@ printf("%d %d\n", a + b, c);`, kind: 'code', choices: [
       { t: 'No check is needed because the protocol specification says messages are at least 8 bytes', why: 'The specification binds honest senders. The parser receives bytes from whoever is connected.' },
     ] },
     { q: 'Why can `uint16_t w, h; uint32_t area = w * h;` misbehave on a 32-bit target for `w = h = 65535`?', kind: 'arch', choices: [
-      { t: 'Both operands are promoted to signed `int`; the product exceeds INT_MAX, which is undefined behaviour, before it is ever converted to `uint32_t`', ok: true, why: 'The type of the destination does not influence the type the multiplication is done in. Cast one operand to uint32_t first.' },
+      { t: 'Both operands are promoted to signed `int`, and the product overflows it', ok: true, why: 'Signed overflow is undefined behaviour, and it happens before any conversion to `uint32_t`. The type of the destination does not influence the type the multiplication is done in. Cast one operand to uint32_t first.' },
       { t: 'The product is computed in 16 bits and truncated', why: 'Operands narrower than int are widened to int before the multiplication, so the operation is 32 bits wide.' },
       { t: 'It cannot misbehave: the result is assigned to a 32-bit unsigned variable, which is wide enough', why: 'The mathematical result does fit in 32 unsigned bits, but the expression is evaluated in a signed type whose maximum is half that.' },
       { t: 'The hardware multiplier of a Cortex-M cannot multiply 16-bit numbers', why: 'The multiplier handles 32-bit operands; the issue is in the language rules, not the instruction set.' },

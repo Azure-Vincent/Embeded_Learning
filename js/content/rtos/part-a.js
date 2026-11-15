@@ -644,7 +644,7 @@ void app_main(void)
         choices: [
           { t: '1024 bytes on the Cortex-M board, 256 bytes on ESP-IDF.', ok: true, why: 'Upstream counts in words of 4 bytes; ESP-IDF counts in bytes. The ESP-IDF task has a quarter of the stack the author intended.' },
           { t: '256 bytes on both; the argument is always bytes.', why: 'Upstream FreeRTOS defines the argument as a number of stack words, and the word is 4 bytes on a 32-bit port.' },
-          { t: '256 words (1024 bytes) on both; the API is the same everywhere.', why: 'The function signature is the same but ESP-IDF documents a different unit for this argument.' },
+          { t: '256 words (1024 bytes) on both; the API is the same.', why: 'The function signature is the same but ESP-IDF documents a different unit for this argument.' },
         ],
         reveal: 'Always convert when porting: multiply upstream word counts by 4 for ESP-IDF, and then measure with `uxTaskGetStackHighWaterMark` rather than trusting either number. Logging through `printf`-style functions alone can need well over a kilobyte.' },
 

@@ -683,7 +683,7 @@ Whatever you choose, **count it**. A \`dropped\` counter that is visible in the 
         q: 'A 100 Hz sampling task (priority 6) sends each sample with `xQueueSend(q, &s, portMAX_DELAY)`. The consumer (priority 3) writes to an SD card that occasionally stalls for 300 ms. The queue length is 8. What happens to the *sampling* during a stall?',
         choices: [
           { t: 'After 80 ms the queue is full and the sampler blocks in the send until the card recovers.', ok: true, why: 'A blocking send propagates the stall upstream: about 220 ms of samples are never taken. The sampler\'s period is now decided by the SD card.' },
-          { t: 'Sampling continues at 100 Hz; once the queue is full the newest samples are silently discarded.', why: 'Discarding requires a send that does not wait. This one waits forever for space.' },
+          { t: 'Sampling continues at 100 Hz; once the queue is full the newest samples are discarded.', why: 'Discarding requires a send that does not wait. This one waits forever for space.' },
           { t: 'The kernel enlarges the queue.', why: 'Queue storage is fixed when the queue is created and never grows.' },
         ],
         reveal: 'Back-pressure travelled all the way to the task with the hard timing requirement. Either size the queue for the stall (300 ms × 100 Hz = 30 items plus margin), or send with timeout 0 and count drops — and decide which loss the product can tolerate.' },

@@ -251,29 +251,29 @@ The harness in step 2 automates T-F3, T-F4, T-S1-1, T-S1-2, T-S2-1, T-S2-2, T-S4
   ],
   quiz: [
     { q: 'Why must the attempt counter be written before the PIN is compared?', kind: 'security', choices: [
-      { t: 'Flash writes are faster before a comparison.', why: 'Write speed does not depend on what the code does next; the order matters for a different reason.' },
-      { t: 'So that no moment of power loss or reset leaves a guess evaluated but not counted.', ok: true, why: 'Once the result of the comparison exists, an adversary who controls power can prevent anything after it. Charging first removes that window.' },
-      { t: 'So the honest user gets an extra attempt.', why: 'It does the opposite: an honest user can lose an attempt to an unlucky power cut. That is the accepted cost.' },
+      { t: 'A flash write completes faster when no comparison has been started yet.', why: 'Write speed does not depend on what the code does next; the order matters for a different reason.' },
+      { t: 'So that no power loss or reset leaves a guess evaluated but uncounted.', ok: true, why: 'Once the result of the comparison exists, an adversary who controls power can prevent anything after it. Charging first removes that window.' },
+      { t: 'So that an honest user who mistypes still gets one extra attempt afterwards.', why: 'It does the opposite: an honest user can lose an attempt to an unlucky power cut. That is the accepted cost.' },
     ] },
     { q: 'The design stores a salted hash of a 6-digit PIN. What should the security argument for S3 say?', kind: 'concept', choices: [
-      { t: 'The PIN cannot be recovered because hashes are one-way.', why: 'One-way means no shortcut from hash to input; it does not stop someone trying every possible input when there are only a million.' },
-      { t: 'The hash slows an offline search of the million candidates; the protection relies on the attempt limit and on the stored data not being readable.', ok: true, why: 'This states what the mechanism achieves and what it depends on, which is what a reviewer needs.' },
-      { t: 'The salt makes the PIN unguessable.', why: 'A salt prevents precomputed tables and makes equal PINs hash differently; it is stored beside the hash and does not enlarge the search.' },
+      { t: 'The PIN cannot be recovered, because a hash is one-way and cannot be inverted.', why: 'One-way means no shortcut from hash to input; it does not stop someone trying every possible input when there are only a million.' },
+      { t: 'The hash only slows an offline search; the attempt limit carries the weight.', ok: true, why: 'This states what the mechanism achieves and what it depends on, which is what a reviewer needs.' },
+      { t: 'The salt makes the PIN unguessable, because each device hashes a different value.', why: 'A salt prevents precomputed tables and makes equal PINs hash differently; it is stored beside the hash and does not enlarge the search.' },
     ] },
     { q: 'Which test verifies S5?', kind: 'security', choices: [
-      { t: 'The four specified commands work.', why: 'That verifies function. S5 is about everything else being absent.' },
-      { t: 'Unspecified commands are refused without effect, and the image contains no diagnostic command strings.', ok: true, why: 'It checks both behaviour and the delivered artefact for functions outside the specification.' },
-      { t: 'The source code contains no function named dump.', why: 'The source is not what is delivered, and a function can be renamed while remaining reachable.' },
+      { t: 'The four specified commands each give the response the specification states.', why: 'That verifies function. S5 is about everything else being absent.' },
+      { t: 'Unspecified commands are refused, and the image holds no diagnostic strings.', ok: true, why: 'It checks both behaviour and the delivered artefact for functions outside the specification.' },
+      { t: 'A search of the source code finds no function with the name dump or debug.', why: 'The source is not what is delivered, and a function can be renamed while remaining reachable.' },
     ] },
     { q: 'A 20-byte line arrives for a 16-byte input buffer. What is the fail-closed handling?', kind: 'code', choices: [
-      { t: 'Store the first 16 bytes and process them as the command.', why: 'Truncation turns one input into a different, attacker-influenced command, and the remaining bytes become the start of the next line.' },
-      { t: 'Discard the whole line up to the newline, send the generic error, change no state.', ok: true, why: 'Over-long input is not a valid command, so nothing derived from it is executed and nothing is written beyond the buffer.' },
-      { t: 'Enlarge the buffer to 32 bytes.', why: 'Any fixed size has a longer input. The missing element is the comparison between input length and buffer size.' },
+      { t: 'Store the first 16 bytes and process them as the command; ignore the rest.', why: 'Truncation turns one input into a different, attacker-influenced command, and the remaining bytes become the start of the next line.' },
+      { t: 'Discard the line up to the newline, answer error, change nothing.', ok: true, why: 'Over-long input is not a valid command, so nothing derived from it is executed and nothing is written beyond the buffer.' },
+      { t: 'Enlarge the buffer to 32 bytes so that a 20-byte line fits.', why: 'Any fixed size has a longer input. The missing element is the comparison between input length and buffer size.' },
     ] },
     { q: 'What does the C lab test with simulated power cuts *not* demonstrate?', kind: 'concept', choices: [
-      { t: 'That the order of operations in the logic is correct.', why: 'That is exactly what the simulation does show.' },
-      { t: 'That on a specific chip the counter write is complete and durable before the comparison starts.', ok: true, why: 'A simulated variable is updated instantly; real flash programming takes time and can be interrupted, which needs hardware testing.' },
-      { t: 'That the honest user is not locked out.', why: 'The first output line of the test covers the honest sequence.' },
+      { t: 'That the order of the operations in the decision logic is correct.', why: 'That is exactly what the simulation does show.' },
+      { t: 'That a real chip completes the counter write before comparing.', ok: true, why: 'A simulated variable is updated instantly; real flash programming takes time and can be interrupted, which needs hardware testing.' },
+      { t: 'That an honest user who mistypes twice is not locked out of the device.', why: 'The first output line of the test covers the honest sequence.' },
     ] },
   ],
 };
@@ -489,14 +489,14 @@ T-S5-1 needs a test build in which the nonce can be forced, because two readers 
   ],
   quiz: [
     { q: 'Why does deriving credential keys from a per-reader key satisfy S3 without a permission field?', kind: 'arch', choices: [
-      { t: 'Because the reader looks up the permission list in its flash.', why: 'In this design the reader stores no list of credentials; F4 rules out rebuilding it for each new credential.' },
-      { t: 'Because a credential can only produce a valid response for readers whose derived key it was given at provisioning.', ok: true, why: 'Permission is expressed as possession of a key. There is nothing the holder can edit to gain a key they were not issued.' },
-      { t: 'Because the credential ID encodes the permissions.', why: 'An ID is a public value that anyone can claim; it cannot carry authority by itself.' },
+      { t: 'Because the reader looks up the permission list of each credential in its own flash.', why: 'In this design the reader stores no list of credentials; F4 rules out rebuilding it for each new credential.' },
+      { t: 'Because a credential holds keys only for the readers it was issued for.', ok: true, why: 'Permission is expressed as possession of a key. There is nothing the holder can edit to gain a key they were not issued.' },
+      { t: 'Because the credential ID encodes the readers that the credential may open.', why: 'An ID is a public value that anyone can claim; it cannot carry authority by itself.' },
     ] },
     { q: 'The reader ID is omitted from the MAC input. Which requirement loses its explicit protection?', kind: 'security', choices: [
-      { t: 'S2, freshness.', why: 'The nonce still prevents reuse over time at the same reader. Think about a second reader.' },
-      { t: 'S5: a response is not tied to the reader that issued the challenge.', ok: true, why: 'The tag would then depend entirely on every reader having an unrelated key. Binding the reader ID keeps S5 true even if key separation is ever wrong, and makes the argument checkable from the message format alone.' },
-      { t: 'F3, the timing requirement.', why: 'One fewer field in the MAC input has no measurable effect on timing.' },
+      { t: 'S2: without the reader ID the nonce no longer makes a response single-use.', why: 'The nonce still prevents reuse over time at the same reader. Think about a second reader.' },
+      { t: 'S5: a response is no longer tied to the reader that challenged.', ok: true, why: 'The tag would then depend entirely on every reader having an unrelated key. Binding the reader ID keeps S5 true even if key separation is ever wrong, and makes the argument checkable from the message format alone.' },
+      { t: 'F3: the reader takes longer to verify a response that names no reader.', why: 'One fewer field in the MAC input has no measurable effect on timing.' },
     ] },
     { q: 'The reader\'s random number generator returns an error. What should the reader do?', kind: 'security', choices: [
       { t: 'Use the previous nonce again.', why: 'A repeated nonce makes the earlier response valid again, which is precisely a replay.' },
@@ -504,14 +504,14 @@ T-S5-1 needs a test build in which the nonce can be forced, because two readers 
       { t: 'Deny and issue no challenge.', ok: true, why: 'Without unpredictable nonces the freshness requirement cannot be met, so the fail-closed action is to refuse.' },
     ] },
     { q: 'Which attack does a correct challenge–response protocol *not* prevent?', kind: 'concept', choices: [
-      { t: 'Replaying a recorded exchange the next day.', why: 'The next day\'s challenge carries a new nonce, so the old response does not verify.' },
-      { t: 'Relaying a live exchange between a distant genuine credential and the reader.', ok: true, why: 'A relay forwards fresh, genuine messages in real time. Preventing it needs a different mechanism, such as tight timing bounds, and is honestly listed as residual risk.' },
-      { t: 'Altering one bit of the response.', why: 'Any change to the response changes the tag comparison result.' },
+      { t: 'Replaying, the next day, an exchange that was recorded at the same reader.', why: 'The next day\'s challenge carries a new nonce, so the old response does not verify.' },
+      { t: 'Relaying a live exchange between a distant credential and the reader.', ok: true, why: 'A relay forwards fresh, genuine messages in real time. Preventing it needs a different mechanism, such as tight timing bounds, and is honestly listed as residual risk.' },
+      { t: 'Altering a single bit of the response while it is in transit to the reader.', why: 'Any change to the response changes the tag comparison result.' },
     ] },
     { q: 'Why does the reader erase the nonce even after a failed verification?', kind: 'code', choices: [
-      { t: 'To save RAM.', why: 'Sixteen bytes are not a memory concern; the reason is about how many tries one nonce allows.' },
-      { t: 'So each challenge permits exactly one response, giving no opportunity for repeated guesses against the same nonce.', ok: true, why: 'If the nonce survived a failure, an adversary could submit many candidate responses to a single challenge.' },
-      { t: 'Because the HMAC function requires it.', why: 'HMAC is a pure function of key and message and imposes no requirement on the caller\'s state.' },
+      { t: 'To free RAM, because a reader holds one nonce for every credential it has seen.', why: 'Sixteen bytes are not a memory concern; the reason is about how many tries one nonce allows.' },
+      { t: 'So that one challenge allows exactly one response attempt.', ok: true, why: 'If the nonce survived a failure, an adversary could submit many candidate responses to a single challenge.' },
+      { t: 'Because the HMAC function must not be called twice with the same message.', why: 'HMAC is a pure function of key and message and imposes no requirement on the caller\'s state.' },
     ] },
   ],
 };

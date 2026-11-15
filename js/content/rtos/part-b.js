@@ -286,7 +286,7 @@ runs:               W  W  W  W  !  H  H  W  W  W  W  W  !  H  H  W  W  W  W  W  
       { t: 'predict',
         q: 'An ISR calls `xSemaphoreGiveFromISR(sem, &woken)` and then returns **without** calling `portYIELD_FROM_ISR(woken)`. The task waiting on the semaphore has the highest priority in the system. The tick is 10 ms. When does that task run?',
         choices: [
-          { t: 'At the next tick, or sooner if the interrupted task blocks or yields first.', ok: true, why: 'The task is on the ready list, but nobody asked for a switch. The interrupt returns to the task it interrupted, and the scheduler only notices at its next opportunity: up to about 10 ms later.' },
+          { t: 'At the next tick, or sooner if the interrupted task happens to block or yield first.', ok: true, why: 'The task is on the ready list, but nobody asked for a switch. The interrupt returns to the task it interrupted, and the scheduler only notices at its next opportunity: up to about 10 ms later.' },
           { t: 'Immediately; the kernel always switches when a higher-priority task becomes ready.', why: 'From an ISR the kernel deliberately leaves the switch request to the caller, so that an ISR handling many events can request one switch at the end.' },
           { t: 'Never; the give is lost.', why: 'The semaphore was given and the task was made ready. Nothing is lost — only delayed.' },
         ],

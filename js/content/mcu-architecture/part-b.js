@@ -774,11 +774,11 @@ around the read, or read high, low, high again and retry if the high words diffe
 in its smallest form; the RTOS section generalises it.)`,
     ],
     quiz: [
-      { q: 'A handler never runs although the peripheral\'s flag is set. Which of these would NOT explain it?', kind: 'arch', choices: [
-        { t: 'The handler function is longer than 100 lines', ok: true, why: 'Length affects how long other interrupts wait, not whether this one is entered.' },
-        { t: 'The interrupt is not enabled in the interrupt controller', why: 'A request blocked at the controller never reaches the CPU, so this would indeed stop the handler.' },
-        { t: 'The global interrupt mask is set', why: 'With the CPU-level mask set, every maskable request stays pending, which would produce exactly this symptom.' },
-        { t: 'The peripheral\'s own interrupt-enable bit is clear', why: 'A set flag only drives the request line when its local enable is set, so this would block it too.' },
+      { q: 'A UART receive handler never runs. In the debugger you find: the UART\'s RX flag is set, its receive interrupt-enable bit is set, the interrupt is **not** shown as pending in the interrupt controller, and the global mask is clear. Where is the chain broken?', kind: 'arch', choices: [
+        { t: 'Between the peripheral and the controller: the request is not arriving, for example because the code enabled or attached a different interrupt number than the one this UART uses', ok: true, why: 'Flag and local enable together assert the request line. If the controller does not see it pending on the line you are watching, you are watching (and have enabled) the wrong line.' },
+        { t: 'At the CPU: a higher-priority handler must be running', why: 'A request held off by priority still shows as pending in the controller while it waits. Here it is not pending at all.' },
+        { t: 'In the handler: it does not clear the flag', why: 'A handler that fails to clear its flag runs continuously. This one has not been entered even once.' },
+        { t: 'In the vector table: the entry points at the wrong function', why: 'A wrong vector means the wrong code runs when the interrupt is taken. Here nothing is taken, because nothing is pending.' },
       ] },
       { q: 'On a Cortex-M, why can an interrupt handler be written as a plain C function?', kind: 'arch', choices: [
         { t: 'The hardware stacks the registers that the C calling convention allows a function to overwrite', ok: true, why: 'r0–r3, r12, LR, PC and the status word are saved on entry and restored on return, matching the caller-saved set.' },
@@ -858,7 +858,9 @@ unsigned numbers of the counter's width and a single wrap between the two edges 
 
 An RTOS or a \`millis()\` function needs a periodic interrupt. Cortex-M cores include a dedicated 24-bit down-counter
 for this, **SysTick**, so the same OS code works on any vendor's chip. RISC-V defines \`mtime\` and \`mtimecmp\` for the
-same purpose. On the ESP32, ESP-IDF configures a hardware timer for the FreeRTOS tick.`,
+same purpose. On the original ESP32, ESP-IDF's default FreeRTOS tick source is one of the Xtensa core's own cycle-count
+timers; on the S3, C3 and C6 it is a peripheral called SYSTIMER (see the tick-timer options in the FreeRTOS component's
+Kconfig).`,
 
       { t: 'widget', name: 'timer-lab', props: { mode: 'timer' }, title: 'Clock, prescaler, counter, compare',
         caption: 'Set up a 1 ms update period from the given clock. Then find a second prescaler/reload pair that gives the same period and say which you would prefer, and why.' },
@@ -957,13 +959,15 @@ int main(void)
 `,
           tests: [
             { name: 'waits for three real expiries and leaves pin 0 high', regs: { GPIO_OUT: 0x0001 }, stdoutIncludes: 'toggles=3 waited=1' },
+            { name: 'stopped after 105 ticks: only two 40-tick periods have passed, so pin 0 has toggled twice and is low', ticks: 105, regs: { GPIO_OUT: 0x0000 } },
           ],
           hints: [
+            'What does the hardware change when the period ends, and where can your code see it? What must your code do so that the *next* period can be told apart from this one?',
             'The loop condition is "flag bit is still 0". Mask the status register with \`TIM_EXPIRED\` before comparing.',
             'Put \`polls++\` in the loop body. The final \`waited=1\` is only printed if the three waits together polled at least 30 times, which they cannot do unless each wait really spans a timer period.',
             'To clear a write-1-to-clear bit, assign the mask: \`TIM_STATUS = TIM_EXPIRED;\`. Writing 0 does nothing.',
           ],
-          explain: 'With a 40-tick period and three waits, a correct program polls far more than 30 times. If the flag is never cleared, only the first wait blocks. On real hardware the same bug shows as a "delay" that works once and then returns instantly.',
+          explain: 'With a 40-tick period and three waits, a correct program polls far more than 30 times, and the second test stops the simulation part-way to check that the toggles really are a period apart. If the flag is never cleared, only the first wait blocks. On real hardware the same bug shows as a "delay" that works once and then returns instantly. Note that \`TIM_STATUS |= TIM_EXPIRED;\` also passes here, but only because this register has a single flag; with two W1C flags it would clear both.',
         } },
 
       `## The watchdog
@@ -1015,8 +1019,9 @@ read the watchdog chapter of the reference manual before relying on it.`,
       { t: 'exercise',
         prompt: `A 16-bit timer is clocked at 48 MHz. You need a PWM frequency of exactly 25 kHz with no prescaler (PSC = 0). What value goes in the auto-reload register, given that the counter counts from 0 to ARR inclusive?`,
         hints: [
-          'Counts per PWM period = 48,000,000 / 25,000.',
-          'Counting 0…ARR is ARR + 1 counts.',
+          'How many counter ticks fit into one PWM period at this clock?',
+          'Counts per PWM period = 48,000,000 / 25,000. Is that the number to write, given that the counter also spends one tick on the value 0?',
+          'Counting 0…ARR is ARR + 1 counts, so ARR is one less than the number of counts per period.',
         ],
         answer: { type: 'number', value: 1919, tol: 0 },
         solution: `48,000,000 / 25,000 = 1920 counts per period, so **ARR = 1919**. That gives 1920 duty steps (almost 11 bits). Writing 1920 would give 24,987 Hz: a 0.05 % error that nobody notices on a motor and that breaks a protocol expecting exact timing.` },

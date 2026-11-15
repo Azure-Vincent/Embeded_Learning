@@ -167,7 +167,7 @@ export default [
     ],
     quiz: [
       { q: 'Why does an unconnected CMOS input read unpredictable values?', kind: 'concept', choices: [
-        { t: 'Its tiny capacitance holds stray charge and nothing sets its voltage, so nearby fields move it across the thresholds', ok: true, why: 'With nanoamp leakage and picofarad capacitance, a very small coupled charge is enough to swing the pin.' },
+        { t: 'Nothing sets its voltage, so stray charge moves it across the thresholds', ok: true, why: 'With nanoamp leakage and picofarad capacitance, a very small coupled charge is enough to swing the pin.' },
         { t: 'The input draws a current from neighbouring pins, and that current varies', why: 'A CMOS input draws almost no current from anywhere. That is the root of the problem, not the cure: with no current path, nothing holds the voltage still.' },
         { t: 'Unconnected pins default to ground but the reading is delayed', why: 'There is no default. Unless a resistor or driver is connected, the pin has no path to either rail.' },
       ] },
@@ -183,17 +183,17 @@ export default [
       ] },
       { q: 'Two devices with push-pull outputs are connected to the same wire. One drives high, the other low. What happens?', kind: 'circuit', choices: [
         { t: 'A large current flows from supply to ground through both output transistors', ok: true, why: 'One device connects the wire to the rail and the other to ground: a short limited only by the transistors themselves.' },
-        { t: 'The wire reads low, because low always wins', why: 'Low wins only on open-drain buses, where nothing drives high. Push-pull outputs both drive actively.' },
-        { t: 'The outputs detect the conflict and switch off', why: 'Ordinary GPIO outputs have no contention detection. They keep driving until something overheats.' },
+        { t: 'The wire reads low, because a low output always wins over a high one', why: 'Low wins only on open-drain buses, where nothing drives high. Push-pull outputs both drive actively.' },
+        { t: 'The outputs detect the conflict and both switch themselves off', why: 'Ordinary GPIO outputs have no contention detection. They keep driving until something overheats.' },
       ] },
       { q: 'An I2C bus works with one sensor but fails when four more breakout boards are added. Each board carries 10 kΩ pull-ups. A likely electrical reason is:', kind: 'circuit', choices: [
         { t: 'Added wiring and pin capacitance has slowed the rising edges beyond the limit', ok: true, why: 'Five 10 kΩ in parallel is a reasonable 2 kΩ, so the more probable culprit is the extra capacitance of five boards and their wires.' },
-        { t: 'The combined pull-up of 50 kΩ is too weak', why: 'Pull-ups on the same line are in parallel, so adding boards lowers the resistance.' },
-        { t: 'I2C supports only one device per bus', why: 'I2C is a multi-device bus by design. Each device has an address.' },
+        { t: 'The combined pull-up, now 50 kΩ, is too weak to pull the line high', why: 'Pull-ups on the same line are in parallel, so adding boards lowers the resistance.' },
+        { t: 'I2C supports only one device on each bus', why: 'I2C is a multi-device bus by design. Each device has an address.' },
       ] },
       { q: 'On the original ESP32 you wire a button to GPIO35 and enable the internal pull-up in software. The released reading is erratic. Why?', kind: 'arch', choices: [
-        { t: 'GPIO34–39 are input-only pins with no internal pull resistors, so the pin is floating', ok: true, why: 'The software request has nothing to switch on. These pins need an external resistor.' },
-        { t: 'Internal pull-ups take several seconds to charge', why: 'A pull-up acts within microseconds, limited only by the RC of the resistor and the pin capacitance.' },
+        { t: 'GPIO34–39 have no internal pull resistors, so the pin floats', ok: true, why: 'The software request has nothing to switch on. These pins need an external resistor.' },
+        { t: 'Internal pull-ups take several seconds to charge the pin after being enabled', why: 'A pull-up acts within microseconds, limited only by the RC of the resistor and the pin capacitance.' },
         { t: 'GPIO35 is a strapping pin and is held by the bootloader', why: 'The strapping pins on this chip are GPIO0, 2, 5, 12 and 15. The issue here is the missing resistor.' },
       ] },
     ],
@@ -357,22 +357,22 @@ export default [
         { t: 'It will damage the 5 V input', why: 'A voltage below the receiver supply is always safe for it. The concern here is recognition, not damage.' },
       ] },
       { q: 'What physically happens when a pin without 5 V tolerance is driven to 5 V on a chip powered at 3.3 V?', kind: 'concept', choices: [
-        { t: 'The protection diode to the supply rail conducts, sending current into the 3.3 V rail', ok: true, why: 'The pin rises a diode drop above the rail and then the diode clamps it, carrying whatever current the source can supply.' },
-        { t: 'The input simply reads 1 and no current flows', why: 'It does read 1, but an input is only high-impedance within the supply range. Above it, the clamp structure conducts.' },
-        { t: 'The chip regulates the excess down internally', why: 'GPIO pins have no regulator. They have clamp diodes, which pass the excess into the rail instead of removing it.' },
+        { t: 'The pin\'s protection diode conducts current into the 3.3 V rail', ok: true, why: 'The pin rises a diode drop above the rail and then the diode clamps it, carrying whatever current the source can supply.' },
+        { t: 'The input simply reads 1 and no current flows, since inputs are high-impedance', why: 'It does read 1, but an input is only high-impedance while its voltage is within the supply range. This one is not.' },
+        { t: 'The chip regulates the excess voltage down internally at the pin', why: 'GPIO pins have no regulator. They have clamp diodes, which pass the excess into the rail instead of removing it.' },
       ] },
       { q: 'Which method is appropriate for connecting a 5 V I2C device to a 3.3 V MCU whose pins are not 5 V tolerant, when the device has pull-ups to 5 V?', kind: 'arch', choices: [
-        { t: 'An N-MOSFET bidirectional level shifter with pull-ups on both sides', ok: true, why: 'I2C lines are bidirectional and open-drain. The MOSFET circuit passes a low in either direction and keeps each side at its own high level.' },
-        { t: 'A resistor divider on SDA and SCL', why: 'A divider scales in one direction only. SDA is driven from both ends, and the divider would also load the pull-up.' },
-        { t: 'A 74AHCT buffer in each line', why: 'A buffer has a fixed direction. It cannot carry SDA, which both devices drive at different times.' },
+        { t: 'An N-MOSFET bidirectional shifter with pull-ups on both sides', ok: true, why: 'I2C lines are bidirectional and open-drain. The MOSFET circuit passes a low in either direction and keeps each side at its own high level.' },
+        { t: 'A resistor divider from 5 V to ground on each of SDA and SCL', why: 'A divider scales in one direction only. SDA is driven from both ends, and the divider would also load the pull-up.' },
+        { t: 'A 74LVC buffer with 5 V-tolerant inputs, powered from 3.3 V, in each line', why: 'The voltages would be acceptable, but a buffer has a fixed direction. It cannot carry SDA, which both devices drive at different times.' },
       ] },
       { q: 'A divider of 10 kΩ over 20 kΩ shifts a 5 V UART line down. At 1 Mbaud the received data is corrupt, though it is fine at 9600. Most likely cause:', kind: 'circuit', choices: [
-        { t: 'The divider resistance and the input capacitance form an RC that rounds the edges too much at that speed', ok: true, why: 'About 6.7 kΩ of source resistance with tens of picofarads gives a time constant that is a large part of a 1 µs bit.' },
-        { t: 'Dividers invert fast signals', why: 'A resistive divider never inverts. It attenuates, and with capacitance it slows edges.' },
-        { t: 'The divider output voltage rises with frequency', why: 'With capacitance at the output the amplitude falls with frequency, never rises.' },
+        { t: 'The divider resistance and the pin capacitance form an RC that rounds the edges', ok: true, why: 'About 6.7 kΩ of source resistance with tens of picofarads gives a time constant that is a large part of a 1 µs bit.' },
+        { t: 'Resistive dividers invert signals once the bit rate exceeds their bandwidth', why: 'A resistive divider never inverts. It attenuates, and with capacitance it slows edges.' },
+        { t: 'The divider output voltage rises with frequency and over-drives the 3.3 V input', why: 'With capacitance at the output the amplitude falls with frequency, never rises.' },
       ] },
       { q: 'A module is sold as "5 V". Before adding a level shifter, what should you check first?', kind: 'concept', choices: [
-        { t: 'The datasheet of the chip on the module: its supply range and its VIH relative to that supply', ok: true, why: 'Many such modules run correctly from 3.3 V, or accept a 3.3 V high, which removes the need for any shifting.' },
+        { t: 'The chip\'s datasheet: its supply range and its VIH', ok: true, why: 'Many such modules run correctly from 3.3 V, or accept a 3.3 V high, which removes the need for any shifting.' },
         { t: 'Whether other people report that it works without one', why: 'A working sample shows only that one unit at one temperature switched. It does not show there is margin.' },
         { t: 'The module\'s supply current, so that the 5 V rail can be sized for it', why: 'That belongs in the power budget. It says nothing about which voltages the module\'s pins accept or produce.' },
       ] },
@@ -558,9 +558,9 @@ export default [
         { t: '2.5 mV', why: 'This would be a division into 1000 steps, which matches neither 10 nor 12 bits.' },
       ] },
       { q: 'An ADC uses the 3.3 V rail as its reference. When the Wi-Fi radio transmits, the rail dips to 3.2 V. A steady 1.60 V input now reads:', kind: 'circuit', choices: [
-        { t: 'Higher than before, because the same input is a larger fraction of a smaller reference', ok: true, why: 'The code is the ratio of input to reference. Lower the reference and the ratio rises, though the input did not move.' },
+        { t: 'Higher than before, because the reference fell', ok: true, why: 'The code is the ratio of input to reference. Lower the reference and the ratio rises, though the input did not move.' },
         { t: 'Lower than before, because the supply dropped', why: 'The input did not drop. Only the reference it is compared against did, which increases the ratio.' },
-        { t: 'The same, because the input did not change', why: 'An ADC does not measure volts directly. It measures the input relative to the reference, so a reference change alters the code.' },
+        { t: 'The same as before, because the input voltage did not change', why: 'An ADC does not measure volts directly. It measures the input relative to the reference, so a reference change alters the code.' },
       ] },
       { q: 'A signal contains components up to 4 kHz. What is the minimum sample rate that avoids aliasing, in principle?', kind: 'concept', choices: [
         { t: 'More than 8 kHz', ok: true, why: 'The sample rate must exceed twice the highest frequency present, and practical filters need margin beyond that.' },
@@ -569,13 +569,13 @@ export default [
       ] },
       { q: 'A 1 MΩ / 1 MΩ divider feeds an ADC pin directly. The reading is low and changes when another channel is sampled first. The best fix is:', kind: 'circuit', choices: [
         { t: 'Add a capacitor of around 100 nF from the pin to ground', ok: true, why: 'The sampling capacitor cannot charge through 500 kΩ in the acquisition time. A local reservoir supplies that charge instantly.' },
-        { t: 'Average more samples in software', why: 'Each sample suffers the same incomplete charging, so the average is just as low. This is a systematic error, not noise.' },
-        { t: 'Increase the ADC resolution', why: 'Finer steps report the same wrong voltage in more detail. The input is not settling, whatever the resolution.' },
+        { t: 'Average a larger number of samples in software', why: 'Each sample suffers the same incomplete charging, so the average is just as low. This is a systematic error, not noise.' },
+        { t: 'Increase the ADC resolution setting', why: 'Finer steps report the same wrong voltage in more detail. The input is not settling, whatever the resolution.' },
       ] },
       { q: 'Why does ESP-IDF provide ADC calibration functions instead of expecting code × Vref / 4095?', kind: 'arch', choices: [
-        { t: 'The internal reference differs from chip to chip and the response is not perfectly linear, so per-chip stored data is used to correct readings', ok: true, why: 'Factory-measured values in eFuse let the driver map raw codes to millivolts for the individual chip.' },
-        { t: 'Multiplication is too slow on the processor', why: 'A multiply and divide take well under a microsecond. Calibration exists for accuracy, not speed.' },
-        { t: 'To correct the small error between dividing by 4095 and by 4096', why: 'That difference is one part in 4096, about a quarter of a millivolt per volt. The errors that calibration corrects are a hundred times larger.' },
+        { t: 'The reference differs from chip to chip and the response is not perfectly linear', ok: true, why: 'Factory-measured values in eFuse let the driver map raw codes to millivolts for the individual chip.' },
+        { t: 'Multiplication and division are too slow on the processor for every ADC sample', why: 'A multiply and divide take well under a microsecond. Calibration exists for accuracy, not speed.' },
+        { t: 'To correct the small error between dividing by 4095 and dividing by 4096 in the formula', why: 'That difference is one part in 4096, about a quarter of a millivolt per volt. The errors that calibration corrects are a hundred times larger.' },
       ] },
       { q: 'An 8-bit DAC with a 3.3 V reference is asked for code 128. Its output, unloaded, is about:', kind: 'circuit', choices: [
         { t: '1.65 V', ok: true, why: '128 of 256 steps is half the reference.' },
@@ -751,18 +751,18 @@ export default [
         { t: '500 Hz and 2.5 V', why: 'The frequency is right, but the output is high for a quarter of the period, not half.' },
       ] },
       { q: 'Why is PWM through a transistor more efficient than a series resistor for running a motor at reduced speed?', kind: 'concept', choices: [
-        { t: 'The transistor is always either fully on or fully off, and dissipates little in both states', ok: true, why: 'A resistor continuously converts the unwanted share of the power into heat. A switch does not.' },
-        { t: 'PWM raises the motor supply voltage', why: 'PWM never exceeds the supply. It reduces the average by spending part of the time off.' },
-        { t: 'Resistors cannot carry motor currents', why: 'Power resistors can. The objection is the energy they waste, not their ability to carry current.' },
+        { t: 'The transistor is always fully on or fully off, wasting little in either', ok: true, why: 'A resistor continuously converts the unwanted share of the power into heat. A switch does not.' },
+        { t: 'PWM raises the motor supply voltage, so less current is needed for the same power', why: 'PWM never exceeds the supply. It reduces the average by spending part of the time off.' },
+        { t: 'Resistors of any practical size cannot carry motor currents without burning out', why: 'Power resistors can. The objection is the energy they waste, not their ability to carry current.' },
       ] },
       { q: 'With a fixed timer clock, what do you give up by increasing the PWM frequency tenfold?', kind: 'arch', choices: [
-        { t: 'Duty-cycle resolution: there are a tenth as many counter steps in each period', ok: true, why: 'Steps per period equal the clock frequency divided by the PWM frequency.' },
-        { t: 'Average output voltage: it falls to a tenth', why: 'The average depends only on the duty cycle and the high level, not on frequency.' },
-        { t: 'Nothing; frequency and resolution are independent', why: 'Both come from the same counter. A shorter period contains fewer clock ticks to choose a compare value from.' },
+        { t: 'Duty-cycle resolution: a tenth as many counter steps per period', ok: true, why: 'Steps per period equal the clock frequency divided by the PWM frequency.' },
+        { t: 'Average output voltage: at the same duty it falls to a tenth', why: 'The average depends only on the duty cycle and the high level, not on frequency.' },
+        { t: 'Nothing: frequency and resolution are set independently by different registers', why: 'Both come from the same counter. A shorter period contains fewer clock ticks to choose a compare value from.' },
       ] },
       { q: 'A hobby servo receives a 1.5 ms pulse every 20 ms. You change the period to 15 ms and keep the pulse at 1.5 ms. The servo:', kind: 'circuit', choices: [
-        { t: 'Stays at the same position, because it responds to pulse width, not duty cycle', ok: true, why: 'The duty changed from 7.5 % to 10 %, but the servo measures the width of each pulse and that is unchanged.' },
-        { t: 'Moves, because the duty cycle increased', why: 'A device that averaged the signal would respond that way. A servo times each pulse instead.' },
+        { t: 'Stays put, because it responds to pulse width, not duty cycle', ok: true, why: 'The duty changed from 7.5 % to 10 %, but the servo measures the width of each pulse and that is unchanged.' },
+        { t: 'Moves towards one end, because the duty cycle increased from 7.5 % to 10 %', why: 'A device that averaged the signal would respond that way. A servo times each pulse instead.' },
         { t: 'Stops working, because only exactly 50 Hz is accepted', why: 'Typical servos accept a range of repetition rates. The pulse width carries the command.' },
       ] },
       { q: 'An RC filter on a PWM pin gives a steady voltage with too much ripple. Which change reduces ripple *without* slowing the response to duty changes?', kind: 'circuit', choices: [
@@ -771,9 +771,9 @@ export default [
         { t: 'Increase the duty cycle', why: 'Duty sets the output level you are trying to produce. It is not free to change, and ripple peaks at mid-scale anyway.' },
       ] },
       { q: 'Why do infrared remote controls switch a 38 kHz carrier on and off instead of simply turning the LED on for a 1?', kind: 'concept', choices: [
-        { t: 'The receiver can filter for 38 kHz and ignore steady or slowly varying infrared from sunlight and lamps', ok: true, why: 'Putting the information on a carrier moves it away from the frequencies where the interference lies.' },
-        { t: 'Infrared LEDs cannot stay on continuously', why: 'They can. The carrier is there for noise rejection, not to protect the LED.' },
-        { t: 'A carrier makes the light travel further', why: 'Range depends on optical power and receiver sensitivity. The carrier helps the receiver separate signal from background.' },
+        { t: 'The receiver can filter for 38 kHz and ignore steady ambient infrared', ok: true, why: 'Putting the information on a carrier moves it away from the frequencies where the interference lies.' },
+        { t: 'Infrared LEDs overheat if they stay on continuously for the length of a data bit', why: 'They can. The carrier is there for noise rejection, not to protect the LED.' },
+        { t: 'A carrier makes the light travel further for the same LED power', why: 'Range depends on optical power and receiver sensitivity. The carrier helps the receiver separate signal from background.' },
       ] },
     ],
   },
@@ -918,7 +918,7 @@ export default [
       ] },
       { q: 'A schematic has five separate ground symbols with no wires between them. On your breadboard you must:', kind: 'circuit', choices: [
         { t: 'Connect all five points together, since every ground symbol is the same net', ok: true, why: 'Power and ground symbols are a drawing shorthand for one shared net.' },
-        { t: 'Leave them separate, as drawn', why: 'The symbols are separate only to keep the page tidy. Electrically they denote one node.' },
+        { t: 'Leave them separate, exactly as they are drawn on the schematic', why: 'The symbols are separate only to keep the page tidy. Electrically they denote one node.' },
         { t: 'Connect only the ones that are close together on the page', why: 'Position on the page says nothing about connection. All symbols with the same name are joined.' },
       ] },
       { q: 'Which pair of breadboard holes is connected internally (standard layout)?', kind: 'circuit', choices: [
@@ -933,12 +933,12 @@ export default [
       ] },
       { q: 'An IC at the far end of a long breadboard gets no supply voltage, though the rail measures 3.3 V near the power input. The first thing to check is:', kind: 'circuit', choices: [
         { t: 'Whether the power rail is split in the middle and needs a bridging jumper', ok: true, why: 'Many boards break the rails halfway. Voltage near the input and none at the far end is the signature.' },
-        { t: 'Whether the IC is faulty', why: 'With no voltage arriving at its supply pin, the IC has not yet been tested at all.' },
-        { t: 'Whether the supply can deliver enough current', why: 'A weak supply would sag everywhere on the rail, including at the input where it measures correctly.' },
+        { t: 'Whether the IC is faulty and should be replaced', why: 'With no voltage arriving at its supply pin, the IC has not yet been tested at all.' },
+        { t: 'Whether the supply can deliver enough current for the whole board', why: 'A weak supply would sag everywhere on the rail, including at the input where it measures correctly.' },
       ] },
       { q: 'Why is a breadboard a poor choice for a motor drawing 2 A?', kind: 'concept', choices: [
-        { t: 'Its spring contacts have noticeable resistance and limited current capacity, so they drop voltage and heat up', ok: true, why: 'At 2 A, even a few tenths of an ohm across several contacts costs volts and can soften the plastic.' },
-        { t: 'Breadboards only work with digital signals', why: 'They carry analog and digital alike. The limits are current, frequency and contact reliability.' },
+        { t: 'Its spring contacts add resistance, so they drop voltage and heat up', ok: true, why: 'At 2 A, even a few tenths of an ohm across several contacts costs volts and can soften the plastic.' },
+        { t: 'Breadboards only work with digital signals, and a motor is an analog load', why: 'They carry analog and digital alike. The limits are current, frequency and contact reliability.' },
         { t: 'Motors need AC and breadboards carry only DC', why: 'Small hobby motors are DC devices, and a breadboard is just metal contacts, which pass either.' },
       ] },
     ],
@@ -1021,9 +1021,9 @@ export default [
 
       { t: 'predict', q: `A board uses a linear regulator with a dropout of about 1.1 V to produce 3.3 V. You power the board from a single lithium cell (4.2 V full, 3.7 V nominal, 3.0 V empty) connected to the regulator input. What happens over a discharge?`,
         choices: [
-          { t: 'It works until the cell reaches 3.3 V', why: `The regulator needs its input to exceed the output by the dropout. It stops regulating well before input and output are equal.` },
-          { t: 'It never produces a proper 3.3 V: the output starts below 3.3 V and falls with the cell', ok: true, why: `Yes. 3.3 V plus 1.1 V of dropout needs 4.4 V at the input, more than a full cell provides.` },
-          { t: 'It works for the whole discharge, because 3.7 V is above 3.3 V', why: `Being above the output voltage is not enough. The regulator consumes its dropout voltage before anything reaches the output.` },
+          { t: 'It works properly until the cell voltage falls to 3.3 V', why: `The regulator needs its input to exceed the output by the dropout. It stops regulating well before input and output are equal.` },
+          { t: 'It never gives a proper 3.3 V: the output is low from the start', ok: true, why: `Yes. 3.3 V plus 1.1 V of dropout needs 4.4 V at the input, more than a full cell provides.` },
+          { t: 'It works for the whole discharge, because 3.7 V nominal is above 3.3 V', why: `Being above the output voltage is not enough. The regulator consumes its dropout voltage before anything reaches the output.` },
         ],
         reveal: `The regulator needs Vin ≥ Vout + dropout = 4.4 V. Even a full cell at 4.2 V is short. The output simply tracks the input minus the dropout: roughly 3.1 V at full charge, falling from there. The board may run for a while, with every 3.3 V part under-supplied, the radio marginal and the ADC reference wrong. For battery operation you need a true low-dropout part (a couple of hundred millivolts at your load current), which gets you down to a cell voltage of about 3.5 V, or a buck-boost converter that holds 3.3 V over the whole cell range. Always check the regulator on a development board before assuming it suits a battery.` },
 
@@ -1152,19 +1152,19 @@ export default [
         { t: '1.8 W and 44 %', why: '1.8 W is the total input power. The heat in the regulator is only the part that does not reach the load.' },
       ] },
       { q: 'What does "dropout voltage" mean for a regulator?', kind: 'concept', choices: [
-        { t: 'The smallest input-to-output difference at which it can still hold its output', ok: true, why: 'Below that headroom the pass transistor is fully on and the output simply follows the input downward.' },
-        { t: 'The amount the output drops when the load is connected', why: 'That is load regulation, usually millivolts. Dropout concerns how much input headroom the regulator needs.' },
+        { t: 'The smallest input-to-output difference at which it still regulates', ok: true, why: 'Below that headroom the pass transistor is fully on and the output simply follows the input downward.' },
+        { t: 'The amount by which the output voltage drops when the load is connected', why: 'That is load regulation, usually millivolts. Dropout concerns how much input headroom the regulator needs.' },
         { t: 'The input voltage at which the regulator switches off', why: 'A regulator in dropout does not switch off. It keeps conducting with an output that is too low.' },
       ] },
       { q: 'A board resets when its radio transmits, only when powered through a particular 3 m USB cable. Most likely cause:', kind: 'circuit', choices: [
-        { t: 'The cable resistance drops enough voltage during the current burst to take the regulator into dropout', ok: true, why: 'Voltage lost in the cable is current times resistance, and both are at their worst during a transmit burst on a long, thin cable.' },
-        { t: 'The cable corrupts the firmware as it is uploaded', why: 'Corrupted uploads fail verification. A reset tied to radio activity points at the supply, not the stored program.' },
-        { t: 'The radio signal travels down the cable and confuses the computer', why: 'The symptom is a local reset coinciding with peak current draw, which is a supply dip.' },
+        { t: 'The cable resistance drops enough voltage during the burst to cause dropout', ok: true, why: 'Voltage lost in the cable is current times resistance, and both are at their worst during a transmit burst on a long, thin cable.' },
+        { t: 'The long cable corrupts the firmware image as it is uploaded to the board', why: 'Corrupted uploads fail verification. A reset tied to radio activity points at the supply, not the stored program.' },
+        { t: 'The radio signal travels back down the cable and confuses the computer\'s USB port', why: 'The symptom is a local reset coinciding with peak current draw, which is a supply dip.' },
       ] },
       { q: 'Why must a decoupling capacitor be a ceramic placed millimetres from the supply pin?', kind: 'concept', choices: [
-        { t: 'It must deliver current within nanoseconds, and any extra path length adds inductance that delays it', ok: true, why: 'The voltage dip is L × dI/dt. Shortening the path reduces L, which is the only term the designer controls.' },
+        { t: 'Extra path length adds inductance, which delays the current it must deliver', ok: true, why: 'The voltage dip is L × dI/dt. Shortening the path reduces L, which is the only term the designer controls.' },
         { t: 'Ceramic capacitors hold more charge than electrolytics of the same value', why: 'Equal capacitance means equal charge per volt. The difference is how quickly that charge can be delivered.' },
-        { t: 'It shields the pin from radio interference', why: 'A capacitor is not a shield. It is a local source of charge and a low-impedance path for high-frequency current.' },
+        { t: 'It shields the supply pin from radio interference picked up by nearby tracks', why: 'A capacitor is not a shield. It is a local source of charge and a low-impedance path for high-frequency current.' },
       ] },
       { q: 'A device draws 150 mA for 1 s and then sleeps at 50 µA for 9 s, repeatedly. Its average current is about:', kind: 'circuit', choices: [
         { t: '15 mA', ok: true, why: '(150 × 1 + 0.05 × 9) / 10 = 15.05 mA. The active burst dominates completely.' },
@@ -1173,7 +1173,7 @@ export default [
       ] },
       { q: 'You need 3.3 V at 1 A from a 24 V supply. Which regulator, and why?', kind: 'arch', choices: [
         { t: 'A buck converter, because a linear regulator would have to dissipate over 20 W', ok: true, why: '(24 − 3.3) × 1 A = 20.7 W of heat in a linear part, against a watt or less in a switcher.' },
-        { t: 'An LDO, because low dropout means low heat', why: 'Low dropout only means it can work with little headroom. The heat still equals the actual voltage difference times the current.' },
+        { t: 'An LDO, because a low dropout voltage means low heat dissipation', why: 'Low dropout only means it can work with little headroom. The heat still equals the actual voltage difference times the current.' },
         { t: 'A resistor divider from 24 V', why: 'A divider output changes with load current. It cannot hold 3.3 V for a load that varies.' },
       ] },
     ],
@@ -1322,14 +1322,14 @@ export default [
     ],
     quiz: [
       { q: 'Two boards are powered from separate batteries and joined only by a TX-to-RX wire. Why does the link fail?', kind: 'circuit', choices: [
-        { t: 'The receiver measures the signal against its own ground, which has no defined relation to the sender\'s ground', ok: true, why: 'A voltage needs two points. Without a shared ground there is neither a common reference nor a return path for the signal current.' },
-        { t: 'Batteries cannot power serial links', why: 'The power source is irrelevant to the link. What matters is that both ends share a reference.' },
-        { t: 'A second signal wire is needed to carry the inverted data', why: 'Single-ended links such as UART need one signal wire plus ground. Paired inverted signals belong to differential links.' },
+        { t: 'The receiver has no shared reference: its ground is unrelated to the sender\'s', ok: true, why: 'A voltage needs two points. Without a shared ground there is neither a common reference nor a return path for the signal current.' },
+        { t: 'Batteries cannot supply the brief current pulses that a serial link needs', why: 'The power source is irrelevant to the link. What matters is that both ends share a reference.' },
+        { t: 'A second signal wire is needed to carry the inverted data alongside the first', why: 'Single-ended links such as UART need one signal wire plus ground. Paired inverted signals belong to differential links.' },
       ] },
-      { q: 'A motor and a temperature sensor share one thin ground wire back to the supply. When the motor runs, the temperature reading shifts. Why?', kind: 'circuit', choices: [
-        { t: 'The motor current through the ground wire resistance raises the sensor ground relative to the ADC ground', ok: true, why: 'Current times wire resistance appears as a voltage in series with the sensor signal.' },
-        { t: 'The motor heats the sensor', why: 'Thermal effects take seconds to minutes. A shift that tracks the motor switching instantly is electrical.' },
-        { t: 'The sensor is defective', why: 'A reading that changes exactly when another load switches points at something they share, here the ground wire.' },
+      { q: 'A motor and a temperature sensor share one thin ground wire back to the supply. The temperature reading jumps at the instant the motor starts and jumps back the instant it stops. Why?', kind: 'circuit', choices: [
+        { t: 'Motor current in the shared wire shifts the sensor\'s ground', ok: true, why: 'Current times wire resistance appears as a voltage in series with the sensor signal.' },
+        { t: 'The running motor heats the sensor, and the reading follows the temperature', why: 'Thermal effects take seconds to minutes. A shift that tracks the motor switching instantly is electrical.' },
+        { t: 'The sensor is defective and happens to fail at that moment', why: 'A reading that changes exactly when another load switches points at something they share, here the ground wire.' },
       ] },
       { q: 'A rail that should be 5 V measures 0.3 V and the USB port has disconnected. Which fault class fits best?', kind: 'circuit', choices: [
         { t: 'A short circuit between supply and ground', ok: true, why: 'A collapsed rail together with the source protecting itself means the load is taking far more current than it should.' },
@@ -1337,9 +1337,9 @@ export default [
         { t: 'A floating input', why: 'A floating input causes erratic logic readings and microamps of extra current, not a collapsed supply.' },
       ] },
       { q: 'In a series circuit of supply, resistor and LED, you measure the full supply across the resistor and nearly 0 V across the LED. The LED is dark. What is happening?', kind: 'circuit', choices: [
-        { t: 'Current is flowing but bypassing the LED, which is shorted or has both leads in one breadboard strip', ok: true, why: 'Voltage across the resistor proves current flows. Zero volts across the LED means the current has an easier path around it.' },
-        { t: 'The LED is reversed', why: 'A reversed LED blocks current, so the resistor would show 0 V and the LED the full supply.' },
-        { t: 'The supply is disconnected', why: 'With no supply there would be no voltage across the resistor either.' },
+        { t: 'Current is flowing, but through a path that bypasses the LED', ok: true, why: 'Voltage across the resistor proves current flows. Zero volts across the LED means the current has an easier path around it.' },
+        { t: 'The LED is reversed, so the resistor takes the whole supply instead', why: 'A reversed LED blocks current, so the resistor would show 0 V and the LED the full supply.' },
+        { t: 'The supply is disconnected from the circuit', why: 'With no supply there would be no voltage across the resistor either.' },
       ] },
       { q: 'You suspect one of six cascaded modules is faulty. The most efficient first measurement is:', kind: 'concept', choices: [
         { t: 'The signal between modules 3 and 4', ok: true, why: 'Measuring at the midpoint eliminates half of the chain whichever way the result falls.' },
@@ -1347,8 +1347,8 @@ export default [
         { t: 'Replace all six modules', why: 'Replacement without measurement removes the evidence and may leave the real cause, such as a supply fault, in place.' },
       ] },
       { q: 'A multimeter\'s red lead is in the current (A) socket and you touch the probes across a battery to check its voltage. What happens?', kind: 'concept', choices: [
-        { t: 'The meter is nearly a short circuit in that configuration, so a large current flows and its fuse may blow', ok: true, why: 'A current range has very low resistance so that it does not disturb a series circuit. Across a source, that is a short.' },
-        { t: 'The meter shows the voltage as usual', why: 'The socket determines the internal path. The current socket routes through a low-value shunt, not the high-resistance voltage input.' },
+        { t: 'The meter is nearly a short circuit, so a large current flows', ok: true, why: 'A current range has very low resistance so that it does not disturb a series circuit. Across a source, that is a short.' },
+        { t: 'The meter shows the battery voltage as usual, perhaps reading slightly low', why: 'The socket determines the internal path. The current socket routes through a low-value shunt, not the high-resistance voltage input.' },
         { t: 'The meter shows zero and nothing else happens', why: 'The display may show little, but the battery is delivering its short-circuit current through the meter.' },
       ] },
     ],

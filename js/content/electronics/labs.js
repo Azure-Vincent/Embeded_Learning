@@ -165,22 +165,22 @@ Finish with three sentences in the notebook: what set the LED current; what set 
       ] },
       { q: 'To measure the LED current directly, the meter must be connected:', kind: 'circuit', choices: [
         { t: 'In series, replacing a section of the loop, on the mA range', ok: true, why: 'A current meter must have the circuit current flow through it, so it is inserted into a break in the path.' },
-        { t: 'Across the LED, on the mA range', why: 'On a current range the meter is almost a short. Across the LED it would bypass the LED and carry the current itself.' },
+        { t: 'Across the LED, in parallel with it, on the mA range', why: 'On a current range the meter is almost a short. Across the LED it would bypass the LED and carry the current itself.' },
         { t: 'Across the resistor, on the volts range', why: 'That measures voltage, from which current can be calculated, but it is not a direct current measurement.' },
       ] },
       { q: 'With the 330 Ω resistor, the red LED is bright and the blue LED is barely lit, on the same 3.3 V supply. Why?', kind: 'circuit', choices: [
-        { t: 'The blue LED\'s forward voltage is close to 3.3 V, leaving almost nothing across the resistor to drive current', ok: true, why: 'Current is the leftover voltage divided by the resistance. A forward voltage near the supply leaves very little.' },
-        { t: 'Blue LEDs need a larger resistor', why: 'A larger resistor reduces current further. The limitation here is the supply voltage relative to the forward voltage.' },
+        { t: 'Its forward voltage is close to 3.3 V, leaving little across the resistor', ok: true, why: 'Current is the leftover voltage divided by the resistance. A forward voltage near the supply leaves very little.' },
+        { t: 'Blue LEDs need a larger resistor than red ones to reach the same brightness', why: 'A larger resistor reduces current further. The limitation here is the supply voltage relative to the forward voltage.' },
         { t: 'The blue LED is in backwards', why: 'A reversed LED would be completely dark with the full supply across it. A dim glow means it is conducting a little.' },
       ] },
       { q: 'In circuit 2 with the button released, why is there no voltage across the 10 kΩ pull-up?', kind: 'concept', choices: [
-        { t: 'Nothing draws current through it, and a resistor with no current has no voltage across it', ok: true, why: 'V = I × R. The input is high-impedance and the switch is open, so the current is essentially zero.' },
-        { t: 'The resistor blocks the voltage until the button is pressed', why: 'A resistor never blocks voltage. It drops voltage in proportion to the current, which here is zero.' },
+        { t: 'No current flows through it, so it has no voltage across it', ok: true, why: 'V = I × R. The input is high-impedance and the switch is open, so the current is essentially zero.' },
+        { t: 'The resistor blocks the voltage from the rail until the button is pressed', why: 'A resistor never blocks voltage. It drops voltage in proportion to the current, which here is zero.' },
         { t: '10 kΩ is too large for 3.3 V to pass', why: 'Any resistor passes the full voltage to an unloaded node. Its size only matters once current flows.' },
       ] },
       { q: 'Your predicted current was 3.94 mA and you measured 4.25 mA. Which is the best next step?', kind: 'concept', choices: [
-        { t: 'Compare the measured supply, resistor value and LED forward voltage with the assumed ones to find which accounts for the gap', ok: true, why: 'An 8 % difference is within what component tolerances explain. Identifying the specific cause is the skill being practised.' },
-        { t: 'Conclude that Ohm\'s law is only approximate', why: 'The law held. The inputs to the calculation were nominal values, not the actual ones.' },
+        { t: 'Compare the measured supply, resistance and Vf with the assumed values', ok: true, why: 'An 8 % difference is within what component tolerances explain. Identifying the specific cause is the skill being practised.' },
+        { t: 'Conclude that Ohm\'s law is only approximate for real components like these', why: 'The law held. The inputs to the calculation were nominal values, not the actual ones.' },
         { t: 'Repeat the measurement until it matches the prediction', why: 'A stable, repeatable reading is information about the real circuit. The prediction is what needs revising.' },
       ] },
     ],
@@ -328,13 +328,13 @@ For each card: log three or more measurements, state the hypothesis and the pred
     ],
     quiz: [
       { q: 'A dark LED has 0 V across it and 0 V across its series resistor. The supply measures 3.3 V at the power input. What is the best next measurement?', kind: 'circuit', choices: [
-        { t: 'The supply voltage at the LED circuit itself, between its top node and its ground node', ok: true, why: 'Zero volts across both parts means no voltage is arriving across the pair. The break is between the input and this circuit, on the supply side or the ground side.' },
-        { t: 'The LED on the diode-test range', why: 'The LED has not yet been shown to be at fault. With no voltage across the branch, the problem is upstream of it.' },
-        { t: 'The resistance of the series resistor', why: 'Even a wrong resistor value would leave some voltage across the LED and resistor together. None is reaching them.' },
+        { t: 'The supply voltage across the LED circuit itself', ok: true, why: 'Zero volts across both parts means no voltage is arriving across the pair. The break is between the input and this circuit, on the supply side or the ground side.' },
+        { t: 'The LED on the diode-test range, to see whether it has failed', why: 'The LED has not yet been shown to be at fault. With no voltage across the branch, the problem is upstream of it.' },
+        { t: 'The resistance of the series resistor, out of circuit', why: 'Even a wrong resistor value would leave some voltage across the LED and resistor together. None is reaching them.' },
       ] },
       { q: 'Which observation separates a floating input from an input connected to the wrong rail?', kind: 'concept', choices: [
-        { t: 'A floating node drifts and responds to touch; a wrong-rail node sits at a steady, repeatable wrong voltage', ok: true, why: 'A node tied to a rail has a low-impedance path that holds it firmly. A floating node has none.' },
-        { t: 'A floating node always reads exactly half the supply', why: 'A floating node has no defined value at all. It can read anything, and a meter\'s own input resistance often pulls it towards zero.' },
+        { t: 'A floating node drifts and responds to touch; a wrong-rail node is steady', ok: true, why: 'A node tied to a rail has a low-impedance path that holds it firmly. A floating node has none.' },
+        { t: 'A floating node always reads exactly half the supply; a wrong-rail node reads a rail', why: 'A floating node has no defined value at all. It can read anything, and a meter\'s own input resistance often pulls it towards zero.' },
         { t: 'They cannot be distinguished with a multimeter', why: 'Stability, sensitivity to touch and the exact value read are all visible on a meter and differ between the two.' },
       ] },
       { q: 'In card F, the rail reads 3.30 V at the source and 2.10 V at the board with the load on. The series resistance between them is 100 Ω. What current is the board drawing?', kind: 'circuit', choices: [
@@ -349,7 +349,7 @@ For each card: log three or more measurements, state the hypothesis and the pred
       ] },
       { q: 'After repairing a reversed LED, how do you verify the repair?', kind: 'circuit', choices: [
         { t: 'Measure the voltages across the LED and resistor and compare them with the known-good values', ok: true, why: 'Matching design values shows the whole branch is behaving as designed, including the current.' },
-        { t: 'See that the LED lights', why: 'A lit LED shows current flows, but not that it is the right current. A second fault such as a wrong resistor would be missed.' },
+        { t: 'See that the LED lights at about the brightness you remember from before', why: 'A lit LED shows current flows, but not that it is the right current. A second fault such as a wrong resistor would be missed.' },
         { t: 'Leave it running for an hour', why: 'Survival is not verification. The correct current can be confirmed in seconds by measurement.' },
       ] },
     ],

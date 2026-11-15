@@ -113,20 +113,25 @@ types** from \`<stdint.h>\`:
 
 ### Integer promotion
 
-Before any arithmetic, C converts every operand narrower than \`int\` up to \`int\`. This is called **integer promotion**.
+Before any arithmetic, C converts every operand whose type is narrower than \`int\` (\`char\`, \`short\`, \`uint8_t\`,
+\`uint16_t\`, \`bool\`) to \`int\`. This is called **integer promotion**. The exact rule: the operand becomes \`int\` if
+\`int\` can represent every value of its type, otherwise \`unsigned int\`. On a 32-bit MCU that means \`uint8_t\` and
+\`uint16_t\` both turn into **signed** \`int\`; on a 16-bit-\`int\` MCU a \`uint16_t\` turns into \`unsigned int\`.
 \`uint8_t + uint8_t\` is therefore computed as \`int + int\`. The addition itself cannot overflow at 8 bits. The truncation
 happens later, when you *store* the result back into a narrow variable.
 
 ### Usual arithmetic conversions
 
-When the two operands still differ after promotion, the narrower one is converted to the wider one. When they have the
+When the two operands still differ after promotion, both are brought to one common type. If one type is wider and can
+represent every value of the other, the narrower operand is converted to it (\`int\` with \`long long\` gives
+\`long long\`; \`unsigned int\` with a 64-bit \`long long\` also gives \`long long\`). When they have the
 same width but differ in signedness, **the signed one is converted to unsigned**. That is how \`-1 < 1u\` becomes false:
 \`-1\` converted to \`unsigned int\` is 4 294 967 295.
 
 ### What happens on overflow
 
 - **Unsigned** arithmetic wraps modulo 2ⁿ. This is defined behaviour and code may rely on it.
-- **Signed** overflow is **undefined behaviour**. The compiler is allowed to assume it never happens and to optimise on that assumption.
+- **Signed** overflow is **undefined behaviour**. The compiler is allowed to assume it never happens and to optimise on that assumption: GCC at \`-O2\` turns \`if (x + 1 < x)\` on an \`int\` into "never true" and deletes the branch. Because of promotion this reaches unsigned-looking code too: with a 32-bit \`int\`, \`uint16_t a = 65535; a * a\` is a signed multiplication that overflows.
 - Converting an out-of-range value *to a signed type* (for example \`(int8_t)0xF0\`) is **implementation-defined**: each compiler documents what it does. GCC and Clang keep the low bits, giving −16.
 
 Those three terms have precise meanings and you will meet them in every later lesson:
@@ -134,7 +139,7 @@ Those three terms have precise meanings and you will meet them in every later le
 | Term | Meaning | Example |
 |---|---|---|
 | Implementation-defined | The compiler must pick a behaviour and document it. Portable code must not depend on which. | size of \`int\`, signedness of \`char\`, right shift of a negative value |
-| Unspecified | One of several allowed behaviours, no documentation required. | order in which function arguments are evaluated |
+| Unspecified | One of several allowed behaviours, no documentation required. | order in which function arguments are evaluated, so \`f(g(), h())\` may call \`h\` first |
 | Undefined behaviour (UB) | The standard places no requirement at all. The program may crash, appear to work, or change when the optimisation level changes. | signed overflow, out-of-bounds access, reading an uninitialised local, dereferencing an invalid pointer |
 
 "It worked in the debug build" is the usual signature of undefined behaviour. Nothing checks for it at run time on a
@@ -295,7 +300,7 @@ int main(void)
 `, 'host-tested', { caption: 'Prints 33, then 60. The macro argument and the whole expansion both need parentheses.' }),
     { t: 'callout', kind: 'mistake', title: 'Macro arguments are evaluated every time they appear', md:
 `\`GOOD_DOUBLE(read_adc())\` expands to \`((read_adc()) + (read_adc()))\` and starts **two** conversions. \`GOOD_DOUBLE(i++)\`
-modifies \`i\` twice without a sequence point between, which is undefined behaviour. When a macro behaves like a function,
+modifies \`i\` twice with no **sequence point** between the two changes (a sequence point is a place, such as the end of a full expression or the \`;\` of a statement, where all earlier side effects are guaranteed complete), which is undefined behaviour. When a macro behaves like a function,
 write a \`static inline\` function instead: it is type-checked, evaluates each argument once, and compiles to the same
 instructions.` },
     clab({
@@ -348,7 +353,7 @@ int main(void)
       tests: [{ name: 'prints four bytes reversed, then nothing for n = 0', stdout: '[44][33][22][11]\n\n' }],
       hints: [
         'What type is `i`? List the values for which `i >= 0` is false.',
-        'When `i` is 0 and the loop runs `i--`, the value wraps to 4 294 967 295. `buf[i]` then reads far outside the array.',
+        'When `i` is 0 and the loop runs `i--`, the value wraps to 4 294 967 295. `buf[i]` then reads far outside the array. And what is the starting value `n - 1` when `n` is 0?',
         'Count from `n` down to 1 and index with `i - 1`. The condition `i > 0` *can* become false, and `n == 0` runs zero times.',
       ],
       explain: `An unsigned value is never negative, so \`i >= 0\` is always true. The idiom for counting down with an unsigned index is \`for (i = n; i > 0; i--) use(buf[i - 1]);\`. Changing \`i\` to \`int\` also works for small buffers but reintroduces a signed/unsigned comparison against \`n\`. With \`n = 0\`, the original also computed \`0 - 1\` and started at index 4 294 967 295.`,
@@ -399,8 +404,8 @@ int main(void)
 `,
       tests: [{ name: 'both conversions are correct', stdout: 'timeout = 250 ticks\nreloads = 20\n' }],
       hints: [
-        'Do the substitution by hand. `MS_TO_TICKS(base + extra)` becomes `base + extra * 10`.',
-        'The second use becomes `1000 / 5 * 10`. Division and multiplication have equal precedence and group left to right.',
+        'The preprocessor pastes the argument text into the replacement text and knows nothing about precedence. Write out, character for character, what each of the two uses becomes. Which operator in each result binds first?',
+        'The first use becomes `base + extra * 10`. The second becomes `1000 / 5 * 10`, and division and multiplication have equal precedence and group left to right.',
         'Parenthesise the parameter *and* the whole replacement: `((ms) * TICKS_PER_MS)`.',
       ],
       explain: `The buggy macro printed 70 (\`20 + 5 * 10\`) and 2000 (\`(1000 / 5) * 10\`). Two sets of parentheses fix two different problems: \`(ms)\` protects against low-precedence operators inside the argument, the outer pair protects against operators around the macro use. A \`static inline uint32_t ms_to_ticks(uint32_t ms)\` has neither problem.`,
@@ -736,7 +741,8 @@ int main(void)
     show(7, 0);
     int only = -1;
     printf("null q: ok=%d\n", divmod(8, 2, NULL, &only));
-    printf("null r: ok=%d only=%d\n", divmod(8, 2, &only, NULL), only);
+    bool ok = divmod(8, 2, &only, NULL);     /* a separate statement: argument order is unspecified */
+    printf("null r: ok=%d only=%d\n", ok, only);
     return 0;
 }
 `,
@@ -769,7 +775,8 @@ int main(void)
     show(7, 0);
     int only = -1;
     printf("null q: ok=%d\n", divmod(8, 2, NULL, &only));
-    printf("null r: ok=%d only=%d\n", divmod(8, 2, &only, NULL), only);
+    bool ok = divmod(8, 2, &only, NULL);     /* a separate statement: argument order is unspecified */
+    printf("null r: ok=%d only=%d\n", ok, only);
     return 0;
 }
 `,
@@ -779,7 +786,7 @@ int main(void)
         'Inside the function `q` is an address. `*q = a / b;` stores into the caller\'s variable.',
         'The whole body is one `if` with three conditions joined by `||`, two stores, and `return true;`.',
       ],
-      explain: `Validate, then commit. The \`7 / 0\` line shows \`q\` and \`r\` still at −1: a failed call left the caller's variables alone. The last line needs both NULL checks to happen before any store, otherwise \`only\` would have been overwritten with 4. Integer division by zero is undefined behaviour in C, and on a Cortex-M it can raise a UsageFault if the divide-by-zero trap is enabled.`,
+      explain: `Validate, then commit. The \`7 / 0\` line shows \`q\` and \`r\` still at −1: a failed call left the caller's variables alone. The last line needs both NULL checks to happen before any store, otherwise \`only\` would have been overwritten with 4. Integer division by zero is undefined behaviour in C (so is \`INT_MIN / -1\`, whose result does not fit), and on a Cortex-M it can raise a UsageFault if the divide-by-zero trap is enabled. The last call is made in its own statement on purpose: written as \`printf("…", divmod(8, 2, &only, NULL), only)\`, the compiler would be free to read \`only\` before or after the call.`,
     }),
     clab({
       title: 'Debug: the cursor that does not move',
@@ -1159,7 +1166,11 @@ int main(void)
       title: 'Debug: one byte too many',
       prompt: `A user record stores a name and an access level. After \`clear_name\` and \`set_name\`, the access level that was set to 3 reads back as 0. No code assigns to \`access_level\` after the first line of \`main\`.
 
-Find the write that goes out of bounds and fix it. Expected output: \`user=dana level=3\`.`,
+Find the write that goes out of bounds and fix it, without changing the struct. Expected output:
+
+\`user=dana level=3\`
+\`user=root level=9\`
+\`size=9\``,
       starter: C`
 #include <stdint.h>
 #include <stdio.h>
@@ -1190,11 +1201,17 @@ static void set_name(user_t *u, const char *s)
 
 int main(void)
 {
-    user_t u;
-    u.access_level = 3;
-    clear_name(&u);
-    set_name(&u, "dana");
-    printf("user=%s level=%d\n", u.name, u.access_level);
+    static user_t users[2];
+    users[0].access_level = 3;
+    users[1].access_level = 9;
+    set_name(&users[1], "root");
+
+    clear_name(&users[0]);
+    set_name(&users[0], "dana");
+
+    printf("user=%s level=%d\n", users[0].name, users[0].access_level);
+    printf("user=%s level=%d\n", users[1].name, users[1].access_level);
+    printf("size=%d\n", (int)sizeof(user_t));
     return 0;
 }
 `,
@@ -1228,21 +1245,27 @@ static void set_name(user_t *u, const char *s)
 
 int main(void)
 {
-    user_t u;
-    u.access_level = 3;
-    clear_name(&u);
-    set_name(&u, "dana");
-    printf("user=%s level=%d\n", u.name, u.access_level);
+    static user_t users[2];
+    users[0].access_level = 3;
+    users[1].access_level = 9;
+    set_name(&users[1], "root");
+
+    clear_name(&users[0]);
+    set_name(&users[0], "dana");
+
+    printf("user=%s level=%d\n", users[0].name, users[0].access_level);
+    printf("user=%s level=%d\n", users[1].name, users[1].access_level);
+    printf("size=%d\n", (int)sizeof(user_t));
     return 0;
 }
 `,
-      tests: [{ name: 'the neighbouring field survives', stdout: 'user=dana level=3\n' }],
+      tests: [{ name: 'the neighbouring field and the next record survive, layout unchanged', stdout: 'user=dana level=3\nuser=root level=9\nsize=9\n' }],
       hints: [
-        'Which byte of the struct holds `access_level`? Its offset is exactly `NAME_LEN`.',
+        'Nothing assigns to `access_level`, so some other write must be landing on its byte. Which byte of the struct holds `access_level`, counted from the start of the struct?',
         'Count the iterations of the loop in `clear_name`. The last one uses `i == 8`.',
         '`<=` must be `<`. `name[8]` does not exist; that address is `access_level`.',
       ],
-      explain: `\`name[8]\` is one past the end of an 8-element array, and the next byte of the struct is \`access_level\`. Nothing in the language or the CPU objects. Here the overflow wrote a 0, lowering a privilege level; had it written attacker-controlled data, it would raise one. That is the whole mechanism of a buffer overflow, and the security section builds on it.`,
+      explain: `\`name[8]\` is one past the end of an 8-element array, and the next byte of the struct is \`access_level\`. Nothing in the language or the CPU objects. Moving \`access_level\` in front of the name, or making the array one byte longer, does not fix the loop: the stray write then lands on the next record in the array, or the record grows and every stored copy of it changes size. That is why the test also prints the second record and \`sizeof\`. Here the overflow wrote a 0, lowering a privilege level; had it written attacker-controlled data, it would raise one. That is the whole mechanism of a buffer overflow, and the security section builds on it.`,
     }),
     clab({
       title: 'Write: search a buffer with a moving pointer',
@@ -1333,8 +1356,8 @@ int main(void)
 `,
       tests: [{ name: 'finds markers and respects the length', stdout: 'offset 2\noffset 4\nnone\nnone\nnone\n' }],
       hints: [
-        'Compute `end = buf + n` once. The loop condition is `buf < end`.',
-        'Inside the loop compare `*buf` with `value`; return `buf` itself on a match, otherwise `buf++`.',
+        'What is the address of the first byte you are *not* allowed to read? Can you compute it once, before the loop, and compare the moving pointer against it?',
+        '`end = buf + n` is that address; loop while `buf < end`. Inside the loop compare `*buf` with `value`; return `buf` itself on a match, otherwise `buf++`.',
         'If the loop finishes, nothing matched within `n` bytes: return `NULL`. With `n == 0` the loop body must not run at all.',
       ],
       explain: `The function returns an address inside the caller's buffer, and the caller turns it back into an offset by pointer subtraction. The third call proves the bound is honoured: the value is physically present at index 5, but the caller said only 5 bytes are valid. A receive routine that searched past the valid length would be parsing stale data from an earlier frame.`,
@@ -1347,7 +1370,7 @@ int main(void)
         'Check the two things separately, in an order that makes each subtraction safe.',
       ],
       solution: '`if (len < 4 || off > len - 4) { reject; }`. The first test makes `len - 4` safe to compute; the second then compares without any addition that could wrap. The tempting `off + 4 > len` wraps for `off = 0xFFFFFFFE` (the sum is 2) and lets the read through. The defensive C lesson returns to this.',
-      answer: { type: 'text', accept: ['off\\s*>\\s*\\(?\\s*len\\s*-\\s*4', 'len\\s*-\\s*off\\s*<\\s*4', 'len\\s*<\\s*4'], nudge: 'Look for a form that subtracts from `len` only after checking `len >= 4`, and never adds to `off`.' } },
+      answer: { type: 'text', accept: ['.*len\\s*<\\s*4\\s*\\)?\\s*\\|\\|.*off\\s*>\\s*\\(?\\s*len\\s*-\\s*4.*', '.*off\\s*>=?\\s*len\\s*\\)?\\s*\\|\\|.*len\\s*-\\s*off\\s*<\\s*4.*', '.*len\\s*<\\s*4\\s*\\)?\\s*\\|\\|.*len\\s*-\\s*4\\s*\\)?\\s*<\\s*off.*'], nudge: 'Type the whole reject condition, two tests joined by `||`. Look for a form that subtracts from `len` only after checking that the subtraction cannot wrap, and never adds to `off`.' } },
     `## A harder case: two-dimensional data and type-changing casts
 
 A display driver holds a frame buffer \`uint8_t fb[64][128]\` (64 rows of 128 bytes). \`fb[r]\` is itself an array of 128
@@ -1477,8 +1500,8 @@ int main(void)
       ] }),
     `## Shifts: three rules that prevent undefined behaviour
 
-1. **Shift unsigned values.** Right-shifting a negative signed value is implementation-defined (GCC and Clang copy the sign bit, an *arithmetic* shift). Left-shifting a negative value, or shifting a 1 into or past the sign bit of a signed type, is undefined behaviour in C11.
-2. **The shift count must be less than the width of the promoted left operand.** \`x << 32\` on a 32-bit \`x\` is undefined, not zero.
+1. **Shift unsigned values.** Right-shifting a negative signed value is implementation-defined (GCC and Clang copy the sign bit, an *arithmetic* shift). Left-shifting a negative value is undefined behaviour, and so is left-shifting a non-negative signed value when the mathematical result does not fit in the type, which includes moving a 1 into the sign bit (C11 §6.5.7).
+2. **The shift count must be non-negative and less than the width of the promoted left operand.** \`x << 32\` on a 32-bit \`x\` is undefined, not zero (a Cortex-M and an x86 give different answers for it). The usual victim is a computed mask such as \`(1u << nbits) - 1\` when \`nbits\` can be 32.
 3. **The literal \`1\` is a signed \`int\`.** \`1 << 31\` moves a 1 into the sign bit: undefined behaviour. Write \`1u << 31\`. In mask definitions, always put the \`u\` suffix: \`(1u << n)\`.
 
 Promotion adds a fourth, subtle trap: a \`uint8_t\` operand is promoted to **signed** \`int\` before shifting.`,

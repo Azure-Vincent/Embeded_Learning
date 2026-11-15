@@ -38,7 +38,7 @@ Inside the chip is a **TAP** (Test Access Port) controller: a 16-state machine c
 
 - There is one **instruction register (IR)** and several **data registers (DR)**.
 - The state machine has two near-identical columns, one for the IR and one for a DR, each with *capture → shift → update* states.
-- In a shift state, each TCK moves one bit in from TDI and one bit out on TDO.
+- In a shift state, each TCK moves one bit in from TDI and one bit out on TDO. The chip samples TMS and TDI on the **rising** edge of TCK and changes TDO on the **falling** edge, so the probe reads TDO on the following rising edge.
 - The value in the IR selects **which** data register sits between TDI and TDO.
 - Holding TMS high for five clocks reaches **Test-Logic-Reset** from any state, which is how a tool gets to a known starting point.
 
@@ -89,7 +89,7 @@ Two wires suffice because JTAG's four are redundant for debug. JTAG needs TMS to
 3. The target answers with a 3-bit **ACK**: OK, WAIT or FAULT.
 4. 32 bits of **data** plus a parity bit follow, driven by whichever side is the source.
 
-On most Cortex-M chips the pins are shared: SWCLK is on the TCK pin and SWDIO on the TMS pin. A tool selects SWD by sending a defined switching sequence on those pins after a line reset.
+On most Cortex-M chips the pins are shared: SWCLK is on the TCK pin and SWDIO on the TMS pin. A tool selects SWD by sending a defined switching sequence on those pins: a line reset (at least 50 clocks with SWDIO held high), then the 16-bit pattern \`0xE79E\` sent least-significant bit first, then another line reset.
 
 ### What is at the other end: the DAP
 
@@ -142,7 +142,14 @@ Decode \`0x4BA00477\` by hand, as an IDCODE:
 - Bits 27:12 = \`0xBA00\`: the part number, here an Arm debug port.
 - Bits 31:28 = \`0x4\`: version.
 
-So the ID identifies the **debug port designed by Arm**, not the microcontroller vendor's chip. Many Cortex-M parts from different vendors show the same value. To identify the actual microcontroller, a tool goes on to read vendor ID registers and the ROM table through the MEM-AP.`,
+So the ID identifies the **debug port designed by Arm**, not the microcontroller vendor's chip. Many Cortex-M parts from different vendors show the same value. To identify the actual microcontroller, a tool goes on to read vendor ID registers and the ROM table through the MEM-AP.
+
+The method, for any ID you meet:
+
+1. Is bit 0 a 1? If not, it is not an IDCODE (a BYPASS register, or a dead line).
+2. Take the last three hex digits (bits 11:0) and shift right once: that is the 11-bit manufacturer field.
+3. The next four hex digits (bits 27:12) are the part number, and the top digit is the version.
+4. Compare with what the tool's target file expects. OpenOCD warns when the ID it finds differs from the one in the configuration, which is the first sign that you are using the wrong target file or looking at a different chip.`,
       { t: 'predict', q: 'A JTAG chain has two devices. You connect a probe and OpenOCD reports an IDCODE of 0x00000000 for every scan, however many devices you declare. What is the most likely cause?',
         choices: [
           { t: 'Both devices have no IDCODE register', why: 'A device without IDCODE selects BYPASS, which contributes a single 0 bit, but a chip with a debug port almost always implements IDCODE. All zeros for the entire scan suggests no data is coming back at all.' },
@@ -154,12 +161,12 @@ So the ID identifies the **debug port designed by Arm**, not the microcontroller
       { t: 'callout', kind: 'decision', title: 'JTAG or SWD?', md: `Use **SWD** on Cortex-M when you can: two signal pins, SWO available, and every Cortex-M probe supports it. Use **JTAG** when the chip is not Arm (the original ESP32, RISC-V parts), when several devices share a chain, or when you need boundary scan. Many chips offer both on the same pins, and the tool's \`transport select\` decides.` },
       { t: 'exercise', prompt: `An OpenOCD log shows \`JTAG tap: x.cpu tap/device found: 0x120034e5\`. Extract the 11-bit manufacturer field (bits 11:1) and give it in hexadecimal.`,
         hints: [
-          'Take the low 12 bits: 0x4E5.',
-          'Bit 0 is the marker bit. Shift right by one to drop it.',
-          '0x4E5 = 0100 1110 0101 in binary. Shifted right by one: 010 0111 0010.',
+          'Which hex digits of the ID hold bits 11 down to 0? Write those digits out in binary before doing anything else.',
+          'Bit 0 is the always-1 marker, not part of the manufacturer code. Which operation removes it and moves bits 11:1 down to bits 10:0?',
+          'Method: keep the last three hex digits, shift the 12-bit value right by one place, and write the 11-bit result in hex. Sanity check: the result must be below 0x800.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?0*272\\s*$'], nudge: 'Take 0x4E5, drop bit 0 by shifting right once, and write the result in hex.' },
-        solution: `Low 12 bits: \`0x4E5\`. Shift right by one: \`0x272\`. So the manufacturer field is **0x272**. The JEP106 code is split into a 7-bit identity (\`0x72\`) and a 4-bit bank number (\`0x4\`, meaning four continuation bytes, i.e. bank 5). Look the pair up in the JEP106 list to name the vendor. The part number is \`0x2003\` and the version \`0x1\`.` },
+        solution: `Low 12 bits: \`0x4E5\`. Shift right by one: \`0x272\`. So the manufacturer field is **0x272**. The JEP106 code is split into a 7-bit identity (\`0x72\`) and a 4-bit bank number (\`0x4\`, meaning four continuation bytes, i.e. bank 5). Look the pair up in the JEP106 list to name the vendor. The part number is \`0x2003\` and the version \`0x1\`.\n\nThis is the ID Espressif's JTAG guide shows for each of the two CPU TAPs of the original ESP32; OpenOCD prints it as \`mfg: 0x272 (Tensilica), part: 0x2003, ver: 0x1\`, because the Xtensa core's TAP carries its designer's code. The RISC-V chips carry Espressif's own code instead, as a quiz question below asks you to work out.` },
       `## Harder application: the debug port as an attack surface, and its defences
 
 Everything in this lesson works for anyone who can reach the pins. With an open debug port an attacker who owns a device can read all of flash (the firmware and any keys in it), read RAM while the device runs, change memory, and bypass any check by setting the program counter.
@@ -207,6 +214,12 @@ The settings are chip-specific and some are irreversible. For the MSPM0L2228 the
         { t: 'Complete: once the pins are GPIO the debug port no longer exists', why: 'The debug logic is still in the chip and the pins are in their default debug role at every reset.' },
         { t: 'None, because GPIO pins can still carry SWD packets', why: 'While remapped, the pins really are disconnected from the debug port. The weakness is the window before the remap, not after it.' },
       ] },
+      { q: 'OpenOCD\'s log for an ESP32-C3 on its built-in USB JTAG contains `tap/device found: 0x00005c25`. How does that ID decode?', kind: 'arch', choices: [
+        { t: 'Manufacturer field 0x612, part number 0x0005, version 0', ok: true, why: 'The low 12 bits are 0xC25; bit 0 is the marker, and shifting right once gives 0x612, which OpenOCD names as Espressif Systems. Bits 27:12 are 0x0005 and bits 31:28 are 0.' },
+        { t: 'Manufacturer field 0xC25, part number 0x0005, version 0', why: 'This keeps the marker bit as part of the code. The manufacturer field is bits 11:1 only, so the 12-bit value has to be shifted right by one first.' },
+        { t: 'Manufacturer field 0x25, part number 0x005C, version 0', why: 'The fields are not aligned to whole bytes. The manufacturer field is 11 bits wide and the part number starts at bit 12.' },
+        { t: 'It is not an IDCODE: the upper half is zero, so this is a BYPASS register', why: 'A BYPASS register captures a single 0 in bit 0. Here bit 0 is 1, which is exactly what marks a real IDCODE; a version of 0 and a small part number are perfectly legal.' },
+      ] },
       { q: 'What is the VTref pin on a debug connector for?', kind: 'circuit', choices: [
         { t: 'It tells the probe the target\'s logic voltage so the probe can set its I/O levels', ok: true, why: 'It is a sense input on the probe side. A probe that sees no voltage there often refuses to drive its outputs.' },
         { t: 'It powers the target from the probe', why: 'Some probes have a separate, optional supply output, but VTref itself is an input that draws almost nothing.' },
@@ -247,7 +260,7 @@ Probes differ in three ways:
 | **Built-in USB Serial/JTAG** | Not a separate box: logic inside ESP32-S3/C3/C6 that appears on USB as a serial port and a JTAG adapter | Espressif's OpenOCD |`,
       `## On real hardware: the course platforms
 
-**MAX78000FTHR.** The board has an integrated **MAX32625PICO** debug adapter. It runs DAPLink firmware, so it enumerates as a CMSIS-DAP probe, a serial port and a drive named DAPLINK. Copying a binary to the drive programs the target, and according to Analog Devices' board documentation, dropping a file named \`erase.act\` on the drive mass-erases the target. Holding SW5 while plugging in puts the *adapter* into MAINTENANCE mode for updating its own firmware. The 2024 and 2025 eCTF reference flows used this drag-and-drop path to install the competition bootloader.
+**MAX78000FTHR.** The board has an integrated **MAX32625PICO** debug adapter. It runs DAPLink firmware, so it enumerates as a CMSIS-DAP probe, a serial port and a drive named DAPLINK. Copying a binary to the drive programs the target, and according to Analog Devices' board documentation, dropping a file named \`erase.act\` on the drive mass-erases the target. Holding SW5 while plugging in puts the *adapter* into MAINTENANCE mode for updating its own firmware. The 2024 eCTF reference flow used this drag-and-drop path to install the competition bootloader; the 2025 flow likewise required the MITRE bootloader to be on the board before team firmware could be flashed through it.
 
 **MSPM0L2228.** TI's debug-probe documentation for the MSPM0 SDK lists the XDS110 alongside SEGGER, PEmicro and Lauterbach probes. Upstream OpenOCD has a board file that pairs \`interface/xds110.cfg\` with the MSPM0 target. Which probe is physically on your evaluation board is something to confirm from that board's user guide.
 
@@ -421,19 +434,22 @@ openocd -s "$MAXIM_PATH/Tools/OpenOCD/scripts" \
       `### ESP32 family: Espressif's OpenOCD
 
 Espressif maintains a fork (\`openocd-esp32\`) that is installed with the ESP-IDF tools, and \`idf.py\` knows how to start it for the configured target.`,
-      { t: 'code', lang: 'sh', status: 'reviewed', caption: 'ESP-IDF wrappers and the equivalent direct invocations. Written against the ESP-IDF JTAG debugging guide; not run on a board here.',
-        code: String.raw`idf.py openocd                 # start Espressif's OpenOCD for this project's target
+      { t: 'code', lang: 'sh', status: 'reviewed', caption: 'ESP-IDF wrappers and the equivalent direct invocations. Command and file names checked against the ESP-IDF v6.1 tree (tools/idf_py_actions/debug_ext.py and docs/en/api-guides/jtag-debugging); not run on a board here.',
+        code: String.raw`idf.py openocd                 # start Espressif's OpenOCD with the default config for the project's target
 idf.py openocd gdb             # ...and a GDB session connected to it
 idf.py openocd gdbtui          # ...with GDB's text UI
+idf.py openocd --openocd-commands "-f interface/ftdi/esp_ftdi.cfg -f target/esp32.cfg" gdb
 
 # Direct forms, run in an ESP-IDF environment:
-openocd -f board/esp32s3-builtin.cfg     # ESP32-S3 built-in USB Serial/JTAG
-openocd -f board/esp32c3-builtin.cfg     # ESP32-C3 built-in USB Serial/JTAG
-openocd -f interface/ftdi/esp32_devkitj_v1.cfg -f target/esp32.cfg   # original ESP32 + ESP-Prog`,
+openocd -f board/esp32s3-builtin.cfg       # ESP32-S3 built-in USB Serial/JTAG
+openocd -f board/esp32c3-builtin.cfg       # ESP32-C3 built-in USB Serial/JTAG
+openocd -f board/esp32-wrover-kit-3.3v.cfg # original ESP32 on an ESP-WROVER-KIT (FT2232H on board)
+openocd -f interface/ftdi/esp_ftdi.cfg -f target/esp32.cfg   # original ESP32 + ESP-Prog`,
         explain: [
-          { lines: '1-3', md: '`idf.py` picks the board configuration from the project settings (it can be overridden) and passes the project ELF to GDB.' },
-          { lines: '6-7', md: 'The "builtin" board files select the on-chip USB JTAG adapter. Nothing but a USB cable to the chip\'s USB pins is required.' },
-          { lines: '8', md: 'An FT2232H probe such as ESP-Prog, wired to GPIO12–15 of an original ESP32.' },
+          { lines: '1-3', md: '`idf.py openocd` runs OpenOCD in the background with a default board file for the project\'s target (`board/esp32-wrover-kit-3.3v.cfg` for the original ESP32, `board/esp32s3-builtin.cfg` for the S3, `board/esp32c3-builtin.cfg` for the C3) and prints the arguments it chose. `gdb` and `gdbtui` start the target\'s GDB with the project ELF and a generated init file.' },
+          { lines: '4', md: 'The default only suits one board per chip. For anything else pass your own arguments with `--openocd-commands`, or set the `OPENOCD_COMMANDS` environment variable. `idf.py` moves background actions such as `openocd` to the front, so the order on the command line does not matter.' },
+          { lines: '7-8', md: 'The "builtin" board files select the on-chip USB JTAG adapter. Nothing but a USB cable to the chip\'s USB pins is required.' },
+          { lines: '9-10', md: 'For the original ESP32 the probe is an FT2232H wired to GPIO12–15. A `board/` file names a whole kit. `interface/ftdi/esp_ftdi.cfg` is the adapter file Espressif documents for the ESP-WROVER-KIT and ESP-Prog, combined here with the chip\'s `target/` file.' },
         ] },
       `## Worked example: a session over telnet
 
@@ -466,8 +482,9 @@ pc (/32): 0x10000228
       { t: 'callout', kind: 'decision', title: 'OpenOCD or the vendor tool?', md: `Vendor tools (UniFlash, esptool, DAPLink drag-and-drop, the IDE's flash button) are the reliable way to *program* a board, and for chip-specific configuration such as security settings they are the documented route. OpenOCD is the tool for *debugging* with GDB and for scripted memory access. Using each for what it is good at avoids most trouble.` },
       { t: 'exercise', prompt: `After \`reset halt\`, \`mdw 0x00000000 2\` on a Cortex-M0+ target prints \`0x00000000: 20208000 000000c1\`. At what address is the first instruction the core will execute? Give it in hex.`,
         hints: [
-          'The second word of a Cortex-M vector table is the reset vector.',
-          'Bit 0 of a Cortex-M vector is the Thumb bit, not part of the address.',
+          'The core reads two words from the vector table at reset. Which of the two is an address in flash, and which is an address in RAM?',
+          'The second word is the reset vector. It is odd. Can an instruction start at an odd address on a Cortex-M?',
+          'Method: bit 0 of a vector is the Thumb marker, not part of the address. Clear it to get the address the pc register will hold.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0[xX])?0*[cC]0\\s*$'], nudge: 'Take the second word and clear its lowest bit.' },
         solution: `The reset vector is \`0x000000C1\`. Clearing the Thumb bit gives **0x000000C0**. The first word, \`0x20208000\`, is the initial stack pointer: the top of a 32 KB RAM that starts at \`0x20200000\`, which is the MSPM0L2228's SRAM base.` },
@@ -490,6 +507,27 @@ Work through the consequences for a design that stores an AES key as a C array i
 4. Verification is the same command on a locked unit. You should see OpenOCD fail to connect or fail to read, and you should check that the vendor's own tool fails too.
 
 The competition flows for the 2024–2026 eCTF hardware put a MITRE bootloader between teams and the flash, so that attack-phase firmware cannot simply be read out. How that bootloader behaves is defined by each year's rules, which you should read directly.`,
+      `## Practise: OpenOCD commands on the simulated target
+
+The simulated session below shows OpenOCD's log in terminal 1 and takes OpenOCD commands in terminal 2 through GDB's \`monitor\` prefix, exactly as a real session does. Its target is the fictional Bench-MCU (flash at \`0x0800_0000\`, GPIO at \`0x4000_0000\`). Of the commands in the table above it models \`reset halt\`, \`halt\`, \`mdw\`/\`mdh\`/\`mdb\` and \`mww\`.
+
+Work in this order, and predict each result before you press Enter:
+
+1. \`target extended-remote :3333\`, then \`monitor reset halt\`. Read the \`pc\` and \`msp\` OpenOCD reports. The flash is erased: what must the first two words of the vector table be?
+2. \`monitor mdw 0x08000000 2\` to check your prediction.
+3. \`load\`, then the same \`mdw\` again. The two words have changed. From them alone, predict the \`pc\` and \`msp\` the next \`monitor reset halt\` will print, then run it.
+4. Now use the debug port as a bus master, with no firmware running: \`monitor mww 0x40000000 0x20\` makes pin 5 an output (\`GPIO_DIR\`), and a second \`mww\` to \`GPIO_OUT\` at \`0x40000004\` drives it high. Read \`GPIO_OUT\` back with \`mdw\`.
+
+The guided steps in the tool's own task list continue from there into GDB, which the next lesson covers.`,
+      { t: 'widget', name: 'debug-session', props: { scenario: 'tour' }, caption: 'Simulated OpenOCD and GDB. For this lesson use only target extended-remote, load and the monitor commands.' },
+      { t: 'exercise', prompt: `In the simulated session, after \`monitor reset halt\` on the **erased** chip, OpenOCD reports a \`pc\` that is not a flash address at all. Read it from the log. What value is it, and why is that the value? Enter the \`pc\` in hex.`,
+        hints: [
+          'Erased NOR flash reads as all ones. What does the core therefore load as its reset vector?',
+          'The reset vector read back is 0xFFFFFFFF. The pc register never holds the Thumb bit: what is that value with bit 0 cleared?',
+          'Run the two commands of step 1 in the tool and read the "xPSR: … pc: … msp: …" line.',
+        ],
+        answer: { type: 'text', accept: ['^\\s*(0[xX])?[fF]{7}[eE]\\s*$'], nudge: 'It is the erased reset vector, 0xFFFFFFFF, with bit 0 cleared.' },
+        solution: `\`pc: 0xfffffffe\`. The core read \`0xFFFFFFFF\` from both vector-table words: the stack pointer became \`0xFFFFFFFC\` (the low two bits of SP always read as zero) and the pc became the vector with its Thumb bit cleared, \`0xFFFFFFFE\`. There is nothing to execute there. On a real Cortex-M that address is also the core's lockup address, so "pc = 0xfffffffe" in an OpenOCD log is a recognisable sign of a blank or corrupted vector table. After \`load\` the same two words read \`20010000 08000041\`, and the next reset gives \`msp: 0x20010000\`, \`pc: 0x08000040\`.` },
       { t: 'refs', items: [
         { title: 'OpenOCD source and bundled configuration files', url: 'https://github.com/openocd-org/openocd' },
         { title: 'OpenOCD MSPM0 flash driver', url: 'https://github.com/openocd-org/openocd/blob/master/src/flash/nor/mspm0.c' },
@@ -545,7 +583,7 @@ A variable called \`armed\` is supposed to be zero. Somewhere in a 12,000-line f
 A debugger answers the question directly: stop the processor at the instant that memory location is written, and show the call stack.`,
       `## Theory
 
-### Connecting
+### Connecting: the first session, in order
 
 GDB runs on your computer and needs two things: the **ELF file**, for symbols and source-line information, and a **remote target**, for the actual memory and registers. Use the GDB built for the target's architecture: \`arm-none-eabi-gdb\` (or \`gdb-multiarch\`) for Cortex-M, \`xtensa-esp32-elf-gdb\` or \`riscv32-esp-elf-gdb\` for Espressif chips.
 
@@ -558,15 +596,53 @@ arm-none-eabi-gdb build/firmware.elf
 (gdb) continue
 \`\`\`
 
-- \`target extended-remote :3333\` connects to OpenOCD's GDB server.
+- \`target extended-remote :3333\` connects to OpenOCD's GDB server. (\`target remote :3333\` also works; the extended form keeps GDB attached if the program is restarted.)
 - \`monitor <cmd>\` passes a command straight through to OpenOCD. Anything you could type on port 4444 works after \`monitor\`.
 - \`load\` writes the ELF's loadable sections to the target through OpenOCD's flash driver. If the firmware is already flashed, skip it, but then be sure the ELF matches what is on the chip. A mismatched ELF gives breakpoints on the wrong lines and nonsense variable values.
+
+A first session is always the same moves in the same order. Check the stated result before going on, because each step depends on the one before it.
+
+| Step | Where | You type | You should see | If you do not |
+|---|---|---|---|---|
+| 1 | terminal 1 | \`openocd -f …\` | the probe found, an ID, the breakpoint count, "Listening on port 3333 for gdb connections" | classify the first error in the log (previous lesson) |
+| 2 | terminal 2 | \`arm-none-eabi-gdb build/firmware.elf\` | "Reading symbols from …" | "No symbol table": wrong file, or built without \`-g\` |
+| 3 | GDB | \`target extended-remote :3333\` | "Remote debugging using :3333" | "Connection refused": OpenOCD has exited or uses another port |
+| 4 | GDB | \`monitor reset halt\` | OpenOCD's "halted due to debug-request" line with \`pc\` and \`msp\` | reset line, wiring, or firmware that disables the debug pins |
+| 5 | GDB | \`load\` | one "Loading section" line per loadable section, then "Start address" | flash driver or write protection |
+| 6 | GDB | \`monitor reset halt\` again | \`msp\` = word 0 of the vector table, \`pc\` = word 1 with bit 0 cleared | the image is not where the core looks for its vectors |
+| 7 | GDB | \`break main\`, \`continue\` | "Breakpoint 1, main () at file.c:NN" | out of hardware breakpoints, or the startup code never reaches \`main\` |
+
+Step 6 is the one people leave out. \`load\` sets the program counter to the ELF's entry point, but the stack pointer still holds whatever it had before the new image existed. Only a reset makes the core read **both** from the new vector table.
+
+**A worked case.** The transcript below is illustrative, for a part with flash at \`0x1000_0000\` and 128 KB of RAM at \`0x2000_0000\`; your addresses and messages will differ.
+
+\`\`\`
+(gdb) target extended-remote :3333
+Remote debugging using :3333
+(gdb) monitor reset halt
+[max78000.cpu] halted due to debug-request, current mode: Thread
+xPSR: 0x01000000 pc: 0x10000228 msp: 0x20020000
+(gdb) load
+Loading section .text, size 0x4a30 lma 0x10000000
+Loading section .data, size 0x200 lma 0x10004a30
+Start address 0x10000228, load size 19504
+(gdb) monitor reset halt
+xPSR: 0x01000000 pc: 0x10000228 msp: 0x20020000
+(gdb) x/2xw 0x10000000
+0x10000000:	0x20020000	0x10000229
+(gdb) break main
+Breakpoint 1 at 0x10000a54: file main.c, line 41.
+(gdb) continue
+Breakpoint 1, main () at main.c:41
+\`\`\`
+
+Three things to read off it. The two vector-table words explain the registers: \`msp\` is word 0, and \`pc\` is word 1 (\`0x10000229\`) without its Thumb bit. The load size is the sum of the sections, \`0x4A30 + 0x200 = 0x4C30\` = 19,504 bytes, and \`.data\` is loaded at a **flash** address although its variables live in RAM: the startup code copies it, which is why a global reads as garbage or zero until execution has passed the start-up code. And the breakpoint address is in flash, so it must be a hardware one, which is the next topic.
 
 ### Breakpoints: software and hardware
 
 A **software breakpoint** works by overwriting an instruction in memory with a special breakpoint instruction (\`BKPT\` on Arm). When the core executes it, it halts, and the debugger puts the original instruction back. That requires the code to be in **writable memory**.
 
-Firmware runs from **flash**, which cannot be modified by an ordinary write. So for code in flash the debugger uses a **hardware breakpoint**: a comparator inside the core's debug unit that watches the program counter and halts on a match. Comparators are real circuits, so their number is small and fixed by the chip designer. A Cortex-M4 commonly has six and a Cortex-M0+ can have at most four; the original ESP32 has two. Check your chip's documentation, or just read OpenOCD's log, which reports the count when it examines the target.
+Firmware runs from **flash**, which cannot be modified by an ordinary write. So for code in flash the debugger uses a **hardware breakpoint**: a comparator inside the core's debug unit that watches the program counter and halts on a match. Comparators are real circuits, so their number is small and fixed by the chip designer. A Cortex-M4 commonly has six and a Cortex-M0+ can have at most four; the original ESP32 has two. Check your chip's documentation, or just read OpenOCD's log, which reports the count when it examines the target. ESP-IDF's headers give 2 breakpoints and 2 watchpoints for the ESP32 and ESP32-S3 and 8 of each for the ESP32-C3. Espressif's OpenOCD additionally emulates a number of flash breakpoints by rewriting flash, so on those chips running out looks different: the JTAG guide notes that with every breakpoint in use, \`next\` behaves like \`step\`.
 
 GDB chooses automatically when OpenOCD gives it a memory map that marks flash as read-only. You can force the choice with \`hbreak\`. When you run out, GDB says so ("cannot insert hardware breakpoint"), and the fix is to delete some. \`tbreak\` sets a temporary breakpoint that frees its comparator after one hit.
 
@@ -625,9 +701,9 @@ continue`,
         ] },
       `**TUI.** \`gdb -tui\`, or \`tui enable\` inside GDB, splits the terminal into a source window and a command window. \`layout split\` adds disassembly and \`layout regs\` adds registers. \`Ctrl-L\` redraws when target output scrambles the screen.
 
-**ESP-IDF.** \`idf.py openocd gdb\` starts both programs with a generated init file that connects, resets and stops at \`app_main\`. FreeRTOS tasks appear as GDB threads: \`info threads\` lists them and \`thread N\` switches, so you can take a backtrace of every task.
+**ESP-IDF.** \`idf.py openocd gdb\` starts both programs. The build generates the GDB init file for you; in ESP-IDF v6.1 its connect part is \`target remote :3333\`, \`monitor reset halt\`, \`maintenance flush register-cache\`, \`thbreak app_main\`, \`continue\`: the same procedure as above, with a temporary hardware breakpoint at \`app_main\` and no \`load\`, because the image was already flashed with \`idf.py flash\`. FreeRTOS tasks appear as GDB threads: \`info threads\` lists them and \`thread N\` switches, so you can take a backtrace of every task.
 
-**Halting stops the core, not the world.** Timers may keep counting, a watchdog may keep running and reset the chip while you read a variable, and the other end of a UART or radio link does not wait. Many chips have debug-freeze options for timers and watchdogs; look for them in the reference manual. On ESP-IDF, OpenOCD's stub handles the watchdogs.`,
+**Halting stops the core, not the world.** Timers may keep counting, a watchdog may keep running and reset the chip while you read a variable, and the other end of a UART or radio link does not wait. Many chips have debug-freeze options for timers and watchdogs; look for them in the reference manual. Espressif's OpenOCD is expected to take care of the chip's watchdogs while the target is halted (a property of that fork, not checked in this project); if an ESP32 board still resets under the debugger, look at the watchdog options in \`menuconfig\`.`,
       `## Worked example: catching a corruption with a watchpoint
 
 The file \`examples/debugging/gdb_practice.c\` is a small **host** program with the bug from the problem statement. It is here so you can practise the commands with nothing but \`gcc\` and \`gdb\`. The same commands work on a target.`,
@@ -692,7 +768,7 @@ __memcpy_avx512_unaligned_erms () at ../sysdeps/x86_64/multiarch/memmove-vec-una
           { t: 'GDB reports that it cannot insert a breakpoint, because `next` needs a temporary one and none are free', ok: true, why: 'All four comparators are taken by your breakpoints, so the internal temporary breakpoint for stepping over the call cannot be placed.' },
           { t: 'GDB silently converts one of your breakpoints to a software breakpoint', why: 'A software breakpoint needs to overwrite the instruction, which is not possible in flash through a normal memory write, and GDB does not quietly change what you asked for.' },
         ],
-        reveal: `Keep one comparator free for the debugger's own use. If you get "Cannot insert hardware breakpoint" or "Could not insert single-step breakpoint", delete or disable a breakpoint (\`info breakpoints\`, \`delete N\`, \`disable N\`) and retry.` },
+        reveal: `Keep one comparator free for the debugger's own use. If you get "Cannot insert hardware breakpoint" or "Could not insert single-step breakpoint", delete or disable a breakpoint (\`info breakpoints\`, \`delete N\`, \`disable N\`) and retry. The reason is worth holding on to: \`next\` is not a primitive. GDB implements it as "plant a breakpoint at the return address, then continue", so it consumes the same scarce resource as your own breakpoints.` },
       { t: 'callout', kind: 'mistake', title: 'Debugging with an ELF that does not match the flash', md: `GDB trusts the ELF for every symbol address and line number, and the target for every byte of memory. If you rebuilt without reflashing, or flashed a different build, the two disagree: breakpoints land in the middle of other functions, \`print\` shows garbage, and stepping jumps around. When a session makes no sense, verify first. In GDB, \`compare-sections\` checks the ELF's loadable sections against target memory; in OpenOCD, \`verify_image\` does the same for a file.` },
       `### Debugging optimised code
 
@@ -705,11 +781,12 @@ Release firmware is built with optimisation, and the debugger's picture gets str
 
 Options, in order of preference: build with \`-Og\`, which optimises without destroying debuggability; mark one function with \`__attribute__((optimize("O0")))\` or the variable \`volatile\` while investigating; or read the disassembly (\`disassemble /s\`, \`info registers\`) and reason at machine level, which always tells the truth.`,
       { t: 'callout', kind: 'decision', title: 'Why not just debug at -O0?', md: `Unoptimised code is larger and slower. It may not fit in flash, and it changes timing, which can hide the very race or deadline miss you are chasing. A bug that appears only at \`-O2\` is often undefined behaviour or a missing \`volatile\`, and it has to be debugged in the build where it occurs. Use \`-O0\` or \`-Og\` to understand logic. Use the release build to understand a failure that only the release build has.` },
-      { t: 'widget', name: 'debug-session', props: { scenario: 'tour' }, caption: 'A simulated Cortex-M0+ target behind a GDB console. Work through break, continue, next, step, info registers, x/ and bt before using them on hardware.' },
+      { t: 'widget', name: 'debug-session', props: { scenario: 'tour' }, caption: 'A simulated Cortex-M target behind a GDB console. Follow the tool\'s ten steps (they are the table above, with break checksum in place of break main), then answer its three questions from what the session printed.' },
       { t: 'exercise', prompt: `A halted Cortex-M target has \`sp = 0x20001F40\`. You type \`x/6xw $sp\`. How many bytes of memory does GDB read, and what is the address of the last word displayed? Give the address in hex.`,
         hints: [
-          '`w` is a 4-byte unit, and the count is 6.',
-          'The words are at sp, sp+4, sp+8, … The last is at sp + 4 × 5.',
+          'Read the command as count, format, unit. Which letter is the unit, and how many bytes is it?',
+          'Six words are displayed, but the first one starts at sp itself. How many steps of 4 bytes separate the first word from the sixth?',
+          'Method: bytes read = count × unit size; address of the last word = sp + unit size × (count − 1).',
         ],
         answer: { type: 'text', accept: ['20001[fF]54'], nudge: 'Six 4-byte words starting at 0x20001F40: the last one starts 20 bytes later.' },
         solution: `6 words × 4 bytes = 24 bytes. The words start at \`0x20001F40, …44, …48, …4C, …50, …54\`, so the last is at **0x20001F54**. Because the stack grows downward, these are the six most recently pushed words, the newest first.` },
@@ -787,11 +864,11 @@ When a Cortex-M core takes any exception, including a fault, it **pushes eight w
 | +8 | R2 | |
 | +12 | R3 | |
 | +16 | R12 | |
-| +20 | **LR** | Return address of the function that was executing: who called it |
+| +20 | **LR** | The interrupted code's link register: the return address of its most recent call. Usually this names the caller (see step 6 of the procedure below for when it does not) |
 | +24 | **PC** | The instruction that faulted (or the next one) |
 | +28 | xPSR | Flags, the Thumb bit (bit 24), and the active exception number in the low bits |
 
-It then loads a special value, **EXC_RETURN**, into LR. That value tells you which stack the frame is on: bit 2 clear means the main stack (MSP), bit 2 set means the process stack (PSP), which RTOS tasks use. \`0xFFFFFFF9\` is "return to thread mode, MSP" and \`0xFFFFFFFD\` is "return to thread mode, PSP".
+It then loads a special value, **EXC_RETURN**, into LR. That value tells you which stack the frame is on: bit 2 clear means the main stack (MSP), bit 2 set means the process stack (PSP), which RTOS tasks use. \`0xFFFFFFF9\` is "return to thread mode, MSP" and \`0xFFFFFFFD\` is "return to thread mode, PSP". On a core with a floating-point unit, such as the MAX78000's Cortex-M4, bit 4 matters too: if it is **clear** (\`0xFFFFFFE9\`, \`0xFFFFFFED\`) the core also pushed floating-point state, 18 more words above the eight. The eight words in the table are still at the same offsets.
 
 So the stacked **PC** is where it crashed and the stacked **LR** is who called that function. Those two numbers, turned into source lines, solve most faults.
 
@@ -825,9 +902,20 @@ The bits you will meet most:
 
 By default the separate BusFault, MemManage and UsageFault handlers are disabled, so every one of these **escalates to HardFault**, with HFSR.FORCED set. CFSR still tells you the original cause.`,
       { t: 'callout', kind: 'hw', title: 'Cortex-M0 and M0+ are different', md: `ARMv6-M cores, including the **MSPM0L2228's Cortex-M0+**, have **no CFSR, HFSR, BFAR or MMFAR**. Every fault is a HardFault and the only evidence is the stacked frame. The method still works: stacked PC and LR locate the crash, and the instruction at that PC together with the stacked R0–R3 usually shows which register held the bad address. The MAX78000's Cortex-M4 has the full set of fault registers.` },
-      `## On real hardware: reading the frame in GDB
+      `## On real hardware: the procedure
 
-Halted inside the fault handler:
+Halted inside the fault handler, work in this order. Each step tells you whether the next can be trusted.
+
+1. **Which stack?** \`p/x $lr\`. Inside the handler LR is EXC_RETURN: bit 2 clear means the frame is on MSP, set means PSP.
+2. **Dump the frame**: \`x/8xw $msp\` (or \`$psp\`). In a handler that is a bare loop and has pushed nothing, \`$sp\` is the same address. Label the eight words r0, r1, r2, r3, r12, lr, pc, xpsr.
+3. **Is the frame believable?** A healthy stacked xPSR has bit 24 (Thumb) set, and a healthy stacked PC is an even address in flash. If either is wrong, that is itself the main clue (step 7).
+4. **Why?** On ARMv7-M read CFSR and HFSR. Read BFAR or MMFAR only if the matching VALID bit is set in CFSR; otherwise they hold stale values.
+5. **Where?** \`info line *<stacked PC>\` and \`list *<stacked PC>\` turn the stacked PC into a source line.
+6. **Who called?** The stacked LR, with bit 0 cleared, is a *return address*: the instruction **after** a call. The call itself is just before it (2 bytes back for \`blx rN\`, 4 for \`bl\`), so ask about an address inside the call: \`info line *(<stacked LR> - 3)\`. Asking about the return address itself often reports the *next* source line. Caveat: LR names the caller only if the faulting function has not made a call of its own since it was entered. If it has, LR is the return address of that later call, inside the faulting function.
+7. **If the stacked PC is not code** (zero, a RAM address, an odd-looking value): the fault was taken on a *jump*. The PC is where the processor tried to go, and there is nothing to look up there. If the jump was a call through a bad function pointer, the stacked LR points just after that call and step 6 finds the line. If it was a corrupted *return* address, no register remembers where it came from, and you have to read the stack memory above the frame.
+8. **Write it down**: the eight words, EXC_RETURN and the status registers, before you reset anything.
+
+As commands:
 
 \`\`\`
 (gdb) p/x $lr                      # EXC_RETURN: 0xfffffff9 -> frame is on MSP
@@ -837,6 +925,7 @@ Halted inside the fault handler:
 (gdb) info line *0x0800026a        # stacked PC -> file and line
 (gdb) list *0x0800026a
 (gdb) info symbol 0x08000430       # stacked LR -> calling function
+(gdb) info line *(0x08000431 - 3)  # an address inside the call instruction
 \`\`\`
 
 If the handler has pushed anything before you halted, the frame is no longer exactly at the stack pointer. Fault handlers written for diagnosis therefore begin with a few instructions of assembly that capture MSP or PSP before any C code runs, and pass it to a C function as a pointer to the frame.
@@ -860,7 +949,7 @@ Step by step:
 1. \`lr = 0xFFFFFFF9\`: bit 2 is clear, so the frame is on MSP. Good, that is where we looked.
 2. \`CFSR = 0x00008200\`: bits 15 and 9. BFSR is \`0x82\`: **PRECISERR** and **BFARVALID**.
 3. So this is a precise bus fault and \`BFAR = 0x40001000\` is the address that was accessed.
-4. Stacked PC is \`0x0800026A\`: the faulting instruction. Stacked LR is \`0x08000431\`: the caller returns to \`0x08000430\`.
+4. Stacked PC is \`0x0800026A\`: even, in flash, and xPSR \`0x61000000\` has bit 24 set, so the frame is believable and this is the faulting instruction. Stacked LR is \`0x08000431\`: the caller returns to \`0x08000430\`, so the call is the instruction just before that address.
 5. Stacked R2 is \`0x40001000\`, the same as BFAR: the instruction was using R2 as the address.
 6. \`0x4000_1000\` is in the peripheral region. A bus fault on a peripheral register most often means the peripheral's clock is not enabled, or the address is not a register on this chip.
 
@@ -937,12 +1026,12 @@ Backtrace: 0x400d5e28:0x3ffb4f60 0x400d1231:0x3ffb4f80 0x400d0f44:0x3ffb4fa0
 A **core dump** goes further. With the core-dump component enabled, the panic handler saves every task's registers and stack to a flash partition or prints them over UART. \`idf.py coredump-info\` summarises it and \`idf.py coredump-debug\` opens it in GDB, where \`bt\`, \`info threads\` and \`print\` work as if the device were halted at the moment of the crash.`,
       { t: 'callout', kind: 'security', md: `A crash report is a description of the firmware's internals: addresses, register contents, sometimes stack memory. A core dump is a copy of RAM, which may include keys and user data. In production, decide deliberately where this information goes. Store it encrypted or restrict it, do not print stack contents on an open console, and treat the core-dump partition as sensitive. The defence is not to stop collecting crash data, which you need, but to control who can read it.` },
       { t: 'callout', kind: 'decision', title: 'Halt or reset in the fault handler?', md: `During development, halt: \`while (1)\` or a breakpoint instruction keeps the state for the debugger. In production, record and reset: a device that hangs for ever is worse than one that restarts and reports. Many projects select between the two with a build flag, and trigger the debugger only if one is attached.` },
-      { t: 'widget', name: 'debug-session', props: { scenario: 'hardfault' }, caption: 'The simulated target (a Cortex-M0+, so no CFSR) ends up in its HardFault handler. Recover the stacked PC and LR and find the faulting line.' },
+      { t: 'widget', name: 'debug-session', props: { scenario: 'hardfault' }, caption: 'The simulated target ends up in its HardFault handler. This case is step 7 of the procedure: the stacked PC is not code, so the stacked LR has to find the line. The simulated core runs ARMv6-M code but has the ARMv7-M fault status registers, so CFSR and HFSR can be read; on a real Cortex-M0+ they do not exist.' },
       { t: 'exercise', prompt: `In a HardFault handler on a Cortex-M4 you read \`lr = 0xFFFFFFFD\` and \`CFSR = 0x00001000\`. (a) Which stack holds the exception frame? (b) Name the CFSR bit that is set.`,
         hints: [
-          'Bit 2 of EXC_RETURN selects the stack. 0xD is 1101 in binary.',
-          '0x1000 is bit 12. Which byte of CFSR is that in?',
-          'Bit 12 is in the bus-fault byte (bits 15:8). It concerns exception *entry*.',
+          'Two separate questions. For (a): which single bit of EXC_RETURN tells MSP from PSP, and what is the last hex digit in binary?',
+          'For (b): 0x1000 has one bit set. Which bit number, and which of the three CFSR sub-registers (bits 7:0, 15:8, 31:16) contains it?',
+          'Method: look the bit number up in the table of CFSR bits above. The name describes *when* the bus fault happened, which also tells you whether the stacked frame can be trusted.',
         ],
         answer: { type: 'text', accept: ['[Ss][Tt][Kk][Ee][Rr][Rr]'], nudge: 'Bit 12 of CFSR, in the BusFault status byte: the fault happened while pushing the frame.' },
         solution: `(a) Bit 2 of \`0xFFFFFFFD\` is set, so the frame is on the **process stack (PSP)**: an RTOS task was running. (b) Bit 12 is **STKERR**: a bus fault occurred while the core was pushing the exception frame. That means the task's stack pointer pointed outside valid memory, and the usual cause is that the task overflowed its stack. The stacked frame is not trustworthy here, because stacking is what failed. Check the task's stack size and its high-water mark.` },
@@ -952,8 +1041,8 @@ A structure pointer is null and the code reads the field at offset 4. Predict wh
 
 | Platform | What you see | Where the line number comes from |
 |---|---|---|
-| MAX78000 (Cortex-M4) | HardFault with HFSR.FORCED; whether address 4 faults at all depends on what is mapped at address 0. If it does: CFSR shows PRECISERR, BFAR = 4 | Stacked PC → \`info line\` or \`addr2line\` |
-| MSPM0L2228 (Cortex-M0+) | Flash starts at address 0, so a **read** of address 4 does not fault at all: it silently returns the reset vector. A write would fault as a HardFault with no status registers | If it faults: stacked PC. If it does not: wrong data propagates, and you need a watchpoint or an assertion |
+| MAX78000 (Cortex-M4) | The device header places ROM at address 0, so whether a read of address 4 faults depends on whether that ROM is readable by application code, which this project has not established: test it. If it faults: HardFault with HFSR.FORCED, CFSR shows PRECISERR and BFARVALID, BFAR = 4 | Stacked PC → \`info line\` or \`addr2line\` |
+| MSPM0L2228 (Cortex-M0+) | Main flash starts at address 0, so a **read** of address 4 does not fault at all: it silently returns the reset vector. A write through the pointer does not change flash; whether it raises a HardFault is for TI's documentation or a test to settle, and there are no status registers either way | If it faults: stacked PC. If it does not: wrong data propagates, and you need a watchpoint or an assertion |
 | ESP32 | \`Guru Meditation Error ... (LoadProhibited)\`, EXCVADDR = 0x00000004 | The printed backtrace, decoded by \`idf.py monitor\` |
 
 The middle row is the lesson. On a chip with memory mapped at address zero, a null-pointer read is not caught by hardware. The only protection is your own check, or an MPU region covering the low addresses if the core has an MPU and you configure it. Do not rely on a crash to tell you a pointer was null.`,
@@ -979,6 +1068,12 @@ The middle row is the lesson. On a chip with memory mapped at address zero, a nu
         { t: 'The MSPM0L2228 is a Cortex-M0+, which has no CFSR or fault address registers, so only the stacked frame is available', ok: true, why: 'ARMv6-M implements only HardFault and omits the configurable fault status registers found on ARMv7-M cores such as the Cortex-M4.' },
         { t: 'The MSPM0L2228 does not push an exception frame', why: 'All Cortex-M cores stack the same eight registers on exception entry. That part of the method is identical.' },
         { t: 'TI chips use a different register for the program counter', why: 'The core is licensed from Arm and its registers are the standard ones. The difference is the architecture version, not the vendor.' },
+      ] },
+      { q: 'In a HardFault handler on a Cortex-M4 the frame reads: stacked PC = 0x00000000, stacked LR = 0x08001235, stacked xPSR = 0x00000000, CFSR = 0x00020000. The firmware calls callbacks through a table of function pointers. Where do you look for the faulty line?', kind: 'code', choices: [
+        { t: 'At the instruction just before 0x08001234, the call whose return address was saved', ok: true, why: 'The stacked PC is the destination of a jump to a null pointer, not a place in the program. A call stores its return address in LR, so the stacked LR minus its Thumb bit is the instruction after the call.' },
+        { t: 'At address 0x00000000, because the stacked PC is the faulting instruction', why: 'For a bad data access that would be right. Here the PC is not code at all and the T bit of xPSR is clear: the PC shows where the processor was sent, not which instruction sent it.' },
+        { t: 'At 0x08001235 exactly, because LR holds the address of the call instruction', why: 'LR holds a return address with the Thumb bit set. The odd value is not an address, and even with bit 0 cleared it is the instruction after the call.' },
+        { t: 'Nowhere in the frame: with the PC destroyed, only CFSR and BFAR can help', why: 'BFAR is meaningful only when BFARVALID is set, and here the only bit set is in the usage-fault half. The frame still holds one good code address.' },
       ] },
       { q: 'An ESP32 panic shows `StoreProhibited` and `EXCVADDR: 0x0000000c`. What is the most likely bug?', kind: 'code', choices: [
         { t: 'A write to a member at offset 12 of a structure whose pointer is null', ok: true, why: 'A store to a small address is a null base pointer plus a field offset.' },

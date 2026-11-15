@@ -120,9 +120,9 @@ export default [
     ],
     quiz: [
       { q: 'A multimeter probe on a pin shows 3.3 V. What does this number describe?', kind: 'concept', choices: [
-        { t: 'The energy difference per unit charge between that pin and wherever the other probe is', ok: true, why: 'Voltage always exists between two points. The reading depends on where the black probe sits.' },
-        { t: 'How much charge is stored in the pin', why: 'Stored charge is measured in coulombs and depends on capacitance. A meter on the volts range does not report it.' },
-        { t: 'How much current the pin is delivering', why: 'Current is a flow through a path. A pin can sit at 3.3 V while delivering no current at all.' },
+        { t: 'An energy difference per charge between the pin and the other probe', ok: true, why: 'Voltage always exists between two points. The reading depends on where the black probe sits.' },
+        { t: 'How much charge is stored on the pin at the moment the probe touches it', why: 'Stored charge is measured in coulombs and depends on capacitance. A meter on the volts range does not report it.' },
+        { t: 'How much current the pin is delivering to the rest of the circuit', why: 'Current is a flow through a path. A pin can sit at 3.3 V while delivering no current at all.' },
       ] },
       { q: 'A 5 V supply is connected across a 100 Ω, 0.25 W resistor. What happens?', kind: 'circuit', choices: [
         { t: 'It dissipates 0.25 W, exactly at its rating, and runs hot', ok: true, why: 'P = 5² / 100 = 0.25 W. At the rating a resistor is very hot to touch; good practice is to stay below half.' },
@@ -442,7 +442,7 @@ export default [
         { t: 'The voltage is 5 V half of the time and 0.1 V the rest', why: 'Peak-to-peak describes the size of the variation, not a second level the output switches to.' },
       ] },
       { q: 'Why can a digital link tolerate noise that would ruin an analog one?', kind: 'concept', choices: [
-        { t: 'The receiver only decides which of two ranges the voltage is in, so small deviations are discarded', ok: true, why: 'Each receiver restores a clean level, so noise below the margin does not accumulate along a chain.' },
+        { t: 'The receiver only decides which of two ranges the voltage is in', ok: true, why: 'Each receiver restores a clean level, so noise below the margin does not accumulate along a chain.' },
         { t: 'Digital signals are immune to interference because they use higher voltages', why: 'Digital and analog signals often share the same voltage range. The immunity comes from how the receiver interprets the voltage.' },
         { t: 'Digital wires carry no current, so noise cannot couple in', why: 'Digital lines carry current every time they change level, and noise couples into them just as it does into any wire.' },
       ] },
@@ -452,14 +452,14 @@ export default [
         { t: '2 V, since ripple depends only on the load current', why: 'Load current is one factor. The capacitor size sets how far that current pulls the voltage down between peaks.' },
       ] },
       { q: 'A multimeter on DC volts shows 1.6 V on an SPI clock pin during a transfer. The most reasonable interpretation is:', kind: 'circuit', choices: [
-        { t: 'The pin is toggling between 0 and 3.3 V and the meter shows the average', ok: true, why: 'A clock is high about half the time, and a meter averages far more slowly than the clock toggles.' },
-        { t: 'The pin is faulty and stuck at an invalid level', why: 'A stuck level would persist when the bus is idle too. A mid-range average during activity is expected.' },
-        { t: 'The supply rail has dropped to 1.6 V', why: 'The rail can be measured directly on a power pin. A reading on a signal pin says nothing certain about it.' },
+        { t: 'The pin is toggling and the meter shows its average', ok: true, why: 'A clock is high about half the time, and a meter averages far more slowly than the clock toggles.' },
+        { t: 'The pin driver is faulty and stuck at an invalid mid-level', why: 'A stuck level would persist when the bus is idle too. A mid-range average during activity is expected.' },
+        { t: 'The supply rail has dropped to 1.6 V during the transfer', why: 'The rail can be measured directly on a power pin. A reading on a signal pin says nothing certain about it.' },
       ] },
-      { q: 'An unmarked adapter labelled "12 V DC 500 mA" reads 16.5 V with no load. What is it?', kind: 'concept', choices: [
-        { t: 'An unregulated supply that reaches 12 V only near its rated load', ok: true, why: 'With little load, the reservoir capacitor stays near the transformer peak, well above the nominal figure.' },
-        { t: 'A broken regulated supply', why: 'A regulated supply holds its nominal voltage at any load. A high unloaded reading is normal for an unregulated design.' },
-        { t: 'An AC adapter mislabelled as DC', why: 'An AC output would average to about zero on the DC range of the meter, not to a steady positive voltage.' },
+      { q: 'An unmarked adapter labelled "12 V DC 500 mA" reads 16.5 V with no load and about 12 V while it powers a 450 mA load. What is it?', kind: 'concept', choices: [
+        { t: 'An unregulated supply that only falls to 12 V near full load', ok: true, why: 'With little load, the reservoir capacitor stays near the transformer peak, well above the nominal figure.' },
+        { t: 'A regulated 16.5 V supply that the manufacturer labelled incorrectly', why: 'A regulated supply holds one voltage at any load, whatever its label says. This one changes by several volts between no load and full load.' },
+        { t: 'An AC adapter that has been mislabelled as a DC one', why: 'An AC output would average to about zero on the DC range of the meter, not to a steady positive voltage.' },
       ] },
     ],
   },
@@ -638,8 +638,8 @@ export default [
       ] },
       { q: 'What does a capacitor do to the voltage across it when the circuit tries to change that voltage abruptly?', kind: 'concept', choices: [
         { t: 'It holds the voltage momentarily and lets it change only as charge flows in or out', ok: true, why: 'Changing the voltage needs charge to move, and that takes current over time: I = C × dV/dt.' },
-        { t: 'It blocks the change permanently', why: 'A capacitor delays a change. Given current and time, its voltage moves to any new value.' },
-        { t: 'It lets the voltage jump but limits the current', why: 'Limiting current gradually is the behaviour of an inductor. A capacitor will supply or absorb a large current to resist a voltage jump.' },
+        { t: 'It blocks the change permanently, holding its original voltage', why: 'A capacitor delays a change. Given current and time, its voltage moves to any new value.' },
+        { t: 'It lets the voltage jump at once but limits the current that flows', why: 'Limiting current gradually is the behaviour of an inductor. A capacitor will supply or absorb a large current to resist a voltage jump.' },
       ] },
       { q: 'An electrolytic capacitor is fitted with its stripe towards the positive rail. What is the likely outcome?', kind: 'circuit', choices: [
         { t: 'It conducts, heats up and may vent or burst', ok: true, why: 'The stripe marks the negative lead. Reverse voltage destroys the oxide insulation, and the part becomes a heater.' },
@@ -647,9 +647,9 @@ export default [
         { t: 'Nothing; the stripe marks the positive lead', why: 'On aluminium electrolytics the stripe marks the negative lead. Some tantalum parts mark positive, which is why the datasheet matters.' },
       ] },
       { q: 'Why is a 100 nF capacitor placed within millimetres of a chip\'s power pin instead of anywhere convenient on the rail?', kind: 'concept', choices: [
-        { t: 'The wiring between the capacitor and the pin has inductance that slows current delivery, so distance defeats its purpose', ok: true, why: 'The capacitor exists to supply nanosecond current bursts. Any extra track length in that path adds inductance exactly where speed is needed.' },
-        { t: 'Capacitors lose their charge along long tracks', why: 'Track resistance does not drain a capacitor. The issue is how quickly current can be delivered, not how much charge is held.' },
-        { t: 'It reduces the total capacitance required on the board', why: 'Placement does not change how much capacitance there is. It changes how useful that capacitance is for fast demands.' },
+        { t: 'Wiring between capacitor and pin adds inductance, which slows current delivery', ok: true, why: 'The capacitor exists to supply nanosecond current bursts. Any extra track length in that path adds inductance exactly where speed is needed.' },
+        { t: 'Capacitors gradually lose their stored charge along the resistance of long tracks', why: 'Track resistance does not drain a capacitor. The issue is how quickly current can be delivered, not how much charge is held.' },
+        { t: 'A capacitor close to the pin reduces the total capacitance the board requires', why: 'Placement does not change how much capacitance there is. It changes how useful that capacitance is for fast demands.' },
       ] },
     ],
   },
@@ -808,7 +808,7 @@ export default [
     ],
     quiz: [
       { q: 'Current is flowing in a motor winding when its switch opens. With no flyback diode, what happens at the switch?', kind: 'circuit', choices: [
-        { t: 'The voltage across the switch rises far above the supply until something breaks down', ok: true, why: 'The winding forces its current to continue. With no path, the voltage rises until one is created through the switch itself.' },
+        { t: 'The voltage across the switch rises far above the supply', ok: true, why: 'The winding forces its current to continue. With no path, the voltage rises until one is created through the switch itself.' },
         { t: 'The current stops instantly and the voltage falls to zero', why: 'An inductor cannot change its current instantly. Forcing it to try is exactly what generates the spike.' },
         { t: 'The voltage across the switch equals the supply and stays there', why: 'That would be true of a resistive load. A coil adds its own generated voltage on top of the supply.' },
       ] },
@@ -818,14 +818,14 @@ export default [
         { t: 'Either way; diodes across coils are not polarity sensitive', why: 'A diode conducts in one direction only. One orientation protects and the other shorts the supply.' },
       ] },
       { q: 'A green LED with Vf = 2.2 V is to run at 10 mA from 5 V. The series resistor should be about:', kind: 'circuit', choices: [
-        { t: '280 Ω (fit 330 Ω, or 270 Ω if slightly more current is acceptable)', ok: true, why: 'The resistor sees 5 − 2.2 = 2.8 V, and 2.8 V / 10 mA = 280 Ω.' },
+        { t: '280 Ω', ok: true, why: 'The resistor sees 5 − 2.2 = 2.8 V, and 2.8 V / 10 mA = 280 Ω. Fit 330 Ω, or 270 Ω if slightly more current is acceptable.' },
         { t: '500 Ω', why: 'This uses the whole supply voltage. The LED takes its forward voltage first; the resistor only gets the remainder.' },
         { t: '220 Ω', why: 'This divides the forward voltage by the current. The resistor value comes from the voltage across the resistor, not across the LED.' },
       ] },
       { q: 'Why can you not set LED brightness by choosing a supply voltage equal to its forward voltage and omitting the resistor?', kind: 'concept', choices: [
-        { t: 'Near Vf a tiny change in voltage or temperature causes a large change in current, so there is no stable operating point', ok: true, why: 'The diode curve is very steep. Something with a gentler voltage-to-current relation must be in series to set the current.' },
-        { t: 'LEDs need AC to emit light', why: 'LEDs emit on steady forward current. They are DC devices.' },
-        { t: 'The LED would not light at exactly Vf', why: 'It would conduct, but the current would be uncontrolled and would drift with temperature and from part to part.' },
+        { t: 'Near Vf, a tiny change in voltage or temperature changes the current greatly', ok: true, why: 'The diode curve is very steep. Something with a gentler voltage-to-current relation must be in series to set the current.' },
+        { t: 'LEDs need an alternating voltage to emit light, and a fixed supply provides only DC', why: 'LEDs emit on steady forward current. They are DC devices.' },
+        { t: 'The LED would not light at all with exactly Vf across it', why: 'It would conduct, but the current would be uncontrolled and would drift with temperature and from part to part.' },
       ] },
       { q: 'A board is protected with a series Schottky diode that drops 0.3 V and carries 800 mA. How much power does the diode dissipate?', kind: 'circuit', choices: [
         { t: '0.24 W', ok: true, why: 'P = V × I = 0.3 V × 0.8 A. That is enough to warm a small surface-mount diode noticeably.' },
@@ -834,8 +834,8 @@ export default [
       ] },
       { q: 'A zener diode rated 3.3 V is placed from an input pin to ground, cathode to the pin, with a series resistor before it. What is it for?', kind: 'concept', choices: [
         { t: 'Clamping the pin to about 3.3 V if the incoming voltage goes higher', ok: true, why: 'Reverse-connected, the zener breaks down at its rated voltage and the series resistor absorbs the excess.' },
-        { t: 'Blocking current from flowing into the pin', why: 'A diode from pin to ground is in parallel with the pin, so it cannot block anything in series.' },
-        { t: 'Regulating the supply for the whole board', why: 'A zener and resistor waste power and regulate poorly under varying load. They suit signals and references, not supplies.' },
+        { t: 'Blocking current from flowing into the pin when the input is high', why: 'A diode from pin to ground is in parallel with the pin, so it cannot block anything in series.' },
+        { t: 'Regulating the 3.3 V supply for the whole board', why: 'A zener and resistor waste power and regulate poorly under varying load. They suit signals and references, not supplies.' },
       ] },
     ],
   },
@@ -942,9 +942,9 @@ export default [
 
       { t: 'predict', q: `A MOSFET datasheet lists VGS(th) max = 2.5 V and RDS(on) = 0.05 Ω at VGS = 10 V. You drive its gate from a 3.3 V GPIO to switch a 2 A load. What do you expect?`,
         choices: [
-          { t: 'It works: 3.3 V is above the 2.5 V threshold, so it is on', why: `Above threshold means "no longer off". At that point the datasheet promises only a fraction of a milliamp, not 2 A.` },
-          { t: 'It conducts poorly: channel resistance far above 0.05 Ω, load under-powered, MOSFET hot', ok: true, why: `Yes. The 0.05 Ω figure is only promised at 10 V on the gate. At 3.3 V the device is barely past threshold.` },
-          { t: 'It does not conduct at all', why: `The gate is above threshold, so some current flows. The problem is that the channel is nowhere near fully formed.` },
+          { t: 'It works properly: 3.3 V is above the 2.5 V threshold, so the MOSFET is fully on', why: `Above threshold means "no longer off". At that point the datasheet promises only a fraction of a milliamp, not 2 A.` },
+          { t: 'It conducts poorly: the load is under-powered and the MOSFET gets hot', ok: true, why: `Yes. The 0.05 Ω figure is only promised at 10 V on the gate. At 3.3 V the device is barely past threshold.` },
+          { t: 'It does not conduct at all, because 3.3 V is far below the 10 V in the datasheet', why: `The gate is above threshold, so some current flows. The problem is that the channel is nowhere near fully formed.` },
         ],
         reveal: `With only 0.8 V of drive beyond a worst-case threshold, the channel resistance might be several ohms and varies widely between individual parts. At 2 A, even 1 Ω means 4 W in a small package. The MOSFET overheats and the load sees a reduced voltage. The fix is a part with RDS(on) specified at VGS = 2.5 V, or a gate driver that provides a higher gate voltage.` },
 
@@ -1004,9 +1004,9 @@ export default [
     ],
     quiz: [
       { q: 'Why is a transistor used as a switch designed to be either fully on or fully off, never in between?', kind: 'concept', choices: [
-        { t: 'In between, it has both significant voltage across it and current through it, so it dissipates the most heat', ok: true, why: 'Power is voltage times current. Off, the current is zero; fully on, the voltage is near zero. Halfway, neither is.' },
-        { t: 'A transistor cannot physically operate in between', why: 'It can, and amplifiers rely on it. The intermediate region is avoided in switches because of the heat it produces.' },
-        { t: 'The load would receive AC instead of DC', why: 'A partly on transistor passes a reduced DC current. Nothing about it creates an alternating voltage.' },
+        { t: 'In between, it has both voltage across it and current through it, so it heats', ok: true, why: 'Power is voltage times current. Off, the current is zero; fully on, the voltage is near zero. Halfway, neither is.' },
+        { t: 'A transistor cannot physically operate at any point between fully on and fully off', why: 'It can, and amplifiers rely on it. The intermediate region is avoided in switches because of the heat it produces.' },
+        { t: 'The load would receive an alternating current instead of DC', why: 'A partly on transistor passes a reduced DC current. Nothing about it creates an alternating voltage.' },
       ] },
       { q: 'A 3.3 V GPIO drives an NPN base through 1 kΩ. Roughly what base current flows?', kind: 'circuit', choices: [
         { t: '2.6 mA', ok: true, why: 'The base-emitter junction takes about 0.7 V, leaving 2.6 V across the 1 kΩ resistor.' },
@@ -1014,14 +1014,14 @@ export default [
         { t: '0.7 mA', why: 'This puts the junction voltage across the resistor. The resistor gets what remains after the junction drop.' },
       ] },
       { q: 'Two MOSFETs are candidates for a 3.3 V GPIO. Part A: VGS(th) 0.5–1.0 V, RDS(on) specified at 2.5 V and 4.5 V. Part B: VGS(th) 1–2 V, RDS(on) specified at 4.5 V and 10 V. Choose:', kind: 'circuit', choices: [
-        { t: 'Part A, because its on-resistance is guaranteed at a gate voltage the GPIO can supply', ok: true, why: 'The RDS(on) specification at 2.5 V is the manufacturer\'s statement that the part is fully on at that drive.' },
+        { t: 'Part A, because its RDS(on) is specified at 2.5 V', ok: true, why: 'The RDS(on) specification at 2.5 V is the manufacturer\'s statement that the part is fully on at that drive.' },
         { t: 'Part B, because 3.3 V is above its 2 V maximum threshold', why: 'Clearing the threshold only guarantees microamps to a milliamp of drain current. Its conduction at 3.3 V is not specified.' },
         { t: 'Either, since both thresholds are below 3.3 V', why: 'Threshold marks where conduction begins, not where the channel reaches its low rated resistance.' },
       ] },
       { q: 'What is the gate pull-down resistor on a low-side MOSFET for?', kind: 'circuit', choices: [
         { t: 'Keeping the MOSFET off while the GPIO is high-impedance during reset and boot', ok: true, why: 'An undriven gate holds stray charge. The resistor gives it a defined off level until firmware drives the pin.' },
-        { t: 'Limiting the current through the load', why: 'The load current flows from drain to source. A resistor from gate to ground is not in that path.' },
-        { t: 'Protecting the MOSFET from inductive kick', why: 'Inductive kick appears at the drain and is handled by a diode across the load, not by anything on the gate.' },
+        { t: 'Limiting the current that flows through the load when the MOSFET is on', why: 'The load current flows from drain to source. A resistor from gate to ground is not in that path.' },
+        { t: 'Protecting the MOSFET from the inductive kick of the load', why: 'Inductive kick appears at the drain and is handled by a diode across the load, not by anything on the gate.' },
       ] },
       { q: 'A 12 V fan is low-side switched by an N-MOSFET from an ESP32-class board powered by USB. The fan has its own 12 V supply. Which connection is essential?', kind: 'circuit', choices: [
         { t: 'The 12 V supply ground joined to the board ground', ok: true, why: 'The gate voltage is measured relative to the source, which is on the 12 V supply ground. Without a shared ground the gate has no reference.' },
@@ -1029,9 +1029,9 @@ export default [
         { t: 'No connection between the supplies; they must stay isolated', why: 'With no common reference, the GPIO voltage means nothing to the MOSFET and the gate floats relative to the source.' },
       ] },
       { q: 'You need to cut power to a 3.3 V sensor module from a 3.3 V MCU so it draws nothing in sleep. Which switch suits best?', kind: 'arch', choices: [
-        { t: 'A P-channel MOSFET in the sensor supply line, gate driven by a GPIO with a pull-up to 3.3 V', ok: true, why: 'High-side switching removes the supply while keeping the sensor ground solid, and a P-MOSFET on the logic rail can be driven directly.' },
+        { t: 'A P-channel MOSFET in the supply line, with a gate pull-up to 3.3 V', ok: true, why: 'High-side switching removes the supply while keeping the sensor ground solid, and a P-MOSFET on the logic rail can be driven directly.' },
         { t: 'An N-channel MOSFET in the sensor supply line, gate driven by the GPIO', why: 'With its source at the load, an N-MOSFET needs a gate voltage above the rail to stay on, which a GPIO on the same rail cannot give.' },
-        { t: 'An N-channel MOSFET in the sensor ground line', why: 'Lifting the ground leaves the sensor tied to 3.3 V, and its signal pins can then be back-fed through their protection diodes.' },
+        { t: 'An N-channel MOSFET in the sensor ground line, gate driven by the GPIO', why: 'Lifting the ground leaves the sensor tied to 3.3 V, and its signal pins can then be back-fed through their protection diodes.' },
       ] },
     ],
   },

@@ -357,7 +357,18 @@ H:  . . . # # . . . . .  .  .      runs the moment it is ready
           ^ interrupt makes H ready; kernel switches before returning` },
 
       { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'cooperative' }, title: 'Cooperative: who is holding the processor?',
-        caption: 'Lengthen the low-priority task\'s run between yields and watch the urgent task\'s start time move with it.' },
+        caption: 'Change how many ticks Compute runs between yields and watch UI\'s start time move with it.' },
+      { t: 'ascii', caption: 'What the simulator shows with its starting values: UI (priority 3) needs 1 tick every 6 and must finish within 6; Compute (priority 1) runs 8 ticks, yields, and repeats. One column is one tick.',
+        text: `tick:     0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19
+runs:     U  C  C  C  C  C  C  C  C  U  C  C  C  C  C  C  C  C  U  U
+UI due:   ^                 ^                 ^                 ^
+
+release at  6: Compute is inside the chunk it started at tick 1; it yields after tick 8.
+               UI runs in tick 9 and is done at 10: response 4 ticks. In time.
+release at 12: Compute started a new chunk at tick 10 and yields after tick 17.
+               UI runs in tick 18 and is done at 19: response 7 ticks. Deadline (18) missed.
+release at 18: UI is already waiting when Compute yields, so it runs again in tick 19.` },
+      `Read the trace for the rule, not the numbers: UI's priority decided that it ran **next** each time, but only Compute decided **when** "next" was. The response time changes from release to release (1, 4, 7, 2 ticks) because it depends on where in its chunk Compute happens to be. The worst case is one whole chunk plus UI's own tick.`,
       { t: 'predict',
         q: 'Under a **preemptive** fixed-priority scheduler: task H (priority 3) blocks waiting for a timer that expires at t = 4 ms. Task M (priority 2) becomes ready at t = 1 ms and needs 5 ms of CPU. Task L (priority 1) is running from t = 0 and needs 10 ms. Which task is running at t = 5 ms, and how much CPU has M received by then?',
         choices: [
@@ -366,8 +377,8 @@ H:  . . . # # . . . . .  .  .      runs the moment it is ready
           { t: 'L is running; tasks take turns.', why: 'Taking turns only applies between tasks of the same priority. Lower priorities run only when nothing above them is ready.' },
         ],
         reveal: 'The rule for fixed-priority preemptive scheduling is short: **at every instant, the highest-priority ready task is the one running.** To predict a schedule, list the instants at which a task becomes ready or blocks, and re-apply the rule at each one.' },
-      { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'preemptive' }, title: 'Preemptive: check your prediction',
-        caption: 'Set priorities and release times to match the question above, then step through it.' },
+      { t: 'widget', name: 'rtos-scheduler', props: { scenario: 'preemptive' }, title: 'Preemptive: apply the rule to a periodic task set',
+        caption: 'A different task set from the question above: three periodic tasks, all released at tick 0. Before you run it, apply the same rule tick by tick. With the starting priorities Logger (6 ticks) runs ticks 0–5, Control ticks 6–8, and Sensor first runs in tick 9, four ticks after its deadline at tick 5.' },
 
       `## What it costs
 
@@ -391,7 +402,7 @@ H:  . . . # # . . . . .  .  .      runs the moment it is ready
         solution: 'UI (4 ms) and comms (9 ms) each take a turn: **13 ms**. The control task therefore cannot run more often than once every 14 ms in the worst case (13 ms waiting plus its own 1 ms). If the control law needs 5 ms periods, either comms must yield more often inside its body, or the system must be preemptive.' },
 
       { t: 'exercise',
-        prompt: 'Read this FreeRTOS code, written for a **single-core** MCU with preemption enabled. Both tasks are created at priority 2. `fast_task` must toggle the pin every 1 ms. Explain why it does not, and name the smallest change that fixes it.',
+        prompt: 'Read this FreeRTOS code, written for a **single-core** MCU with preemption enabled, a 1 kHz tick and `configUSE_TIME_SLICING` set to 0. Both tasks are created at priority 2. `fast_task` must toggle the pin every 1 ms. On the board the pin toggles once and then never again. Explain why, and name the smallest change that fixes it.',
         code: C`static void crunch_task(void *arg)
 {
     for (;;) {
@@ -407,12 +418,12 @@ static void fast_task(void *arg)
     }
 }`,
         hints: [
-          'When `fast_task` wakes, is it *higher* priority than what is running?',
-          'Preemption is driven by priority. Between equal priorities only the tick-driven time slice applies.',
-          'What is the tick period, and can a task at the same priority cut in before the slice ends?',
+          'When `fast_task`\'s delay expires, which state does it move to? Is being in that state enough to get the processor?',
+          'Preemption happens only for a task of *higher* priority than the running one. What is the only other mechanism that could take the CPU from `crunch_task`, and is it available here?',
+          'With time slicing off and equal priorities, `crunch_task` keeps the CPU until it blocks or yields. Does it ever?',
         ],
         answer: { type: 'text', accept: ['priorit'], nudge: 'Think about what the scheduler compares when fast_task becomes ready.' },
-        solution: 'Both tasks have priority 2. When `fast_task`\'s delay expires it becomes ready, but it is not *higher* than the running task, so there is no immediate preemption. It gets the CPU only when the time slice rotates at a tick, and then `crunch_task` gets a full slice back. The pin toggles at an irregular rate set by the tick and the slicing, not every 1 ms. (Also, a 1 ms delay only means anything if the tick rate is at least 1 kHz — at the 100 Hz ESP-IDF default, `pdMS_TO_TICKS(1)` is 0 ticks.)\n\nSmallest fix: **give `fast_task` a higher priority than `crunch_task`.** A task that is short and urgent should be above a task that is long and patient.' },
+        solution: '`fast_task` toggles once and blocks for one tick; `crunch_task` runs. At the next tick `fast_task` becomes Ready — but Ready is not Running. It is not *higher* than the running task, so there is no preemption, and with time slicing off the kernel does not rotate equal priorities either. `crunch_task` never blocks and never yields, so `fast_task` waits for ever.\n\nSmallest fix: **give `fast_task` a higher priority than `crunch_task`.** A task that is short and urgent belongs above a task that is long and patient.\n\nTwo things to know before you trust what you see on a board. With time slicing **on** (the FreeRTOS default, and fixed on in ESP-IDF) the original code appears to work, because the tick that readies `fast_task` also rotates the equal-priority tasks. That is luck, not design: it lasts only until another task joins priority 2 and takes its turn in the rotation. And a 1 ms delay needs a tick of at least 1 kHz — at the 100 Hz ESP-IDF default, `pdMS_TO_TICKS(1)` is 0 ticks and the call does not block at all.' },
 
       `## A harder case
 
@@ -578,7 +589,7 @@ Upstream FreeRTOS is configured at compile time through macros in a header you o
 | \`configCHECK_FOR_STACK_OVERFLOW\` | 1 or 2 enables run-time stack checks and a hook |
 | \`configUSE_MUTEXES\`, \`configUSE_RECURSIVE_MUTEXES\`, \`configUSE_COUNTING_SEMAPHORES\` | compile those objects in |
 | \`configMAX_SYSCALL_INTERRUPT_PRIORITY\` | highest interrupt priority allowed to call the kernel (Cortex-M and similar ports) |
-| \`INCLUDE_vTaskDelayUntil\`, \`INCLUDE_uxTaskGetStackHighWaterMark\`, … | include optional API functions |
+| \`INCLUDE_xTaskDelayUntil\`, \`INCLUDE_uxTaskGetStackHighWaterMark\`, … | include optional API functions (older kernels spell the first one \`INCLUDE_vTaskDelayUntil\`) |
 
 On ESP-IDF you do not edit this header. The same settings are exposed through \`idf.py menuconfig\` under *Component config → FreeRTOS* (for example \`CONFIG_FREERTOS_HZ\`) and end up in \`sdkconfig\`.`,
 
@@ -595,7 +606,7 @@ The dual-core ESP32 and ESP32-S3 run Espressif's **symmetric multiprocessing (SM
 - **\`app_main\` is itself a task**, created by the start-up code at a low priority. It may return; the scheduler is already running before it is called, so you never call \`vTaskStartScheduler\` yourself.
 
 The default tick rate in ESP-IDF is 100 Hz, giving a 10 ms tick; check \`CONFIG_FREERTOS_HZ\` in your \`sdkconfig\` rather than assuming.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Creating tasks on ESP-IDF (written against the ESP-IDF FreeRTOS documentation; not run on a board here).',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Creating tasks on ESP-IDF. Every call was checked against the ESP-IDF v6.1 headers; the program was not compiled as a whole or run on a board here.',
         code: C`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
@@ -650,7 +661,7 @@ void app_main(void)
           'A delay of n ticks ends at the n-th tick interrupt after the call. Where between two ticks might the call happen?',
         ],
         answer: { type: 'text', accept: ['\\b1\\s*tick', 'one tick', '0.*10\\s*ms', 'up to 10'], nudge: 'Work out pdMS_TO_TICKS(15) with a 10 ms tick first.' },
-        solution: 'One tick is 10 ms. `pdMS_TO_TICKS(15)` is 15 × 100 / 1000 = 1.5, truncated to **1 tick**. A 1-tick delay ends at the next tick interrupt, which is somewhere between just over 0 ms and 10 ms away. So the "15 ms delay" blocks for **between roughly 0 and 10 ms**. If you need at least 15 ms, ask for enough ticks to cover it (here 3 ticks guarantees ≥ 20 ms minus a little, i.e. always more than 15 ms) or use a hardware timer for fine delays.' },
+        solution: 'One tick is 10 ms. `pdMS_TO_TICKS(15)` is 15 × 100 / 1000 = 1.5, truncated to **1 tick**. A 1-tick delay ends at the next tick interrupt, which is somewhere between just over 0 ms and 10 ms away. So the "15 ms delay" blocks for **between roughly 0 and 10 ms**. If you need at least 15 ms, ask for enough ticks to cover it: 2 ticks block for between 10 and 20 ms, which is not enough; 3 ticks block for between 20 and 30 ms, always more than 15. The rule for "at least *t*" is ⌈t ÷ tick period⌉ + 1 ticks. For fine delays use a hardware timer.' },
 
       `## A harder case
 
@@ -658,7 +669,7 @@ A colleague's ESP32 firmware has a "config" struct that a priority-10 network ta
       { t: 'exercise',
         prompt: 'Is the argument valid on the ESP32-C3? Is it valid on the ESP32-S3? What should be done?',
         hints: [
-          'How many cores does each chip have (docs/FACTS.md: C3 is single-core RISC-V, S3 is dual-core)?',
+          'How many cores does each chip have? (The ESP32-C3 has one RISC-V core; the ESP32-S3 has two Xtensa cores.)',
           'On two cores, what does "highest priority ready task runs" become?',
           'Even on one core, is there a direction in which the argument fails? Which task can be interrupted mid-operation by the other?',
         ],
@@ -720,7 +731,7 @@ A colleague's ESP32 firmware has a "config" struct that a priority-10 network ta
     blocks: [
       `## The problem
 
-A data logger samples a sensor "every 100 ms" and timestamps each sample by counting: sample *n* is assumed to be at *n* × 100 ms. After an hour the log is about 18 minutes behind the wall clock. The task is the highest priority in the system and nothing preempts it. The loop is three lines. Where did the time go?`,
+A data logger samples a sensor "every 100 ms" and timestamps each sample by counting: sample *n* is assumed to be at *n* × 100 ms. By the time the log's own timestamps say one hour has passed, the wall clock says 1 h 18 min. The task is the highest priority in the system and nothing preempts it. The loop is three lines. Where did the time go?`,
 
       `## Four states
 
@@ -777,7 +788,7 @@ The rule again: **the highest-priority Ready task runs.** What happens among tas
       `## Periodic work: \`vTaskDelay\` versus \`vTaskDelayUntil\`
 
 \`vTaskDelay(n)\` means "block for *n* ticks **from now**". \`vTaskDelayUntil(&last, n)\` means "block until *n* ticks after **the last time I was supposed to wake**", and it updates \`last\` for you.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Two ways to write a "100 ms" task. Only the second has a 100 ms period.',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Two ways to write a "100 ms" task. Only the second has a 100 ms period. (`take_sample()` stands for your own code.)',
         code: C`/* Drifts: period = work time + 100 ms */
 static void sample_task_drifting(void *arg)
 {
@@ -804,6 +815,23 @@ static void sample_task_periodic(void *arg)
           { lines: '18', md: 'The kernel computes `last_wake + period` and blocks the task until the tick count reaches it. Time spent in `take_sample()`, or spent preempted, comes out of the sleep — the wake-up instants stay on a fixed grid.' },
         ] },
       `That is the opening problem: a loop of work-then-\`vTaskDelay\` has a period of *delay + work time + any time spent preempted*. With 30 ms of work, an hour of "100 ms" samples takes 1.3 hours.
+
+**Tick by tick.** Scale it down so that it fits on a line: the work takes 1 tick and the intended period is 5 ticks.`,
+      { t: 'ascii', caption: 'W = the task is working, . = Blocked. The first task slips one tick further behind the 5-tick grid on every cycle; the second is pulled back to the grid each time.',
+        text: `tick:                  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20
+grid (every 5):        |              |              |              |              |
+
+work; vTaskDelay(5)    W  .  .  .  .  .  W  .  .  .  .  .  W  .  .  .  .  .  W  .  .
+  starts at 0, 6, 12, 18 ...      period = 1 + 5 = 6 ticks      late by 0, 1, 2, 3 ...
+
+work; vTaskDelayUntil  W  .  .  .  .  W  .  .  .  .  W  .  .  .  .  W  .  .  .  .  W
+  starts at 0, 5, 10, 15, 20      period = 5 ticks              late by 0, 0, 0, 0 ...
+
+How vTaskDelayUntil(&last, 5) does it:
+  last = 0   work ends at tick 1   wake target = 0 + 5 = 5    sleeps 4 ticks, last = 5
+  last = 5   work ends at tick 6   wake target = 5 + 5 = 10   sleeps 4 ticks, last = 10
+  If the work once takes 3 ticks:  ends at 13, target still 15, sleeps only 2 ticks.` },
+      `You can reproduce the first row in the **Starvation** simulator above: Poller does 1 tick of work and then calls \`vTaskDelay\`. Set its delay to 5 and read off where it runs — ticks 0, 6, 12, 18, 24 — not the 0, 5, 10, 15 you asked for. Background in the same simulator is a \`vTaskDelayUntil\` task: it is released at 0, 10, 20 whatever its run time is.
 
 \`vTaskDelayUntil\` removes the **drift** (accumulating error). It does not remove **jitter** (variation of each individual wake-up), which still comes from tick granularity and from higher-priority tasks. And if one cycle overruns its period, the next wake time is already in the past, so the call returns immediately and the task runs back-to-back until it has caught up. Newer kernels provide \`xTaskDelayUntil\`, which returns whether the task actually had to sleep — a cheap overrun detector.`,
       { t: 'callout', kind: 'mistake', title: 'Initialising the wake time inside the loop',

@@ -35,7 +35,9 @@ int main(void)
     while (rb_get(&b)) putchar(b);
     putchar('\n');
 
-    printf("empty=%d\n", rb_get(&b) ? 0 : 1);
+    b = '?';
+    i = rb_get(&b) ? 0 : 1;                  /* a get from an empty FIFO must not touch b */
+    printf("empty=%d b=%c\n", i, b);
     printf("head=%u tail=%u\n", (unsigned)rb_head, (unsigned)rb_tail);
     return 0;
 }
@@ -89,7 +91,7 @@ bool rb_get(uint8_t *b)
     return true;
 }
 ` + rbMain,
-  tests: [{ name: 'fill, drain, wrap', stdout: 'accepted=7\nabc\ndefgXYZ\nempty=1\nhead=2 tail=2\n' }],
+  tests: [{ name: 'fill, drain, wrap', stdout: 'accepted=7\nabc\ndefgXYZ\nempty=1 b=?\nhead=2 tail=2\n' }],
   hints: [
     'Empty is `head == tail`. If "full" were also `head == tail` you could not tell them apart, which is why one slot is sacrificed.',
     'Full means: *if I advanced head by one, it would equal tail*. Compute `next = (head + 1) & RB_MASK` and compare that with `rb_tail`.',
@@ -143,9 +145,9 @@ int main(void)
     while (rb_get(&b)) putchar(b);
     putchar('\n');
 
-    /* Scenario B: move the indices near the end, then store 4 bytes so head wraps. */
+    /* Scenario B: move the indices near the end, then store 3 bytes so head wraps. */
     rb_head = 6; rb_tail = 6;
-    for (i = 0; i < 4; i++) rb_put((uint8_t)('w' + i));
+    for (i = 0; i < 3; i++) rb_put((uint8_t)('w' + i));
     printf("B: head=%u tail=%u count=%d\n", (unsigned)rb_head, (unsigned)rb_tail, rb_count());
     return 0;
 }
@@ -154,7 +156,7 @@ export const clRingOffByOne = {
   title: 'Debug: the FIFO that loses everything',
   prompt: `A field report says: *"if the host sends a long burst, the device ignores the whole burst, not just the tail of it."*
 
-Run the program. Scenario A stores 9 bytes into a FIFO that holds 7. Expected: 7 accepted, data \`1234567\`. Scenario B expects \`count=4\`.
+Run the program. Scenario A stores 9 bytes into a FIFO that holds 7. Expected: 7 accepted, data \`1234567\`. Scenario B stores 3 bytes across the end of the array and expects \`count=3\`.
 
 There are **two** bugs, both in the two short helper functions at the top. Find and fix them. Do not change \`rb_put\`, \`rb_get\` or \`main\`.`,
   starter: obHead + C`
@@ -179,11 +181,11 @@ static int rb_count(void)
     return (int)((rb_head - rb_tail) & RB_MASK);
 }
 ` + obTail,
-  tests: [{ name: 'burst and wrapped count', stdout: 'A: accepted=7 count=7\nA: data=1234567\nB: head=2 tail=6 count=4\n' }],
+  tests: [{ name: 'burst and wrapped count', stdout: 'A: accepted=7 count=7\nA: data=1234567\nB: head=1 tail=6 count=3\n' }],
   hints: [
     'Trace scenario A by hand: after 7 puts, `head` is 7 and `tail` is 0. What does `rb_head + 1u == rb_tail` evaluate to?',
     '`7 + 1` is 8, and no index is ever 8. The comparison must use the *wrapped* next index. After the bad eighth put, head wraps to 0 = tail, which is the definition of empty: seven good bytes vanish.',
-    'In scenario B, head (2) is numerically smaller than tail (6). `2 - 6` is not 4 until you wrap it: `(head - tail) & RB_MASK`.',
+    'In scenario B, head (1) is numerically smaller than tail (6). `1 - 6` is −5, and dropping the sign gives 5, which is the number of *free* positions, not the 3 bytes stored. Wrap the difference instead: `(head - tail) & RB_MASK`.',
   ],
   explain: `The first bug is the dangerous one. A missing mask in the full check does not lose one byte: it lets head catch up with tail, and \`head == tail\` means *empty*, so everything queued is silently discarded. It only shows when the head is at the last index at the moment the buffer fills, which is why it survives casual testing.
 
@@ -222,7 +224,10 @@ int main(void)
     printf("good=%d len=%u\n", ok ? 1 : 0, (unsigned)s.len);
     printf("evil=%d\n", frame_parse(&s, evil, sizeof evil));
     printf("trunc=%d\n", frame_parse(&s, trunc, sizeof trunc));
+    printf("cut=%d\n", frame_parse(&s, good, sizeof good - 1u));     /* the good frame, checksum byte not yet received */
+    printf("none=%d\n", frame_parse(&s, NULL, 0u));                  /* nothing received: there is no in[0] to read */
     printf("badsum=%d\n", frame_parse(&s, badsum, sizeof badsum));
+    printf("kept: len=%u payload=%c%c%c\n", (unsigned)s.len, s.payload[0], s.payload[1], s.payload[2]);
     printf("full=%d\n", frame_parse(&s, full, sizeof full));
     printf("is_admin=%u\n", (unsigned)s.is_admin);
     return 0;
@@ -236,10 +241,10 @@ Run it: the frame called \`evil\` claims 12 payload bytes, and after parsing it 
 
 Fix \`frame_parse\` so that it returns \`false\` **without writing anything** to \`*s\` when
 1. the claimed length is larger than \`PAYLOAD_MAX\`,
-2. the input is too short to contain \`len\` payload bytes plus the checksum byte, or
+2. the input is too short to contain the length byte, \`len\` payload bytes and the checksum byte (\`n\` is the number of bytes received; with \`n == 0\` not even \`in[0]\` may be read), or
 3. the checksum is wrong.
 
-A frame of exactly \`PAYLOAD_MAX\` bytes is legal.`,
+A frame of exactly \`PAYLOAD_MAX\` bytes is legal. The test bench checks that the session still holds the last *good* frame after every rejected one.`,
   starter: frHead + C`
 static bool frame_parse(session_t *s, const uint8_t *in, size_t n)
 {
@@ -273,7 +278,7 @@ static bool frame_parse(session_t *s, const uint8_t *in, size_t n)
     return true;
 }
 ` + frMain,
-  tests: [{ name: 'good, oversized, truncated, bad checksum, maximum', stdout: 'good=1 len=3\nevil=0\ntrunc=0\nbadsum=0\nfull=1\nis_admin=0\n' }],
+  tests: [{ name: 'good, oversized, truncated, bad checksum, maximum', stdout: 'good=1 len=3\nevil=0\ntrunc=0\ncut=0\nnone=0\nbadsum=0\nkept: len=3 payload=abc\nfull=1\nis_admin=0\n' }],
   hints: [
     'There are two different bounds: the size of the *destination* (`PAYLOAD_MAX`) and the number of bytes actually *received* (`n`). A parser has to check the length field against both.',
     'A frame with `len` payload bytes occupies `len + 2` bytes in total. Compare that with `n` before reading `in[1 + len]`.',
@@ -294,6 +299,7 @@ const spHead = C`#include <stdint.h>
 /* A pretend task stack. Like a real one it is used from the TOP index downward,
    so the words nearest index 0 are the last to be touched. */
 static uint32_t task_stack[STACK_WORDS];
+static uint32_t next_object;   /* NOT part of the stack: whatever the linker placed right after it */
 `;
 const spMain = C`
 /* Test bench: pretend a function call chain used the top words of the stack. */
@@ -305,9 +311,11 @@ static void simulate_use(uint32_t words)
 
 int main(void)
 {
+    next_object = PAINT;             /* the neighbour happens to hold the same bit pattern */
     stack_paint();
     printf("fresh: free=%u\n", (unsigned)stack_high_water());
     simulate_use(10);
+    task_stack[STACK_WORDS - 4u] = PAINT;   /* one of the ten used words is a saved value equal to the pattern */
     printf("after 10: free=%u\n", (unsigned)stack_high_water());
     simulate_use(40);
     printf("after 40: free=%u\n", (unsigned)stack_high_water());
@@ -358,9 +366,11 @@ uint32_t stack_high_water(void)
   hints: [
     'Painting is a plain loop over all `STACK_WORDS` entries.',
     'Scan from index 0. The loop needs two conditions: still inside the array, and the word still equals `PAINT`.',
-    'Check the bound first: `while (n < STACK_WORDS && task_stack[n] == PAINT)`. With the tests the other way round you read one word past the array when the stack is completely untouched.',
+    'Check the bound first: `while (n < STACK_WORDS && task_stack[n] == PAINT)`. With the tests the other way round you read one word past the array when the stack is completely untouched, and the test bench has put the pattern in that neighbouring word, so a scan that leaves the array reports 65 free words out of 64.',
   ],
   explain: `This is what FreeRTOS does for \`uxTaskGetStackHighWaterMark()\`: task stacks are filled with a known byte when the task is created, and the function counts how much of the fill survives. The answer is the *minimum free space ever observed*, which is why the fourth line still says 24.
+
+The scan stops at the **first** word that differs, on purpose. Counting every word that still equals the pattern would also count a used word whose value happens to be \`0xA5A5A5A5\` (the test bench plants one), and would report more free stack than there is: the unsafe direction for this measurement.
 
 Two limits to remember. A function that reserves a big local array but never writes the far end of it leaves paint intact, so the mark can under-report. And \`free=0\` means the stack was at least completely used: it may have gone further and corrupted whatever lies below.`,
 };
@@ -369,7 +379,7 @@ Two limits to remember. A function that reserves a big local array but never wri
 const rcHead = C`#include <stdint.h>
 #include <stdio.h>
 
-#define N_SAMPLES 6000u
+#define N_SAMPLES 12000u
 
 static uint8_t samples[N_SAMPLES];
 `;
@@ -385,7 +395,7 @@ int main(void)
 `;
 export const clRecursion = {
   title: 'Remove a recursion that eats the stack',
-  prompt: `\`sum_samples\` adds up a buffer recursively: one stack frame per sample. With 10 samples that is harmless. With 6000 samples it needs 6000 frames, and Bench-MCU has 64 KiB of RAM for *everything*.
+  prompt: `\`sum_samples\` adds up a buffer recursively: one stack frame per sample. With 10 samples that is harmless. With 12000 samples it needs 12000 frames, and Bench-MCU has 64 KiB of RAM for *everything*.
 
 Run it and read the failure. Then rewrite \`sum_samples\` so that its stack use does not depend on \`n\`. Keep the signature.`,
   starter: rcHead + C`
@@ -404,10 +414,11 @@ uint32_t sum_samples(const uint8_t *p, uint32_t n)
     return sum;
 }
 ` + rcMain,
-  tests: [{ name: 'small and large buffers', stdout: 'sum(10)=45\nsum(all)=45000\n' }],
+  tests: [{ name: 'small and large buffers', stdout: 'sum(10)=45\nsum(all)=90000\n' }],
   hints: [
-    'Each call pushes at least a return address, a saved frame pointer and the two arguments. Multiply by 6000.',
-    'The recursion only carries a running total and a position. Both fit in two local variables of a loop.',
+    'Each call pushes at least a return address, a saved frame pointer and the two arguments. Multiply by 12000 and compare with 64 KiB.',
+    'What does the recursion actually carry from one level to the next? A running total and a position. Both fit in two local variables of a loop.',
+    'Write a `for` loop over `i` from 0 to `n` that adds `p[i]` to a total. The total can reach 12000 × 15, so it needs a type wider than 16 bits.',
   ],
   explain: `Recursion depth that depends on input data is a stack size that depends on input data. On a desktop the stack is megabytes and grows on demand; on a microcontroller it is a fixed few hundred bytes to a few kilobytes and what lies beyond it is somebody else's memory.
 

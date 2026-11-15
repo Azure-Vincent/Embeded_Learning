@@ -139,7 +139,7 @@ Do not open the walkthrough until your version passes.`,
 
 | # | Threat | Mechanism | Does not cover |
 |---|---|---|---|
-| 1 | A1 replays or forges OPEN/CLOSE over the radio | MAC over each frame with a per-valve key; counter in the MACed bytes checked against a stored last-seen value | Jamming; a counter stored where it can be rewound (so keep the high-water mark in protected storage) |
+| 1 | A1 replays or forges OPEN/CLOSE over the radio | MAC over each frame with a per-valve key; counter in the MACed bytes checked against a stored last-seen value | Jamming; a counter stored where it can be rewound (so keep the high-water mark in protected storage); a counter too narrow to stay unique for the life of the key (the 1-byte counter in this lab's frame is for parser practice only: see the first extension) |
 | 2 | A2 extracts one valve's secrets and controls the fleet | Per-valve keys derived in the back end; no fleet secret on any device | The one extracted valve |
 | 3 | A2 or A3 reads or changes firmware through SWD or the ROM loader | Debug disabled with erase-to-unlock; ROM loader disabled; settings write-protected | Invasive attacks beyond the stated capability |
 | 4 | A2 rewrites external flash slot B with modified firmware | Bootloader verifies the signature of any image before copying or booting it; root digest in OTP | A bug in correctly signed code |
@@ -199,7 +199,7 @@ You should be able to answer "how would you know this unit is in its production 
   challenge: [
     `## Extension, no solution given
 
-1. **Add freshness.** Extend the test bench with \`bool counter_accept(uint8_t counter)\` that accepts a frame only if its 8-bit counter is ahead of the last accepted one, handling wraparound within a window, and write the tests first. Decide and justify where the last-accepted value is stored so that a power cycle or a restored flash image cannot rewind it.
+1. **Add freshness, and find the flaw in the frame format.** Extend the test bench with \`bool counter_accept(uint8_t counter)\` that accepts a frame only if its counter is ahead of the last accepted one, and write the tests first. Then do the arithmetic the format invites: the counter is 8 bits and the key is fixed, so after 256 commands every counter value comes round again, and a frame recorded earlier carries a valid tag for a counter the valve will accept once more. A "wraparound window" does not fix that; it is the replay. Redesign the frame (a wider counter that never wraps in the product's life, or a session key renewed before the counter wraps), update the parser and its tests, and say how many commands per day your choice supports for ten years. Decide and justify where the last-accepted value is stored so that a power cycle or a restored flash image cannot rewind it.
 2. **Fuzz the parser.** Write a harness as shown in the lifecycle lesson and run it with a fuzzer and sanitizers. State the invariants that must hold for every accepted frame.
 3. **Re-target the threat model.** The vendor signs the utility contract. Add an adversary with a fault-injection bench and a budget. Which rows change rating, which mechanisms gain redundancy, and what would you ask the chip vendor?
 4. **Rehearse a read-back.** On a development board you own, find the vendor tool that reads the security-relevant configuration (eFuse summary, boot configuration, option bytes) and record what an unprovisioned board reports. Read only; burn nothing.`,

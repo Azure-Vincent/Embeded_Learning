@@ -133,8 +133,9 @@ the pin much larger than the sampling capacitor.
       { t: 'exercise',
         prompt: `A 12-bit SAR ADC is driven from a source whose resistance, together with the internal switch, is 20 kΩ. The sampling capacitance is 10 pF. Using the rule of 9 time constants for 12-bit settling, what is the minimum sample time in microseconds?`,
         hints: [
-          'τ = R × C = 20,000 Ω × 10 × 10⁻¹² F.',
-          'τ = 0.2 µs. Multiply by 9.',
+          'What kind of circuit do a resistance and the sampling capacitor form, and what single number describes how fast it settles?',
+          'τ = R × C = 20,000 Ω × 10 × 10⁻¹² F. Keep track of the powers of ten.',
+          'τ = 0.2 µs. The rule in the lesson says how many of these a 12-bit result needs.',
         ],
         answer: { type: 'number', value: 1.8, tol: 0.05, unit: 'µs' },
         solution: `τ = 20 kΩ × 10 pF = 200 ns. 9 τ = **1.8 µs**. Choose the next sample-time setting above that. The capacitance and switch resistance for a real part are in the ADC section of its datasheet's electrical characteristics.` },
@@ -339,8 +340,9 @@ region when started from \`0x6000\`: the classic "application linked at the wron
 
 What is the address of the first instruction the image executes? Answer in hex.`,
         hints: [
-          'Assemble each group of four bytes as a little-endian 32-bit word.',
-          'The second word is 0x10000139. What does bit 0 mean in a Cortex-M vector?',
+          'Which of the two words does the core load into PC at reset, and in what byte order are the words stored?',
+          'Assemble each group of four bytes as a little-endian 32-bit word: the last byte of the group is the most significant.',
+          'The second word is 0x10000139. What does bit 0 mean in a Cortex-M vector, and is it part of the address?',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?1000_?0138h?\\s*$'], nudge: 'Clear the Thumb bit of the reset vector.' },
         solution: `First word: \`0x2002_0000\`, the initial stack pointer (top of the 128 KB SRAM). Second word: \`0x1000_0139\`. Clearing bit 0 (the Thumb marker) gives the address of the first instruction: **\`0x1000_0138\`**.` },
@@ -409,7 +411,7 @@ partitions, (c). If it lists partitions and then rejects the image, (d).)`,
 Three bug reports:
 
 1. "The build succeeds, but the board dies after I added a 20 KB lookup table."
-2. "My global \`int threshold = 50;\` reads as garbage until I reflash; \`static int count;\` is fine."
+2. "My global \`int threshold = 50;\` reads as garbage at start-up; \`static int count;\` is fine."
 3. "The same source runs on the MAX78000 but hard-faults at the first function call on the MSPM0."
 
 None is a C bug. All three are answered by one file you have probably never opened: the linker script.`,
@@ -498,6 +500,7 @@ script**, which has two parts:
     .data : {
         _data = .;
         *(.data*)
+        . = ALIGN(4);
         _edata = .;
     } > SRAM AT > FLASH             /* runs in SRAM (VMA), stored in FLASH (LMA) */
     _data_load = LOADADDR(.data);
@@ -506,6 +509,7 @@ script**, which has two parts:
         _bss = .;
         *(.bss*)
         *(COMMON)
+        . = ALIGN(4);
         _ebss = .;
     } > SRAM
 
@@ -514,10 +518,11 @@ script**, which has two parts:
         explain: [
           { lines: '3', md: '\`KEEP\` stops the linker discarding the table as "unreferenced". Nothing in C refers to it; only the CPU does.' },
           { lines: '7', md: '\`> FLASH\` places the output section in the FLASH region. The location counter \`.\` advances as input is added.' },
-          { lines: '9-13', md: 'Two addresses for one section. The **VMA** (virtual, or run-time, address) is in SRAM: that is where code expects the variables. The **LMA** (load address) is in flash: that is where the initial values are stored in the image.' },
-          { lines: '14', md: 'A symbol holding the LMA, so startup code knows where to copy from.' },
-          { lines: '16', md: '\`NOLOAD\`: the section occupies address space but contributes no bytes to the image. Zeros are not stored in flash.' },
-          { lines: '23', md: 'The initial stack pointer: the first word of the vector table refers to this symbol.' },
+          { lines: '9-14', md: 'Two addresses for one section. The **VMA** (virtual, or run-time, address) is in SRAM: that is where code expects the variables. The **LMA** (load address) is in flash: that is where the initial values are stored in the image.' },
+          { lines: '12', md: 'Round the end of the section up to a multiple of 4, because the startup loop below copies whole 32-bit words.' },
+          { lines: '15', md: 'A symbol holding the LMA, so startup code knows where to copy from.' },
+          { lines: '17', md: '\`NOLOAD\`: the section occupies address space but contributes no bytes to the image. Zeros are not stored in flash.' },
+          { lines: '25', md: 'The initial stack pointer: the first word of the vector table refers to this symbol.' },
         ] },
 
       `### Startup code: making RAM match what C promises
@@ -552,12 +557,41 @@ void Reset_Handler(void)
           { lines: '18', md: 'There is nothing to return to. If \`main\` returns, stay here (or reset).' },
         ] },
 
-      `Now the three bug reports:
+      `### The copy, one variable at a time
+
+Take the image described by the map file further down: \`.text\` ends at \`0x1001_3A34\`, so that is where the linker
+puts the stored copy of \`.data\`. \`int threshold = 50;\` is the first variable in \`.data\`, and \`count\` is somewhere
+in \`.bss\`. Follow them from the build to \`main\`:
+
+\`\`\`
+                               flash 0x1001_3A34 (LMA)    RAM 0x2000_0000 (VMA)     RAM, count in .bss
+ after linking / flashing      32 00 00 00                (no power)                (no power)
+ power-on, before any code     32 00 00 00                ?? ?? ?? ??               ?? ?? ?? ??
+ after the .data copy loop     32 00 00 00                32 00 00 00               ?? ?? ?? ??
+ after the .bss zero loop      32 00 00 00                32 00 00 00               00 00 00 00
+ main runs: threshold = 75     32 00 00 00                4B 00 00 00               00 00 00 00
+ reset (power stays on)        32 00 00 00                4B 00 00 00  (stale)      whatever it held
+ after startup code again      32 00 00 00                32 00 00 00               00 00 00 00
+\`\`\`
+
+Three things to take from the table:
+
+- Every instruction that uses \`threshold\` was compiled with the address \`0x2000_0000\` (the VMA). No code except
+  the copy loop ever refers to \`0x1001_3A34\` (the LMA).
+- The flash copy never changes at run time. It is the "factory setting" the variable returns to at every start.
+- \`count\` has no bytes in the image at all. It is zero only because a loop wrote zeros over whatever was in RAM.
+
+A common wrong picture is that initialised variables "live in flash" or that the linker "puts 50 into RAM". The
+linker cannot put anything into RAM: RAM is empty when power arrives. All it can do is store the value in flash
+and leave symbols behind so that startup code can do the copying.
+
+Now the three bug reports:
 
 1. The table was not \`const\`, so it went to \`.data\`: 20 KB of RAM as well as 20 KB of flash. Either the link failed
    with "region SRAM overflowed", or it fit and left too little room for the stack, which then grew down into \`.bss\`.
 2. The \`.data\` copy is not happening (custom startup code, wrong symbol names, or an image flashed without its
-   \`.data\` load region). \`.bss\` variables look fine because zero is also what the debugger-reset RAM happened to hold.
+   \`.data\` load region). \`.bss\` variables look fine because the zeroing loop still runs, or because that RAM
+   happened to hold zeros anyway.
 3. The image was linked with SRAM at \`0x2000_0000\`. On the MSPM0L2228 SRAM is at \`0x2020_0000\`; the initial stack
    pointer points at nothing, and the first push faults.
 
@@ -574,7 +608,7 @@ size, and every input object's contribution.`,
  .text.main     0x1000e1b0       0x9c build/main.o
  .text.uart_tx  0x1000e24c       0x48 build/uart.o
  ...
- .rodata.sine   0x10012a00     0x2000 build/tables.o
+ .rodata.sine   0x10011a34     0x2000 build/tables.o
                 0x10013a34                _etext = .
 
 .data           0x20000000      0x124 load address 0x10013a34
@@ -613,8 +647,9 @@ size, and every input object's contribution.`,
       { t: 'exercise',
         prompt: `A map file for the MSPM0L2228 reports: \`.text\` size \`0x7C00\` (including \`.rodata\`), \`.data\` size \`0x200\`, \`.bss\` size \`0x1E00\`. SRAM is \`0x8000\` bytes and the stack is at the top. How many bytes of SRAM remain for heap and stack together? Answer in decimal.`,
         hints: [
+          'For each of the three sections, ask: does it occupy RAM at run time, flash, or both?',
           'RAM used by static data is .data + .bss. .text does not use RAM.',
-          '0x200 + 0x1E00 = 0x2000 = 8192. Subtract from 0x8000 = 32768.',
+          'Add the two sizes in hex, subtract the sum from 0x8000, then convert to decimal.',
         ],
         answer: { type: 'number', value: 24576, tol: 0, unit: 'bytes' },
         solution: `Static RAM = \`0x200 + 0x1E00 = 0x2000\` (8192 bytes). Remaining = \`0x8000 − 0x2000 = 0x6000\` = **24,576 bytes**. Flash used is \`0x7C00 + 0x200 = 0x7E00\` (32,256 bytes), because \`.data\`'s initial values are stored in flash too.` },

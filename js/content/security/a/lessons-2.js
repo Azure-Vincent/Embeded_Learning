@@ -351,12 +351,21 @@ You verify this by cutting power at every flash-operation boundary. On a host bu
 
 ESP-IDF provides this structure: two or more OTA app partitions, an \`otadata\` partition recording which to boot, and an \`esp_ota_*\` API to write and select images. Two bootloader features map directly onto this lesson:
 
-- **App rollback** (\`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE\`): a newly installed app boots in a pending-verify state. It must mark itself valid; if the device resets before it does, the bootloader returns to the previous app.
-- **Anti-rollback** (\`CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK\`): each app carries a \`secure_version\` in its application description, and the device keeps a secure-version value in eFuse. The bootloader refuses apps whose version is lower, and the eFuse value is updated when a newer app is confirmed valid.
+- **App rollback** (\`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE\`, off by default). The states in \`otadata\` are this lesson's states under other names:
 
-Option names and details vary between ESP-IDF releases; confirm them in the "Over the air updates" guide for the version you use.`,
+| This lesson | ESP-IDF state | Set by |
+|---|---|---|
+| new | \`ESP_OTA_IMG_NEW\` | \`esp_ota_set_boot_partition()\` after the download |
+| trial | \`ESP_OTA_IMG_PENDING_VERIFY\` | the bootloader, when it selects a *new* image |
+| confirmed | \`ESP_OTA_IMG_VALID\` | the app, with \`esp_ota_mark_app_valid_cancel_rollback()\` |
+| bad | \`ESP_OTA_IMG_ABORTED\` (never confirmed) or \`ESP_OTA_IMG_INVALID\` (app rejected itself) | the bootloader on the next boot, or the app |
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Confirming or rejecting a trial image (ESP-IDF). Written against the ESP-IDF OTA API documentation; not compiled or run on a board here.',
+  A reset for any reason while the image is pending-verify (the option's help text names power loss and the watchdog) ends in rollback to the previous app. With the option off, none of these states is used and a bad image simply keeps booting.
+- **Anti-rollback** (\`CONFIG_BOOTLOADER_APP_ANTI_ROLLBACK\`, which depends on app rollback being enabled). Each app carries a \`secure_version\` in its application description, set at build time by \`CONFIG_BOOTLOADER_APP_SECURE_VERSION\`. The chip keeps its floor in an eFuse field as a unary count, the number of bits set, exactly like the model above: 32 bits on the original ESP32, 16 on most other chips, 9 on the ESP32-C5 and only 4 on the ESP32-C2. The bootloader selects only apps whose version is at least the eFuse value, and the eFuse is advanced when the new app calls \`esp_ota_mark_app_valid_cancel_rollback()\`. Conditions the guide attaches: the partition table must be \`ota_0\` + \`ota_1\` with **no factory or test app** (those would be an unversioned way back), and on the original ESP32 the eFuse coding scheme must be "None". One exception to "the floor moves at confirm": if \`otadata\` is still blank and a higher-versioned app was flashed over serial, the bootloader advances the eFuse immediately.
+
+An updater can ask \`esp_efuse_check_secure_version(new_version)\` after receiving the first block of an image, and stop a doomed download before erasing anything.`,
+
+    { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Confirming or rejecting a trial image (ESP-IDF v6.1). Every call, type and constant was checked against esp_ota_ops.h in the v6.1 app_update component; the block was not compiled as a whole or run on a board. It only has an effect when CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE is set.',
       code: String.raw`#include "esp_ota_ops.h"
 #include "esp_log.h"
 
@@ -501,7 +510,10 @@ The second half of this lesson deals with a different gap. Once the doors are cl
 
 **On the hardware in this course:**
 
-- **ESP32 family.** Debug access and the ROM's serial download mode are controlled by eFuses. Enabling secure boot and flash encryption in their release configurations burns the relevant ones as part of the documented flow. The eFuse names and what each chip offers (for example, chips with the built-in USB Serial/JTAG controller have that path to consider as well as the JTAG pads) differ per chip, so use the security guide for your exact target and read the result back with the eFuse summary tool.
+- **ESP32 family** (ESP-IDF v6.1 security guide and eFuse tables). Both doors are closed by eFuses, and the names differ per chip, so read the result back with \`idf.py efuse-summary\`.
+  - *JTAG.* The guide states that the JTAG interface "stays disabled if any of the security features are enabled". The eFuse is \`JTAG_DISABLE\` on the original ESP32. Newer chips have \`DIS_PAD_JTAG\` for the pins and, where there is a built-in USB Serial/JTAG controller, \`DIS_USB_JTAG\` for that second path. Chips with the HMAC peripheral also have a *soft* disable (\`SOFT_DIS_JTAG\`) that can be re-enabled by presenting a secret key: that is the "authenticated debug" row of the table.
+  - *ROM download mode.* The build option \`CONFIG_SECURE_UART_ROM_DL_MODE\` chooses between leaving it enabled (the guide: "should not be enabled for production"), permanently disabling it (\`UART_DOWNLOAD_DIS\` on the ESP32, \`DIS_DOWNLOAD_MODE\` on newer chips; after that esptool and espefuse no longer work on the unit), and, on every chip except the original ESP32, switching permanently to **Secure Download Mode** (\`ENABLE_SECURITY_DOWNLOAD\`). Secure Download Mode keeps only a few commands: updating the SPI configuration, changing baud rate, a basic flash write, and \`get-security-info\`, which returns a summary of the enabled security features. It cannot read memory or run downloaded code.
+  - *Original ESP32 before chip revision v3.0.* The download-mode eFuse is valid only from v3.0, and the option above is not even offered for older revisions. On those chips the ROM loader cannot be switched off; flash encryption's download-mode eFuses limit what it can do instead. This is one more reason the security guides steer new designs to v3.0 or later.
 - **MSPM0L2228.** The NONMAIN boot configuration (BCR) in the SDK's \`boot_config.h\` exposes: debug access *enabled*, *enabled with password* or *disabled*; SWD port enable or disable; a TI failure-analysis enable; mass erase and factory reset each as *enabled*, *password* or *disabled*; BSL (bootstrap loader) invocation and mode settings; and static write protection of NONMAIN itself. For the exact semantics of each, see the device's security chapter in the technical reference manual.
 - **MAX78000.** This course's fact sheet does not cover its debug-lock options. See the device's security chapter in the user guide.`,
 
@@ -547,7 +559,7 @@ Now assume the doors are shut and the firmware has a flaw, for instance a parser
 
 The [[MPU]] changes that. It sits between the CPU and the bus and checks each access against a table of regions. Each region has a base, a size and attributes: readable or not, writable or not, executable or not, and whether unprivileged code may use it. An access that breaks the rules does not happen; the CPU takes a fault exception instead.
 
-Both Arm cores in this course have one: the MAX78000's Cortex-M4 and the MSPM0L2228's Cortex-M0+ report an MPU as present in their device headers. The number of regions and the alignment rules are implementation choices: read the \`MPU_TYPE\` register and the core's generic user guide. One difference to remember: Cortex-M4 (ARMv7-M) has a dedicated MemManage fault with status and address registers; Cortex-M0+ (ARMv6-M) has no separate MemManage exception, so an MPU violation arrives as a HardFault.
+Both Arm cores in this course have one: the MAX78000's Cortex-M4 and the MSPM0L2228's Cortex-M0+ report an MPU as present in their device headers. Whether an MPU is fitted, and with how many regions, is the chip designer's choice (the \`DREGION\` field of the \`MPU_TYPE\` register tells you; on both of these cores the answer is 0 or 8). Both use the same register set (\`RNR\`, \`RBAR\`, \`RASR\`) and the same rules: a region's size is a power of two, its base is aligned to its size, and where regions overlap the highest-numbered one wins. Two differences to remember. The smallest region is **32 bytes on ARMv7-M (Cortex-M4) but 256 bytes on ARMv6-M (Cortex-M0+)**, so a 32-byte stack guard like the one below has to become a 256-byte one on the MSPM0. And the fault differs: Cortex-M4 (ARMv7-M) has a dedicated MemManage fault with status and address registers; Cortex-M0+ (ARMv6-M) has no separate MemManage exception, so an MPU violation arrives as a HardFault.
 
 ### Privilege separation
 
@@ -604,7 +616,7 @@ void mpu_setup(void)
         { lines: '11-16', md: 'The ARMv7-M MPU is programmed one region at a time: select it with `RNR`, then write base and attributes. Regions must be a power of two in size and aligned to that size.' },
         { lines: '23', md: 'Flash is readable and executable but not writable through this mapping. The base and size shown match the MAX78000\'s flash (512 KB at `0x10000000`); use your own part\'s values.' },
         { lines: '24', md: '`XN` set on all of RAM: data can be read and written, never fetched as instructions. If your project runs any function from RAM, it needs its own small executable, non-writable region.' },
-        { lines: '25', md: 'Higher-numbered regions take priority where they overlap, so this 32-byte no-access region wins over the RAM region and traps the first write below the stack limit. The linker script must align `__stack_limit` to 32 bytes.' },
+        { lines: '25', md: 'Higher-numbered regions take priority where they overlap, so this 32-byte no-access region wins over the RAM region and traps the first write below the stack limit. The linker script must align `__stack_limit` to 32 bytes. One trap: if the *main* stack is the one that overflows, the processor cannot push the exception frame either, and a handler that then uses the stack faults again and ends in HardFault or lockup. A robust fault handler starts in assembly by pointing the stack pointer at a small reserved area before it calls any C.' },
         { lines: '27', md: 'Without this the violation escalates to HardFault. With it, the MemManage handler can read `CFSR` and `MMFAR` to report what was accessed.' },
         { lines: '28', md: '`PRIVDEFENA` keeps the default memory map available to privileged code for anything not covered by a region (peripherals, system space). Unprivileged code gets only what the regions grant.' },
       ] },
@@ -785,7 +797,7 @@ Further habits worth making rules: no \`strcpy\`, \`sprintf\` or \`gets\`; no se
     { t: 'code', lang: 'c', status: 'host-tested', caption: 'Overflow-checked size arithmetic and a record copy that uses it, with host tests. Compiled with gcc -Wall -Wextra -std=c11 (also run under AddressSanitizer and UBSan); all cases passed.', code: CHECKED_COPY,
       explain: [
         { lines: '8-13', md: 'The test `a > SIZE_MAX - b` cannot itself overflow, because `SIZE_MAX - b` is always representable. The sum is computed only after it is known to fit.' },
-        { lines: '16-21', md: 'The same idea for multiplication, using division on the trusted constant. The `b != 0` guard avoids dividing by zero.' },
+        { lines: '16-21', md: 'The same idea for multiplication: the limit is computed by dividing the constant `SIZE_MAX`, which cannot overflow, and the product is formed only afterwards. The `b != 0` guard avoids dividing by zero.' },
         { lines: '34-35', md: '`count * rec_size` and `offset + total` are the two places where message-controlled numbers are combined. Each goes through a checked helper and each result is tested before the next step.' },
         { lines: '36-37', md: 'Two independent limits: reading past the source, and writing past the destination. Either alone is a vulnerability.' },
         { lines: '38', md: 'By the time `memcpy` runs, every quantity it uses has been proven in range. The copy is the last line, not the first.' },

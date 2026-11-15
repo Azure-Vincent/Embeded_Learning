@@ -74,6 +74,7 @@ int main(void)
     led_on(5);
     led_on(9);
     led_off(5);
+    led_off(5);          /* switching off an LED that is already off must change nothing */
 
     printf("DIR=%04X OUT=%04X\n", GPIO_DIR & 0xFFFFu, GPIO_OUT & 0xFFFFu);
     return 0;
@@ -108,6 +109,7 @@ int main(void)
     led_on(5);
     led_on(9);
     led_off(5);
+    led_off(5);          /* switching off an LED that is already off must change nothing */
 
     printf("DIR=%04X OUT=%04X\n", GPIO_DIR & 0xFFFFu, GPIO_OUT & 0xFFFFu);
     return 0;
@@ -115,8 +117,8 @@ int main(void)
 `,
       tests: [{ name: 'only the addressed pin changes', stdout: 'DIR=0228 OUT=0208\n', regs: { GPIO_DIR: 0x228, GPIO_OUT: 0x208 } }],
       hints: [
-        'After the three `led_init` calls only pin 9 is an output. Each call replaced the whole direction register.',
-        '`led_off` is the worst of the three: `~(1u << 5)` has a 1 in *every* other position, and `=` writes them all.',
+        'Print `GPIO_DIR` after each `led_init` call (or reason it through). How many bits of the register does `=` write, and what value do the bits other than `pin` receive?',
+        'After the three `led_init` calls only pin 9 is an output: each call replaced the whole direction register. `led_off` is the worst of the three: `~(1u << 5)` has a 1 in *every* other position, and `=` writes them all.',
         'Use `|=` to set and `&= ~(...)` to clear, in all three functions.',
       ],
       explain: `Plain assignment replaces the register; \`|=\` and \`&= ~\` update one bit of it. The inverted mask is right in \`led_off\`, but it belongs on the right of an AND, where its 1 bits mean "keep". Plain \`=\` is correct only when you intend to define every bit, for example once during initialisation.`,
@@ -225,7 +227,7 @@ int main(void)
 `,
       tests: [{ name: 'three conversions, channel field replaced each time', adc: [1000, 4095, 7], stdout: 'ch3=1000\nch10=4095\nch1=7\nctrl=10\n' }],
       hints: [
-        'The starter ORs the channel in. After channels 3, 10 and 1 the field would hold `3 | 10 | 1` = 11.',
+        'The starter ORs the channel in. What does the field hold after channels 3, 10 and 1 have each been ORed into it? What has to happen to the old channel before the new one goes in?',
         'Read `ADC_CTRL` into a local, AND it with `~ADC_CTRL_CH_MASK`, OR in `(channel << SHIFT) & MASK`, and write it back together with the START bit.',
         'Poll with `while ((ADC_STATUS & ADC_STATUS_DONE) == 0) { }` before reading `ADC_DATA`.',
       ],
@@ -311,7 +313,10 @@ to lose. Note the operator: **plain \`=\`, not \`|=\`**. A write-only register h
 It prints \`periods=3\` almost immediately and reports \`flag=1\`: the loop is counting the same expiry three times. Fix the acknowledgement so the output is:
 
 \`periods=3\`
-\`flag=0\``,
+\`waited for each one: yes\`
+\`flag=0\`
+
+(\`polls\` counts passes of the wait loop. Three real 200-tick periods need far more than 100 of them.)`,
       starter: C`
 #include <stdint.h>
 #include <stdio.h>
@@ -328,7 +333,9 @@ int main(void)
     TIM_CTRL = TIM_CTRL_ENABLE | TIM_CTRL_AUTO_RELOAD;
 
     uint32_t periods = 0;
+    uint32_t polls = 0;                            /* how often the loop looked at the flag */
     while (periods < 3) {
+        polls++;
         if (TIM_STATUS & TIM_STATUS_EXPIRED) {
             TIM_STATUS &= ~TIM_STATUS_EXPIRED;     /* acknowledge */
             GPIO_TOGGLE = 1u << 0;
@@ -338,6 +345,7 @@ int main(void)
 
     TIM_CTRL = 0;
     printf("periods=%u\n", periods);
+    printf("waited for each one: %s\n", polls > 100 ? "yes" : "no");
     printf("flag=%u\n", TIM_STATUS & TIM_STATUS_EXPIRED);
     return 0;
 }
@@ -358,7 +366,9 @@ int main(void)
     TIM_CTRL = TIM_CTRL_ENABLE | TIM_CTRL_AUTO_RELOAD;
 
     uint32_t periods = 0;
+    uint32_t polls = 0;                            /* how often the loop looked at the flag */
     while (periods < 3) {
+        polls++;
         if (TIM_STATUS & TIM_STATUS_EXPIRED) {
             TIM_STATUS = TIM_STATUS_EXPIRED;       /* write 1 to clear */
             GPIO_TOGGLE = 1u << 0;
@@ -368,14 +378,15 @@ int main(void)
 
     TIM_CTRL = 0;
     printf("periods=%u\n", periods);
+    printf("waited for each one: %s\n", polls > 100 ? "yes" : "no");
     printf("flag=%u\n", TIM_STATUS & TIM_STATUS_EXPIRED);
     return 0;
 }
 `,
-      tests: [{ name: 'three real periods, flag acknowledged', stdout: 'periods=3\nflag=0\n', regs: { GPIO_OUT: 0x1, TIM_STATUS: 0x0 } }],
+      tests: [{ name: 'three real periods, flag acknowledged', stdout: 'periods=3\nwaited for each one: yes\nflag=0\n', regs: { GPIO_OUT: 0x1, TIM_STATUS: 0x0 } }],
       hints: [
-        'Work out the value `TIM_STATUS &= ~TIM_STATUS_EXPIRED` actually writes when the flag is set. Then look up what writing a 0 to a W1C bit does.',
-        'The flag is cleared by writing a **1** to it.',
+        'Expand the acknowledgement into its three steps: what is read, what is computed, what is written? Then look up in the access-type table what the register does with that written value.',
+        '`&= ~` reads 1, computes 0 and writes 0. Writing 0 to a W1C bit does nothing. The flag is cleared by writing a **1** to it, inside the loop, each time an expiry is handled.',
         '`TIM_STATUS = TIM_STATUS_EXPIRED;` — a plain write of the mask. No read is needed.',
       ],
       explain: `\`&= ~\` reads 1, computes 0 and writes 0, which a W1C bit ignores. The flag stayed set, so the next two loop passes saw the same expiry. With only one flag in this register, \`|=\` would have happened to work; on a register with several flags it clears all pending ones. The habit that is always right for W1C: plain assignment of exactly the bits you have handled.`,
@@ -468,8 +479,8 @@ int main(void)
 `,
       tests: [{ name: 'toggle and masked write', stdout: '81\nA9\nA6\n36\n', regs: { GPIO_OUT: 0x36 } }],
       hints: [
-        '`pin_toggle` is one store to `GPIO_TOGGLE`, in the same style as the two functions above it.',
-        'For `pins_write`, keep the unmasked bits (`GPIO_OUT & ~mask`) and take the masked bits from `value` (`value & mask`).',
+        'Look at the register table: which register inverts output bits when written? For `pins_write`, split the problem in two: which bits of the old `GPIO_OUT` must survive, and which bits of `value` may be used?',
+        '`pin_toggle` is one store to `GPIO_TOGGLE`, in the same style as the two functions above it. For `pins_write`, keep the unmasked bits (`GPIO_OUT & ~mask`) and take the masked bits from `value` (`value & mask`).',
         'The third call passes `value = 0xF6` with `mask = 0x0F`. If the high nibble changes, you forgot `& mask` on the value.',
       ],
       explain: `\`(old & ~mask) | (value & mask)\` is the general "replace these bits" expression; a field update is the same thing with a shift. An alternative with no read is two stores: \`GPIO_CLR = mask & ~value; GPIO_SET = mask & value;\`. That version cannot lose an interrupt handler's change to another pin, but the pins pass through an intermediate state between the two writes. Which matters more depends on what is wired to the pins.`,
@@ -530,7 +541,7 @@ void timer_ack(void)
         'Old value `0x713`: the field (digit at bits 11:8, lower three bits) is 7. Replace it with 5 and keep `0x13`.',
       ],
       solution: '`CLKCTRL = (CLKCTRL & ~(0x7u << 8)) | (5u << 8);` The old field value 7 is cleared and 5 inserted: `0x0000_0513`. Using `|=` alone would have left 7 (`111 | 101 = 111`).',
-      answer: { type: 'text', accept: ['^\\s*(0x)?0*513\\s*$', '0x0*513', '0000_0513'], nudge: 'Give the final register value in hex. Only bits 10:8 change; bits 7:0 keep `0x13`.' } },
+      answer: { type: 'text', accept: ['(0x)?[0_ ]*513h?'], nudge: 'Give the final register value in hex. Only bits 10:8 change; bits 7:0 keep `0x13`.' } },
     `## A harder case: reading a datasheet register description
 
 On a chip you have not used before, every register write should be preceded by four questions, answered from the
@@ -703,6 +714,7 @@ static void uart0_putc(char c)
 
 int main(void)
 {
+    UART0->CTRL = 1u << 1;       /* start-up code has already set RX_IRQ_EN (bit 1) */
     uart0_init(104);
     uart0_putc('O');
     uart0_putc('K');
@@ -743,6 +755,7 @@ static void uart0_putc(char c)
 
 int main(void)
 {
+    UART0->CTRL = 1u << 1;       /* start-up code has already set RX_IRQ_EN (bit 1) */
     uart0_init(104);
     uart0_putc('O');
     uart0_putc('K');
@@ -751,10 +764,10 @@ int main(void)
     return 0;
 }
 `,
-      tests: [{ name: 'UART configured and three bytes sent', uartTx: 'OK\n', stdout: '16\n', regs: { UART_BAUD: 104, UART_CTRL: 0x1 } }],
+      tests: [{ name: 'UART configured, RX_IRQ_EN preserved, three bytes sent', uartTx: 'OK\n', stdout: '16\n', regs: { UART_BAUD: 104, UART_CTRL: 0x3 } }],
       hints: [
-        '`UART0` is a pointer to the struct, so registers are reached with `->`: `UART0->BAUD = divisor;`.',
-        'Transmission is dropped while `ENABLE` is 0. Set it with `|=` in `uart0_init`.',
+        '`UART0` is a pointer to the struct. Which operator reaches a field through a pointer? And `main` has already set bit 1 of `CTRL`: which assignment operator keeps it?',
+        'Registers are reached with `->`: `UART0->BAUD = divisor;`. Transmission is dropped while `ENABLE` is 0. Set it with `|=` in `uart0_init`; a plain `=` would clear `RX_IRQ_EN`.',
         'In `uart0_putc`, loop while `(UART0->STATUS & UART_STATUS_TX_READY) == 0`, then store to `UART0->DATA`. Without the wait, the `K` is written while the transmitter is still busy with the `O` and is lost.',
       ],
       explain: `\`UART0->CTRL\` is the 32-bit object at base + 8, exactly what the macro \`UART_CTRL\` in the predefined header names. The struct adds no code; it only lets the compiler compute the offsets. \`TX_READY\` drops for a short time after each write, so the polling loop is what makes consecutive characters arrive.`,
@@ -763,7 +776,9 @@ int main(void)
 
 A \`union\` looks like a struct, but all its members start at offset 0 and share the same bytes. Its size is that of
 the largest member. Writing one member and reading another reinterprets the bytes; this is called **type punning**. C
-(since C99) permits it through a union. C++ does not.
+(since C99) permits it when the read is made **through the union object itself** (\`v.bytes[0]\`), provided the bytes form a
+valid value of the member you read. C++ does not permit it at all. Taking pointers to two different members and handing
+them to other code is not covered by this permission; the alignment lesson explains the rule (strict aliasing) behind that.
 
 Two legitimate uses:
 
@@ -856,7 +871,7 @@ int main(void)
 `,
       tests: [{ name: 'big-endian length decoded', stdout: 'len=258\nlen=16\n' }],
       hints: [
-        'The buggy version prints 513 and 4096. Write those in hex and compare with the bytes in the packets.',
+        'Write the two wrong results in hexadecimal and put them next to the two length bytes of each packet. What has happened to the bytes?',
         '`memcpy` into a `uint16_t` uses the CPU\'s own byte order. The protocol defines a different one.',
         'Build the value arithmetically: the first length byte shifted left by 8, ORed with the second.',
       ],
@@ -900,7 +915,7 @@ int main(void)
 misses a case (\`-Wswitch\`). Know their limits:
 
 - An enum variable is **just an integer**. Nothing stops it holding 99, whether through a cast, a corrupted byte, or a deliberately glitched instruction. Always handle the unexpected value: a \`default:\` that goes to a safe state.
-- The **size** of an enum type is implementation-defined. Arm GCC normally uses 4 bytes; with \`-fshort-enums\` it uses the smallest type that fits. So do not put an enum type directly into a struct that describes a wire format or a register. Use \`uint8_t\` there and convert.
+- The **size** of an enum type is implementation-defined. GCC uses 4 bytes on most targets (RISC-V, Xtensa, x86, Arm Linux), but with \`-fshort-enums\` it uses the smallest integer type that fits, and the bare-metal Arm toolchain \`arm-none-eabi-gcc\` has that option **on by default** because the Arm EABI specifies it. The same enum can therefore be 1 byte in the firmware and 4 bytes in the PC test build. So do not put an enum type directly into a struct that describes a wire format or a register. Use \`uint8_t\` there and convert.
 - For security-relevant states, values such as 0 and 1 are one bit-flip apart. The security section discusses choosing constants with a larger Hamming distance.`,
     clab({
       title: 'Read: layout of a struct, a union and an enum',
@@ -1240,8 +1255,8 @@ int main(void)
 `,
       tests: [{ name: 'the string is modified in RAM', stdout: 'Hello\n' }],
       hints: [
-        'The faulting address starts with `0x0800`. That is the flash region, where string literals are stored.',
-        '`char *greeting = "hello";` makes a pointer to the literal itself. No writable copy exists.',
+        'Look up the faulting address in the Bench-MCU memory map. Which region is it in, and what kind of data does the toolchain put there?',
+        'The address starts with `0x0800`: flash, where string literals are stored. `char *greeting = "hello";` makes a pointer to the literal itself. No writable copy exists.',
         'Declare an array instead: `char greeting[] = "hello";` reserves six bytes on the stack and copies the literal into them.',
       ],
       explain: `A string literal is constant data in flash. C lets a plain \`char *\` point at it for historical reasons, so the compiler does not object, and the write fails at run time. Declaring such pointers \`const char *\` turns the mistake into a compile error. GCC's \`-Wwrite-strings\` enforces that for you.`,
@@ -1326,8 +1341,8 @@ int main(void)
         { name: 'nothing connected: every wait times out', uartRx: '', stdout: 'timeout (c=?)\ntimeout (c=?)\ntimeout (c=?)\n' },
       ],
       hints: [
-        '`*uart_status` reads the register. Test bit 1 with `& RX_AVAIL_BIT`.',
-        'Count `max_polls` down inside a `while (max_polls > 0)` loop. Return `true` from inside the loop as soon as a byte is available.',
+        'A wait loop needs two ways out. What are they here, and which one may touch `*out`?',
+        '`*uart_status` reads the register; test bit 1 with `& RX_AVAIL_BIT`. Count `max_polls` down inside a `while (max_polls > 0)` loop and return `true` from inside the loop as soon as a byte is available.',
         'Read `UART_DATA` exactly once per byte: each read pops the receive buffer.',
       ],
       explain: `Every pass of the loop dereferences a \`volatile\` pointer, so the status register is read afresh each time. That is the property the opening example lacked. A poll count is a crude timeout because its duration depends on CPU speed and optimisation level; production code compares against a hardware timer instead, but the structure is the same: every wait has an exit.`,
@@ -1587,8 +1602,8 @@ int main(void)
 `,
       tests: [{ name: 'both labels survive', stdout: 'ID-BEEF ID-0042\n' }],
       hints: [
-        'With the local array, both pointers refer to a stack frame that has been released, and the second call reuses the same bytes as the first.',
-        'With `static char buf[8]` the storage survives, but there is only one buffer: `a` and `b` are the same address, so both print the last ID.',
+        'For each of the two pointers in \`main\`, name the object it points at and say when that object stops existing. Then ask the same question for the \`static\` version: how many buffers are there?',
+        'With the local array, both pointers refer to a released stack frame. With `static char buf[8]` the storage survives, but there is only one buffer: `a` and `b` are the same address, so both print the last ID.',
         'Change the signature to `void format_id(uint16_t id, char *out, size_t out_size)`, give `main` two arrays, and pass `sizeof` of each.',
       ],
       explain: `Three designs, three lifetimes. Automatic: the result is dead on return. Static: the result is overwritten by the next call (and by an interrupt handler that calls the same function). Caller-supplied: each caller owns its storage and decides how long it lives. Passing the size alongside the pointer lets the function refuse a buffer that is too small. This is the standard shape of an embedded formatting or driver API.`,
@@ -1600,18 +1615,20 @@ int main(void)
 - \`pool_alloc()\` returns a pointer to the lowest-numbered free block and marks it used, or returns \`NULL\` when every block is in use.
 - \`pool_free(p)\` returns \`true\` and marks the block free if \`p\` is the start of a block that is currently in use. It returns \`false\` for \`NULL\`, a pointer outside the pool, a pointer into the middle of a block, or a block that is already free.
 
-\`main\` exercises exhaustion, reuse, a bad pointer and a double free.`,
+\`main\` exercises exhaustion, reuse, a pointer into the middle of a block, a pointer to a different buffer and a double free, and finally checks that the data the owners wrote into blocks 0 and 3 is still there.`,
       starter: C`
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define POOL_BLOCKS 4
 #define BLOCK_SIZE  16
 
-static uint8_t pool_mem[POOL_BLOCKS * BLOCK_SIZE];
 static bool    pool_used[POOL_BLOCKS];
+static uint8_t pool_mem[POOL_BLOCKS * BLOCK_SIZE];
+static uint8_t other_buf[BLOCK_SIZE];        /* some other module's buffer: not part of the pool */
 
 static void *pool_alloc(void)
 {
@@ -1639,17 +1656,23 @@ int main(void)
     for (int i = 0; i < 5; i++) {
         b[i] = pool_alloc();
         printf("alloc -> %d\n", block_index(b[i]));
+        if (b[i] != NULL) {
+            memset(b[i], 0xA0 + i, BLOCK_SIZE);      /* the owner uses its whole block */
+        }
     }
 
     printf("free block 1: %d\n", pool_free(b[1]));
     printf("alloc -> %d\n", block_index(pool_alloc()));
 
     printf("free middle of block: %d\n", pool_free(pool_mem + 3));
-    printf("free outside pool: %d\n", pool_free(pool_mem + POOL_BLOCKS * BLOCK_SIZE));
+    printf("free a buffer outside the pool: %d\n", pool_free(other_buf));
     printf("free NULL: %d\n", pool_free(NULL));
 
     printf("free block 2: %d\n", pool_free(b[2]));
     printf("free block 2 again: %d\n", pool_free(b[2]));
+
+    printf("block contents: %02X %02X %02X %02X\n", pool_mem[0], pool_mem[BLOCK_SIZE - 1],
+           pool_mem[3 * BLOCK_SIZE], pool_mem[4 * BLOCK_SIZE - 1]);
     return 0;
 }
 `,
@@ -1658,12 +1681,14 @@ int main(void)
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define POOL_BLOCKS 4
 #define BLOCK_SIZE  16
 
-static uint8_t pool_mem[POOL_BLOCKS * BLOCK_SIZE];
 static bool    pool_used[POOL_BLOCKS];
+static uint8_t pool_mem[POOL_BLOCKS * BLOCK_SIZE];
+static uint8_t other_buf[BLOCK_SIZE];        /* some other module's buffer: not part of the pool */
 
 static void *pool_alloc(void)
 {
@@ -1708,27 +1733,33 @@ int main(void)
     for (int i = 0; i < 5; i++) {
         b[i] = pool_alloc();
         printf("alloc -> %d\n", block_index(b[i]));
+        if (b[i] != NULL) {
+            memset(b[i], 0xA0 + i, BLOCK_SIZE);      /* the owner uses its whole block */
+        }
     }
 
     printf("free block 1: %d\n", pool_free(b[1]));
     printf("alloc -> %d\n", block_index(pool_alloc()));
 
     printf("free middle of block: %d\n", pool_free(pool_mem + 3));
-    printf("free outside pool: %d\n", pool_free(pool_mem + POOL_BLOCKS * BLOCK_SIZE));
+    printf("free a buffer outside the pool: %d\n", pool_free(other_buf));
     printf("free NULL: %d\n", pool_free(NULL));
 
     printf("free block 2: %d\n", pool_free(b[2]));
     printf("free block 2 again: %d\n", pool_free(b[2]));
+
+    printf("block contents: %02X %02X %02X %02X\n", pool_mem[0], pool_mem[BLOCK_SIZE - 1],
+           pool_mem[3 * BLOCK_SIZE], pool_mem[4 * BLOCK_SIZE - 1]);
     return 0;
 }
 `,
-      tests: [{ name: 'exhaustion, reuse and invalid frees', stdout: 'alloc -> 0\nalloc -> 1\nalloc -> 2\nalloc -> 3\nalloc -> -1\nfree block 1: 1\nalloc -> 1\nfree middle of block: 0\nfree outside pool: 0\nfree NULL: 0\nfree block 2: 1\nfree block 2 again: 0\n' }],
+      tests: [{ name: 'exhaustion, reuse and invalid frees', stdout: 'alloc -> 0\nalloc -> 1\nalloc -> 2\nalloc -> 3\nalloc -> -1\nfree block 1: 1\nalloc -> 1\nfree middle of block: 0\nfree a buffer outside the pool: 0\nfree NULL: 0\nfree block 2: 1\nfree block 2 again: 0\nblock contents: A0 A0 A3 A3\n' }],
       hints: [
+        'Block *i* starts how many bytes into `pool_mem`? Going the other way: given a pointer, how do you get its byte offset, and which two properties must that offset have before you may use it as an index into `pool_used`?',
         '`pool_alloc`: scan `pool_used` for the first `false`, set it to `true`, and return `&pool_mem[i * BLOCK_SIZE]`.',
-        '`pool_free`: convert to `uint8_t *`, reject NULL and anything below `pool_mem` or at/after `pool_mem + POOL_BLOCKS * BLOCK_SIZE`.',
-        'The byte offset `q - pool_mem` must be a multiple of `BLOCK_SIZE`. Offset divided by `BLOCK_SIZE` is the block index; reject it if `pool_used[index]` is already false.',
+        '`pool_free`: convert to `uint8_t *`, reject NULL and anything below `pool_mem` or at/after `pool_mem + POOL_BLOCKS * BLOCK_SIZE`. The byte offset `q - pool_mem` must be a multiple of `BLOCK_SIZE`. Offset divided by `BLOCK_SIZE` is the block index; reject it if `pool_used[index]` is already false.',
       ],
-      explain: `Because every block has the same size, any free block satisfies any request: the pool cannot fragment. Allocation is at most \`POOL_BLOCKS\` steps, so its worst-case time is known. Exhaustion is an explicit \`NULL\` that the design can plan for ("drop the packet and count it"). The validation in \`pool_free\` turns a double free or a stray pointer, which would silently corrupt a general-purpose heap, into a detectable error. If a pool is used from both an ISR and the main loop, the scan-and-mark must be protected by a critical section.`,
+      explain: `Because every block has the same size, any free block satisfies any request: the pool cannot fragment. Allocation is at most \`POOL_BLOCKS\` steps, so its worst-case time is known. Exhaustion is an explicit \`NULL\` that the design can plan for ("drop the packet and count it"). The validation in \`pool_free\` turns a double free or a stray pointer, which would silently corrupt a general-purpose heap, into a detectable error. Without the range check, \`pool_free(other_buf)\` computes index 4 and reads \`pool_used[4]\`, which is not a flag at all but the first data byte of block 0; it then "frees" it by writing a zero there, which is why the last line of the test prints the block contents. One point of strict C: comparing pointers into *different* objects with \`<\` is formally undefined (C11 §6.5.8), although it works on every flat-address MCU; code that must be strictly conforming converts both to \`uintptr_t\` first and compares the integers. If a pool is used from both an ISR and the main loop, the scan-and-mark must be protected by a critical section.`,
     }),
     { t: 'exercise',
       prompt: 'An MCU has 8 KiB of RAM. The map file shows `.data` 300 bytes and `.bss` 5 200 bytes. The stack is given 1 024 bytes. A function called from `main` declares `uint8_t frame[2048];` as a local. How many bytes of RAM remain for the heap, and what happens when that function is called?',

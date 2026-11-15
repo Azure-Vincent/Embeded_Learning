@@ -44,6 +44,58 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_executable(blink_demo main.c blink_math.c)
 target_compile_options(blink_demo PRIVATE -Wall -Wextra)`;
 
+// C lab for the toolchains lesson: the lesson's own function, with a host-side harness that reads its inputs
+// from standard input so that every test exercises the function with different numbers.
+const HP_HARNESS = String.raw`
+/* ---- host-side test harness: do not edit below this line ---- */
+
+/* Read one unsigned decimal number from standard input. */
+static uint32_t read_u32(void)
+{
+    int c = getchar();
+    while (c == ' ' || c == '\n') c = getchar();
+    uint32_t v = 0;
+    while (c >= '0' && c <= '9') {
+        v = v * 10u + (uint32_t)(c - '0');
+        c = getchar();
+    }
+    return v;
+}
+
+int main(void)
+{
+    uint32_t tick_hz  = read_u32();
+    uint32_t blink_hz = read_u32();
+    uint32_t expected = read_u32();
+    uint32_t got = half_period_ticks(tick_hz, blink_hz);
+    printf("half_period_ticks(%u, %u) = %u\n", tick_hz, blink_hz, got);
+    return got == expected ? 0 : 1;
+}`;
+
+const HP_STARTER = String.raw`#include <stdint.h>
+#include <stdio.h>
+
+/* Half-period of a blink, in timer ticks, for a given blink frequency.
+   One blink period is 1 / blink_hz seconds; the LED is on for half of it.
+   A result of 0 means "LED stays off". */
+uint32_t half_period_ticks(uint32_t tick_hz, uint32_t blink_hz)
+{
+    return tick_hz / 2u * blink_hz;      /* a teammate's version: two faults */
+}
+` + HP_HARNESS;
+
+const HP_SOLUTION = String.raw`#include <stdint.h>
+#include <stdio.h>
+
+uint32_t half_period_ticks(uint32_t tick_hz, uint32_t blink_hz)
+{
+    if (blink_hz == 0) {
+        return 0;                        /* defined result instead of a division by zero */
+    }
+    return tick_hz / (2u * blink_hz);    /* parentheses: divide by the whole product */
+}
+` + HP_HARNESS;
+
 const READ_PORT = String.raw`#!/usr/bin/env python3
 """Print lines arriving on a serial port, with a timestamp on each."""
 import sys
@@ -214,7 +266,7 @@ half period = 250 ticks`, explain: [
 An ESP-IDF project is a CMake project with two short files. \`idf.py\` is a wrapper that runs CMake and Ninja with
 the right toolchain file and then the flashing tool.`,
 
-    { t: 'code', lang: 'cmake', status: 'reviewed', caption: 'The hello_world example in ESP-IDF v6.1: top-level CMakeLists.txt, then main/CMakeLists.txt (comments shortened). Copied from the ESP-IDF repository; not built here.', code: String.raw`# hello_world/CMakeLists.txt
+    { t: 'code', lang: 'cmake', status: 'idf-checked', caption: 'The hello_world example in ESP-IDF v6.1: top-level CMakeLists.txt, then main/CMakeLists.txt (comments shortened). Compared line for line with examples/get-started/hello_world in the v6.1 source tree; not built here.', code: String.raw`# hello_world/CMakeLists.txt
 cmake_minimum_required(VERSION 3.22)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
@@ -249,7 +301,7 @@ sudo apt install eim        # GUI and command line; or: sudo apt install eim-cli
 eim install                 # latest stable ESP-IDF, non-interactive`, explain: [
       { lines: '1', md: `Adds Espressif's package repository to APT's list of sources. \`tee\` is used because the redirection has to happen with root privileges; \`sudo echo ... > file\` would not work, since the shell, not \`sudo\`, opens the file.` },
       { lines: '2-3', md: `Refresh the package index, then install the installation manager, \`eim\`.` },
-      { lines: '4', md: `Downloads ESP-IDF, the toolchains and a Python environment. Alternatives: \`eim wizard\` asks questions interactively; \`eim install -i v5.4.2\` installs a specific version. When it finishes, \`eim\` prints the command that activates the environment: a \`source\` of an activation script in its \`tools\` directory, with the ESP-IDF version in the file name. The exact path depends on your user name and version, so copy it from the installer's output into your notebook. You run it in every new terminal in which you want to use ESP-IDF.` },
+      { lines: '4', md: `Downloads ESP-IDF, the toolchains and a Python environment. Alternatives: \`eim wizard\` asks questions interactively; \`eim install -i v5.4.2\` installs a specific version. When it finishes, \`eim\` prints the command that activates the environment: a \`source\` of an activation script in its \`tools\` directory, with the ESP-IDF version in the file name. The exact path depends on your user name and version, so copy it from the installer's output into your notebook. You run it in every new terminal in which you want to use ESP-IDF. Espressif's guide shows the installer ending with the line \`You have successfully installed ESP-IDF\` just above that command; if you do not see it, scroll up for the first error and do not continue.` },
     ] },
 
     `### Route B: the legacy method (default before v6.0)
@@ -269,8 +321,8 @@ cd ~/esp/esp-idf
 . $HOME/esp/esp-idf/export.sh`, explain: [
       { lines: '1', md: `Host prerequisites. \`cmake\` and \`ninja-build\` drive the build, \`python3-venv\` lets the installer create an isolated Python environment, \`git\` fetches the source.` },
       { lines: '5', md: `\`-b v6.1\` checks out the release tag instead of the development branch. \`--recursive\` also fetches the submodules; without it the build later fails on missing files inside \`components/\`.` },
-      { lines: '8', md: `Downloads the cross-compiler and tools for the named chip family into \`~/.espressif\` and creates the Python environment. \`esp32\` installs the Xtensa toolchain for the original ESP32; \`all\` covers every supported chip, including the RISC-V ones.` },
-      { lines: '10', md: `Activates the environment **in this shell**: puts the toolchain and \`idf.py\` on \`PATH\` and sets \`IDF_PATH\`. Note the leading dot. You run this line in every new terminal in which you want to use ESP-IDF.` },
+      { lines: '8', md: `Downloads the cross-compiler and tools for the named chip family into \`~/.espressif\` and creates the Python environment. \Name the chip on **your** board: \`esp32\`, \`esp32s3\`, \`esp32c3\`, \`esp32c6\`, or several separated by commas (\`./install.sh esp32,esp32c3\`); \`all\` covers every supported chip at the cost of a larger download. The script finishes by printing \`All done! You can now run:\` followed by the export command. If it stops earlier, the last lines say why (most often a network failure part-way through a download: run it again, it resumes).` },
+      { lines: '10', md: `Activates the environment **in this shell**: puts the toolchain and \`idf.py\` on \`PATH\` and sets \`IDF_PATH\`. Note the leading dot. It ends with \`Done! You can now compile ESP-IDF projects.\` You run this line in every new terminal in which you want to use ESP-IDF. Espressif's guide suggests an alias so that it is one word, added to \`~/.bashrc\`: \`alias get_idf='. $HOME/esp/esp-idf/export.sh'\`. Do not put the export line itself in \`~/.bashrc\`: that would activate ESP-IDF's Python environment in every terminal, including ones where it gets in the way.` },
     ] },
 
     `### Verify, build, flash
@@ -279,16 +331,17 @@ Whichever route you used, activate the environment, then:`,
 
     { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Build and flash the hello_world example. Replace /dev/ttyUSB0 with your port and esp32 with your chip.', code: `idf.py --version
 
+mkdir -p ~/esp
 cp -r $IDF_PATH/examples/get-started/hello_world ~/esp/
 cd ~/esp/hello_world
 idf.py set-target esp32
 idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor`, explain: [
       { lines: '1', md: `Should print the ESP-IDF version. "command not found" means the environment is not active in this terminal.` },
-      { lines: '3', md: `Work on a copy outside the ESP-IDF tree so that updating ESP-IDF never touches your project.` },
-      { lines: '5', md: `Selects the chip: \`esp32\`, \`esp32s3\`, \`esp32c3\`, \`esp32c6\` and so on. This picks the cross-compiler (Xtensa or RISC-V) and regenerates the configuration. Setting the wrong target produces an image the chip's boot ROM rejects.` },
-      { lines: '6', md: `Configures with CMake and builds with Ninja. The first build compiles the whole SDK and takes minutes; later builds only recompile what changed. It ends by printing the flashing command it would run.` },
-      { lines: '7', md: `Writes the bootloader, partition table and application to flash over the serial port, then opens the serial monitor. Exit the monitor with **Ctrl+]**. You should see the boot log, then \`Hello world!\`, chip information and a countdown to restart.` },
+      { lines: '3-4', md: `Work on a copy outside the ESP-IDF tree so that updating ESP-IDF never touches your project. The \`mkdir\` matters if you used Route A, which does not create \`~/esp\` for you. The ESP-IDF build system does not accept spaces in the path of a project, so keep directory names plain.` },
+      { lines: '6', md: `Selects the chip: \`esp32\`, \`esp32s3\`, \`esp32c3\`, \`esp32c6\` and so on. This picks the cross-compiler (Xtensa or RISC-V) and regenerates the configuration, and it creates a file named \`sdkconfig\` in the project. If the target does not match the chip on the board, the image is for the wrong CPU and the wrong flash layout; the flashing tool reads the chip type when it connects and should stop with a fatal error naming the chip it found, before writing anything.` },
+      { lines: '7', md: `Configures with CMake and builds with Ninja. The first build compiles every SDK component the example needs and takes minutes; later builds only recompile what changed. It should end with \`Project build complete. To flash, run:\` and the flashing command.` },
+      { lines: '8', md: `Writes the bootloader, partition table and application to flash over the serial port, then opens the serial monitor. Exit the monitor with **Ctrl+]**. You should see the boot log, then \`Hello world!\`, chip information and a countdown to restart.` },
     ] },
 
     `## PlatformIO as an alternative
@@ -333,6 +386,45 @@ The rule says an object depends only on its \`.c\` file. \`config.h\` changed, n
 The durable fix is to give Make the header dependencies: add \`-MMD -MP\` to \`CFLAGS\` so the compiler writes a \`.d\` file listing each object's headers, and add \`-include $(OBJS:.o=.d)\` to the Makefile.
 
 The general lesson: when the device's behaviour contradicts the source, first prove the device is running the source you are looking at.` },
+
+    `### Practise: a host-side test catches the fault before a board does
+
+\`main.c\` earlier in this lesson was a host-side check: it called the function and turned the result into an exit status. The lab below is the same idea with one refinement. Its test harness reads the two inputs and the expected result from standard input, so the same program is run five times with five sets of numbers. That is how unit tests for firmware logic are usually driven: one build, many cases.
+
+The code runs in this app's C interpreter, a simulated 32-bit machine, not on your PC's \`gcc\`. Division by zero stops the simulated program with a fault, as it would on many real cores.`,
+
+    { t: 'widget', name: 'c-lab', title: 'Fix a function using its host-side tests', props: {
+      title: 'half_period_ticks: make every case pass',
+      prompt: `A teammate rewrote \`half_period_ticks\` from memory. It compiles without a warning, and two of the five test cases even pass.
+
+Fix the function so that all five pass. The intended behaviour:
+
+- the result is \`tick_hz / (2 × blink_hz)\`, truncated toward zero as C integer division does;
+- a \`blink_hz\` of 0 means "LED off": return 0, and do not divide.
+
+Do not edit the harness below the marked line. Before you change anything, press **Run tests** and read which cases fail and what was printed: predict from the output what the faulty expression is actually computing.`,
+      starter: HP_STARTER,
+      solution: HP_SOLUTION,
+      tests: [
+        { name: '1 kHz tick, 2 Hz blink: 250 ticks', stdin: '1000 2 250\n', stdout: 'half_period_ticks(1000, 2) = 250\n', exit: 0 },
+        { name: '1 kHz tick, 1 Hz blink: 500 ticks', stdin: '1000 1 500\n', stdout: 'half_period_ticks(1000, 1) = 500\n', exit: 0 },
+        { name: '32768 Hz tick, 3 Hz blink: truncates to 5461', stdin: '32768 3 5461\n', stdout: 'half_period_ticks(32768, 3) = 5461\n', exit: 0 },
+        { name: 'blink_hz of 0 means off: returns 0 and does not fault', stdin: '1000 0 0\n', stdout: 'half_period_ticks(1000, 0) = 0\n', exit: 0 },
+        { name: 'blink faster than the tick can time: 100 Hz tick, 60 Hz blink gives 0', stdin: '100 60 0\n', stdout: 'half_period_ticks(100, 60) = 0\n', exit: 0 },
+      ],
+      hints: [
+        `The 1 Hz case passes and the 2 Hz case prints 1000. What would make the result grow when the blink frequency grows, when it should shrink?`,
+        `\`/\` and \`*\` have the same precedence and group left to right, so \`a / 2u * b\` is \`(a / 2u) * b\`. With \`b\` equal to 1 the two readings happen to agree, which is why one case passed.`,
+        `Divide by the whole product: \`tick_hz / (2u * blink_hz)\`. Now run the tests again and look at the \`blink_hz\` of 0 case: it used to "pass" by accident (anything times 0 is 0) and now divides by zero. Return 0 before the division when \`blink_hz == 0\`.`,
+      ],
+      explain: `Two things to take from this.
+
+**A passing test is evidence only for the inputs it used.** The faulty version passed the 1 Hz case and the zero case for reasons that had nothing to do with being right. One test case would have let it through; five with different shapes of input (ordinary, a non-exact division, zero, a result that truncates to 0) did not.
+
+**Fixing one fault exposed another.** With the precedence corrected, the zero case stopped being an accidental pass and became a division by zero. That is normal, and it is why you rerun every test after every change, not only the one you were working on.
+
+None of this needed a board, a cable or a flashing step, and each run took well under a second. Logic that does not touch hardware should be tested this way first; the board is for the parts that only a board can show. One limit of this function is left for you to find later: for a \`blink_hz\` above about 2.1 billion, \`2u * blink_hz\` no longer fits in 32 bits. The Embedded C section covers that kind of wraparound.`,
+    } },
 
     `## Harder application: read a build you did not write
 
@@ -427,6 +519,8 @@ You need a small part of Git, used consistently.
 works, before you start changing it.
 
 \`\`\`bash
+git config --global user.name  "Your Name"        # once per computer; Git refuses to
+git config --global user.email "you@example.com"  # commit until both are set
 git init                      # once, in the project directory
 git status                    # what changed?
 git add main/app_main.c       # choose what goes into the snapshot
@@ -493,6 +587,15 @@ one of which has a bug.
 A **container** packages a file system containing exactly the tools a build needs. A \`Dockerfile\` is the recipe;
 \`docker build\` turns it into an **image**; \`docker run\` starts a **container** from the image. Everyone who builds
 from the same Dockerfile gets the same compiler and SDK.
+
+Install and check it once. Ubuntu packages Docker as \`docker.io\`; Docker's own documentation describes installing the newer upstream packages instead, and either works for this course.
+
+\`\`\`bash
+sudo apt install docker.io
+sudo docker run --rm hello-world     # should print "Hello from Docker!"
+\`\`\`
+
+Docker commands need root, or membership of the \`docker\` group (\`sudo usermod -aG docker "$USER"\`, then log out and in, exactly as for \`dialout\`). Be aware that membership of \`docker\` is equivalent to root access on that machine, because a container can be started with any host directory mounted. On your own laptop that is a reasonable trade; on a shared machine it is not yours to make.
 
 This is how recent eCTF reference designs are built, which is why you need it:
 
@@ -642,6 +745,12 @@ protocol decoders for UART, I2C, SPI and many more. Install with \`sudo apt inst
 
 If the output ends in \`-dirty\`, stop: commit (or stash) first, rebuild, then flash. Otherwise the identifier you write down does not describe the image on the board.` },
 
+    `### Practise: what a wrong setting looks like
+
+Before you meet it on a real board, see the two faults a serial terminal shows most often. In the simulated terminal below, connect with the terminal and the device both at 115200 8N1 and exchange a few characters. Then change only the terminal's baud rate and send again, and after that put the baud rate back and change only the parity. Write down what each mismatch looks like on screen and in the frame waveform. The pattern to remember: a wrong baud rate gives a steady stream of wrong characters from the first byte, with nothing missing, whereas the "two readers on one port" fault above gives correct characters with gaps.`,
+
+    { t: 'widget', name: 'uart-terminal', props: { baud: 115200, format: '8N1' }, caption: 'A model of a UART link only: it has no USB layer, no device node and no permissions, so it cannot show the faults from lesson 3.' },
+
     `## Harder application: flashing from inside the build container
 
 Your team decides everything, including flashing, must happen inside the container so that no one needs tools on
@@ -734,7 +843,19 @@ except current.
 ### Voltage: the meter goes *across*
 
 Voltage is a difference between two points, so you touch the two points while the circuit is **powered**. Set the
-dial to DC volts. For "the voltage at a pin", black goes on ground and red on the pin.
+dial to DC volts: the position marked **V** with a straight line (often a solid line over a dashed one), not the
+**V** with a wavy line, which is AC and will read close to zero on a steady rail. On a meter without auto-ranging,
+choose the lowest range that is above what you expect: the 20 V range for 3.3 V and 5 V work. For "the voltage at a
+pin", black goes on ground and red on the pin.
+
+Three things make the reading trustworthy:
+
+- **Probe the metal that matters.** Touch the pin header or the component leg itself, not the plastic of a jumper
+  or a breadboard hole you believe is connected to it. Half of all "0 V" readings are a probe not making contact.
+- **Find a solid ground.** The board's GND header pin or the metal shell of its USB connector. Check it once by
+  measuring the 3V3 pin against it.
+- **Read the sign.** A negative number means the probes are the other way round from what you assumed, which is a
+  fact about your circuit or your assumption, not an error to ignore.
 
 In voltage mode the meter has a very high resistance (megohms), so it draws almost no current and barely disturbs
 the circuit. This makes voltage the safest and most useful measurement. Use it first.
@@ -791,19 +912,29 @@ Before measuring, calculate what a healthy circuit shows:
 - Voltage across the LED: about 2.0 V
 - Voltage from pin to ground: about 3.3 V
 
-Now each possible fault predicts a *different* set of readings:
+Now each possible fault predicts a *different* set of readings. All four columns are taken with the black probe
+or both probes where the heading says; "GND" means the board's own ground pin.
 
-| Fault | Pin to GND | Across resistor | Across LED |
-|---|---|---|---|
-| None (working) | 3.3 V | 1.3 V | 2.0 V |
-| Firmware never drives the pin high | 0 V | 0 V | 0 V |
-| LED inserted backwards | 3.3 V | 0 V | 3.3 V |
-| Resistor not connected (wrong row) | 3.3 V | 0 V or drifting | 0 V |
-| Ground wire missing | 3.3 V | 0 V | 0 V (measured to the LED's own cathode) |
+| Fault | Pin to GND | Across resistor | Across LED | LED anode to GND |
+|---|---|---|---|---|
+| None (working) | 3.3 V | 1.3 V | 2.0 V | 2.0 V |
+| Firmware never drives the pin high | 0 V | 0 V | 0 V | 0 V |
+| LED inserted backwards | 3.3 V | 0 V | 3.3 V | 3.3 V |
+| Resistor not connected (wrong row) | 3.3 V | 0 V or drifting | 0 V | about 0 V, or drifting |
+| Ground wire missing | 3.3 V | 0 V | 0 V | 3.3 V |
 
 The first measurement, pin to ground, splits the table: 0 V means look at firmware or pin choice; 3.3 V means the
-firmware is doing its job and the fault is in the wiring. One reading has removed half of the possibilities. Use
-the tool below to set the values and see the expected current.`,
+firmware is doing its job and the fault is in the wiring. One reading has removed half of the possibilities.
+
+The last two rows show why the choice of measurement matters. With an open resistor and with a missing ground, no
+current flows, so the first three columns read the same for both. They differ in *where the break is*, and the
+fourth column finds it. With the ground wire missing, the path from the pin through the resistor to the LED is
+intact and carries no current, so there is no voltage drop along it and the whole 3.3 V appears at the LED's anode.
+With the resistor open, the anode is cut off from the pin and has nothing to pull it up. The general rule: when no
+current flows, walk one probe along the path from the supply end; the voltage stays at the supply value until you
+pass the break.
+
+Use the tool below to set the values and see the expected current.`,
 
     { t: 'widget', name: 'ohms-law', props: { v: 1.3, r: 330 }, caption: 'The resistor sees 1.3 V. Change the resistance and watch the current and the power dissipated.' },
 

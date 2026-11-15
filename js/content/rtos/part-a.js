@@ -148,12 +148,12 @@ Move to a preemptive RTOS when: a job must block waiting for something (a networ
       { t: 'exercise',
         prompt: 'A time-triggered cooperative system has three jobs with worst-case execution times: `poll_button` 0.2 ms (every 10 ms), `read_sensor` 3 ms (every 100 ms), `log_to_flash` 12 ms (every 1000 ms). Nothing is preempted. What is the worst-case delay, in ms, between `poll_button` becoming due and it starting to run? Assume the worst case is that both other jobs became due just before it and run first.',
         hints: [
-          'A cooperative job cannot be interrupted by another job. What is the longest thing that could be ahead of the button poll?',
-          'In the worst case both other jobs are due on the same tick and are earlier in the table.',
-          'Add the two execution times.',
+          'Once a job has started, can the dispatcher stop it to run the button poll? What does that make the poll wait for?',
+          'Is one long job the worst that can be in front of it, or can more than one be due at the same moment?',
+          'Both other jobs run to completion first: add their two execution times.',
         ],
         answer: { type: 'number', value: 15, tol: 0.1, unit: 'ms' },
-        solution: 'Worst case, `read_sensor` (3 ms) and `log_to_flash` (12 ms) both run before it: **15 ms**. That is longer than the button\'s 10 ms period, so one poll is skipped once a second. Fixes without an RTOS: put the button on an interrupt, slice the flash write into pieces shorter than a few ms, or give the jobs offsets so the two long ones never land on the same tick (which reduces the worst case to 12 ms — still too long, so the slicing is needed anyway).' },
+        solution: 'Worst case, `read_sensor` (3 ms) and `log_to_flash` (12 ms) both run before it: **15 ms**. That is longer than the button\'s 10 ms period, so once a second a poll runs a period and a half late and the next one follows almost at once (the dispatcher catches up because it adds the period to the previous due time). For 15 ms nobody looked at the pin: a press shorter than that can be missed, and any debounce logic that assumes samples 10 ms apart is fed two samples a fraction of a millisecond apart. Fixes without an RTOS: put the button on an interrupt, slice the flash write into pieces shorter than a few ms, or give the jobs offsets so the two long ones never land on the same tick (which reduces the worst case to 12 ms — still too long, so the slicing is needed anyway).' },
 
       { t: 'widget', name: 'c-lab', title: 'Bench-MCU: an ISR sets a flag, the loop consumes it',
         props: {
@@ -163,6 +163,8 @@ Move to a preemptive RTOS when: a job must block waiting for something (a networ
 - \`timer_isr\` acknowledges the timer (write 1 to \`TIM_STATUS\`) and sets \`tick_flag\`. It must do nothing else.
 - the main loop, each time it sees the flag, clears it, toggles GPIO pin 0 with \`GPIO_TOGGLE\`, and counts one tick.
 - after **5** ticks it stops the timer and prints \`ticks=5\`.
+
+The loop also counts how many times it went round (\`spins\`). The timer period is 50 simulated ticks, so a loop that is really paced by the timer goes round many times with nothing to do between two events. The last line of output reports whether that happened; a loop that toggles without waiting for the flag, or an ISR that never acknowledges the timer, finishes far too soon and prints \`paced=no\`.
 
 The interrupt model here is preemption between statements, not cycle-accurate hardware.`,
           starter: C`#include <stdint.h>
@@ -176,18 +178,21 @@ void timer_isr(void) {
 
 int main(void) {
     uint32_t ticks = 0;
+    uint32_t spins = 0;               /* passes of the loop, busy or not */
     GPIO_DIR |= 1u << 0;              /* pin 0 is an output */
     irq_attach(IRQ_TIMER, timer_isr);
-    TIM_LOAD = 20;
+    TIM_LOAD = 50;                    /* one timer event every 50 simulated ticks */
     TIM_CTRL = 7;                     /* ENABLE | AUTO_RELOAD | IRQ_EN */
     irq_enable();
 
     while (ticks < 5) {
+        spins++;
         /* TODO: if the flag is set, clear it, toggle pin 0, count a tick */
     }
 
     TIM_CTRL = 0;
     printf("ticks=%u\n", ticks);
+    printf("paced=%s\n", spins > 30 ? "yes" : "no");
     return 0;
 }
 `,
@@ -203,13 +208,15 @@ void timer_isr(void) {
 
 int main(void) {
     uint32_t ticks = 0;
+    uint32_t spins = 0;               /* passes of the loop, busy or not */
     GPIO_DIR |= 1u << 0;              /* pin 0 is an output */
     irq_attach(IRQ_TIMER, timer_isr);
-    TIM_LOAD = 20;
+    TIM_LOAD = 50;                    /* one timer event every 50 simulated ticks */
     TIM_CTRL = 7;                     /* ENABLE | AUTO_RELOAD | IRQ_EN */
     irq_enable();
 
     while (ticks < 5) {
+        spins++;
         if (tick_flag) {
             tick_flag = 0;
             GPIO_TOGGLE = 1u << 0;
@@ -219,15 +226,16 @@ int main(void) {
 
     TIM_CTRL = 0;
     printf("ticks=%u\n", ticks);
+    printf("paced=%s\n", spins > 30 ? "yes" : "no");
     return 0;
 }
 `,
           tests: [
-            { name: 'five ticks counted and pin 0 toggled five times', stdout: 'ticks=5\n', regs: { GPIO_OUT: 1 } },
+            { name: 'five timer events counted, each paced by the timer, pin 0 toggled five times', stdout: 'ticks=5\npaced=yes\n', regs: { GPIO_OUT: 1 } },
           ],
           hints: [
-            'The ISR needs exactly two statements. `TIM_STATUS` is write-1-to-clear.',
-            'If the ISR does not clear `EXPIRED`, the interrupt stays pending and the ISR runs again as soon as it returns.',
+            'Two questions. What keeps the timer interrupt pending after the handler has run? And how does the loop find out that the handler ran at all?',
+            'The ISR needs exactly two statements: `TIM_STATUS` is write-1-to-clear, and the flag is an ordinary assignment. If `EXPIRED` is not cleared the interrupt stays pending, the ISR runs again as soon as it returns, and you get `paced=no`.',
             'In the loop: `if (tick_flag) { tick_flag = 0; GPIO_TOGGLE = 1u << 0; ticks++; }`. Five toggles from 0 leave the pin at 1.',
           ],
           explain: 'The ISR is two statements long and the loop decides when the work happens. Clearing the flag *before* doing the work matters: if another tick arrives during the work, the flag is set again and the next pass sees it. Clear it after the work and that tick would be erased.',

@@ -413,8 +413,12 @@ int main(void)
             { name: 'garbage before the frame, then a frame with a wrong check byte', uartRx: 'xx' + frame('hi') + '\x7E\x02ok\x00', ticks: 2500, stdout: '[hi]\nBAD\n' },
             { name: 'an oversized length must not be believed; the next frame still decodes', uartRx: '\x7E\xC8' + frame('bench'), ticks: 2500, stdout: 'LEN\n[bench]\n' },
             { name: 'two frames back to back', uartRx: frame('a') + frame('12345678'), ticks: 3500, stdout: '[a]\n[12345678]\n' },
+            { name: 'a zero length is rejected too; the next frame still decodes', uartRx: '\x7E\x00' + frame('ok'), ticks: 2500, stdout: 'LEN\n[ok]\n' },
+            { name: 'after a bad check byte the parser hunts again and decodes the next frame', uartRx: '\x7E\x02ok\x00' + frame('go'), ticks: 2500, stdout: 'BAD\n[go]\n' },
+            { name: 'a payload byte equal to 0x7E is data, not a new start', uartRx: frame('a~b'), ticks: 2500, stdout: '[a~b]\n' },
           ],
           hints: [
+            'For each state ask two questions: what must I remember from this byte, and which state comes next? Start with the error paths: where must *every* one of them lead?',
             'In `WAIT_LEN`, test the length first. Only if it is in range do you set `len = b; idx = 0; sum = b;` and move to `IN_PAYLOAD`.',
             'In `IN_PAYLOAD`: `buf[idx++] = b; sum = (uint8_t)(sum + b);` then, when `idx == len`, go to `WAIT_CHECK`.',
             'In `WAIT_CHECK`: if `b == sum`, write a 0 at `buf[len]` and print with `printf("[%s]\\n", (char *)buf)`. Either way, the next state is `WAIT_SOF`.',
@@ -589,7 +593,7 @@ Three different results all commonly called "CRC-16". When a datasheet says "CRC
           { lines: '22-31', md: 'The CRC-8 from the worked table. `crc & 0x80` tests the top bit **before** the shift; the cast to `uint8_t` discards the bit that the shift pushes out of an 8-bit register (in C the arithmetic happens in `int`, so without the cast the register would grow).' },
           { lines: '34-43', md: 'Same structure at 16 bits. The message byte is XORed into the **top** of the register because bits are processed most significant first.' },
           { lines: '47-56', md: 'A reflected CRC shifts **right** and tests the **bottom** bit, with the polynomial bit-reversed (0x8005 becomes 0xA001). This processes each byte least significant bit first without reversing anything at run time.' },
-          { lines: '95-100', md: 'The byte-swap experiment from the prediction above: the two sums are equal, the two CRCs differ.' },
+          { lines: '93-98', md: 'The byte-swap experiment from the prediction above: the two sums are equal, the two CRCs differ.' },
         ] },
       { t: 'widget', name: 'c-lab', title: 'Implement the checks yourself',
         props: {
@@ -795,7 +799,7 @@ In most small systems there is exactly one I2C controller and none of this is ex
           { t: 'Neither: both transfers are corrupted and must be retried', why: 'The winner never has a bit overridden, so its transfer continues intact. Only the loser retries.' },
         ],
         reveal: 'Compare the address bytes most significant bit first: the first position where they differ decides, and the 0 wins. B continues its read undisturbed; A reports arbitration lost to its driver, waits for the STOP, and tries again.' },
-      { t: 'widget', name: 'can-arbitration', caption: 'The same wired-AND contest with CAN identifiers. Try two nodes whose identifiers differ only in the last bit, then two identical identifiers.' },
+      { t: 'widget', name: 'can-arbitration', props: { challenge: 'predict-winner' }, caption: 'The same wired-AND contest with CAN identifiers. Do the task first: write the three identifiers in binary and name the winner before you answer. Then switch to the Explore tab and try two nodes whose identifiers differ only in the last bit, then two identical identifiers.' },
       `## Family 3: when the wire cannot arbitrate — RS-485
 An RS-485 driver actively drives both states. Two drivers enabled at once fight, the bus carries an undefined level, and neither can reliably tell from reading back that it lost. There is no bitwise arbitration. Access has to be organised by rules that all nodes follow:
 
@@ -918,6 +922,48 @@ Communication faults are layered. A fault at a lower layer makes everything abov
 | Any: works only with the probe attached | 1, 2 | the probe supplies the missing ground, or its capacitance tames a marginal edge |
 
 **Intermittent faults** deserve their own paragraph. Long wires add capacitance (slow edges) and inductance (ringing). Parallel wires in a ribbon cable couple edges into each other (**crosstalk**): a fast SPI clock next to a quiet data line produces glitches that look like extra clocks or bits. A ground wire that also carries motor current has a voltage across it that moves every signal's reference. The experiments that separate these: lower the bit rate (timing or edge problem if it helps); separate or re-route the wires, pairing each signal with a ground (crosstalk); power the noisy load from a separate supply (shared-ground noise); and look at the analog waveform with an oscilloscope, because a logic analyser has already thrown that information away.`,
+      `## The method, applied: three worked diagnoses
+The table tells you where to look first. It does not tell you the cause; only a **measurement** does. Each case below is written the way your notes should be: the symptom, then what was measured on each rung in order, stopping at the first rung whose evidence is wrong.
+
+**Case 1. Symptom: a terminal at 115200 baud shows a steady stream of wrong characters from a sensor board.**
+
+| Rung | Measurement | Verdict |
+|---|---|---|
+| 1 Power, ground | 3.30 V at the board's regulator output and at the MCU; ground wire has continuity | pass |
+| 2 Levels | TX idles at 3.3 V; both ends are 3.3 V logic | pass |
+| 3 Wiring | characters do arrive, so TX reaches RX | pass |
+| 4 Timing | narrowest pulse in a capture is 17.4 µs; 1 / 17.4 µs ≈ 57 500 | **fail** |
+
+Cause: the board transmits at 57600 baud, half the terminal's rate. Evidence: the measured bit time, not the garbage itself. Nothing above rung 4 was examined, and nothing needed to be.
+
+**Case 2. Symptom: an I2C sensor answers on the bench at 400 kHz but NACKs intermittently once a 30 cm cable is added.**
+
+| Rung | Measurement | Verdict |
+|---|---|---|
+| 1 Power, ground | 3.29 V at the sensor's VDD pin at the far end of the cable; ground continuous | pass |
+| 2 Levels | multimeter: SDA and SCL idle at 3.3 V. Oscilloscope: SCL rises from 30 % to 70 % in 620 ns | **fail** (limit 300 ns) |
+
+Cause: the pull-ups are too large for the capacitance the cable added. The evidence even gives the numbers: with the 4.7 kΩ resistors fitted, C_b = t_r / (0.8473 × R_p) = 620 ns / (0.8473 × 4.7 kΩ) ≈ 156 pF, so R_p(max) at 400 kHz is 300 ns / (0.8473 × 156 pF) ≈ 2.27 kΩ. Fit 2.2 kΩ (still above the 967 Ω minimum) and measure the edge again. Notice that a multimeter passed this rung and a logic analyser would have decoded the bus happily; only the oscilloscope shows the edge.
+
+**Case 3. Symptom: an SPI flash chip returns 0xFF for every byte, in every mode.**
+
+| Rung | Measurement | Verdict |
+|---|---|---|
+| 1 Power, ground | 3.31 V at the chip's VCC pin | pass |
+| 2 Levels | idle: CS 3.3 V, SCLK 0 V at the chip's pins | pass |
+| 3 Wiring | capture taken **at the chip's pins**: SCLK shows 32 pulses, MOSI carries 9F 00 00 00, but CS stays high throughout | **fail** |
+
+Cause: the firmware toggles a GPIO that is not the one routed to the chip's CS pin. The chip was never selected, so it never drove MISO, and the pull-up supplied the 0xFF. Changing the SPI mode (rung 4) or the command (rung 6) could never have helped. The evidence was one line that did not move.
+
+In all three, the diagnosis is a sentence of the form "*this measurement* shows *this rung* is wrong". If you cannot yet say that sentence, you are still guessing: go back down the ladder and measure.`,
+      { t: 'exercise', prompt: `A CAN node on a two-node bench network retransmits the same frame without end. You measure: 5.0 V at both transceivers' supply pins and a common ground; CAN_H and CAN_L both at about 2.5 V when idle; with the power off, **120 Ω** between CAN_H and CAN_L; both nodes configured for 500 kbit/s. Which rung of the ladder (1 to 6) does the evidence say is wrong?`,
+        hints: ['Go up the ladder one rung at a time. For each measurement, ask: what value would a healthy bus give?', 'Supply, ground and idle levels are what a healthy bus shows. What should an unpowered, correctly terminated bus measure between CAN_H and CAN_L?', 'Two 120 Ω terminators in parallel read 60 Ω. A reading of 120 Ω means one of them is missing: which rung checks that termination exists at both ends?'],
+        solution: 'Rung **3**, wiring. Rungs 1 and 2 pass (supply, ground, idle levels). The 120 Ω reading is the first evidence that fails: a correctly terminated bus reads 60 Ω, so one terminator is missing. With one end unterminated, reflections corrupt bits, the receiver never sees a valid frame to acknowledge, and the transmitter retries. The bit rate (rung 4) matched and was never the problem — and you would not have known that it was irrelevant without the resistance measurement.',
+        answer: { type: 'number', value: 3, tol: 0 } },
+      { t: 'exercise', prompt: 'An I2C bus with 3.3 kΩ pull-ups to 3.3 V fails at 400 kHz. On an oscilloscope you measure a 30 %–70 % rise time of 500 ns on SCL. Estimate the bus capacitance in picofarads from that measurement.',
+        hints: ['Which formula from the I2C lesson links rise time, pull-up resistance and bus capacitance? You know two of the three.', 't_r = 0.8473 × R_p × C_b, so C_b = t_r / (0.8473 × R_p).', '500e-9 / (0.8473 × 3300), then convert farads to picofarads.'],
+        solution: 'C_b = 500 ns / (0.8473 × 3.3 kΩ) ≈ **179 pF**. With that capacitance the largest resistor that meets 300 ns is 300 ns / (0.8473 × 179 pF) ≈ 1.98 kΩ, so 1.8 kΩ would do (the minimum is 967 Ω). Turning a waveform into a component value like this is the point of measuring instead of trying resistors at random.',
+        answer: { type: 'number', value: 179, tol: 4, unit: 'pF' } },
       { t: 'predict', q: 'Two boards exchange UART data. A is powered from a laptop, B from a battery. Only A\'s TX and B\'s RX are joined. B receives erratic data: sometimes correct, sometimes garbage, and it changes when you touch the boards. What is the fault?',
         choices: [
           { t: 'There is no ground connection, so B measures A\'s signal against an unrelated, drifting reference', ok: true, why: 'Without a shared ground the voltage B sees depends on stray coupling between the two supplies, which changes with touch and position.' },

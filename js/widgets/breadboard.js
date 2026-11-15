@@ -195,7 +195,7 @@ export const CHALLENGES = {
   },
   'button-pullup': {
     title: 'Read a button with a pull-up',
-    goal: 'Wire a push button to a GPIO so the pin reads 1 when the button is released and 0 when it is pressed, using the pin\'s internal pull-up. Configure the pin mode yourself.',
+    goal: 'Wire a push button to a GPIO so the pin reads 1 when the button is released and 0 when it is pressed, using a pull-up: either the pin\'s internal one or your own resistor to 3V3. Configure the pin mode yourself.',
     check(state) {
       const buttons = state.parts.filter((p) => p.type === 'button');
       if (!buttons.length) return { ok: false, msg: 'There is no button on the board yet.' };
@@ -209,7 +209,12 @@ export const CHALLENGES = {
         if (lr === 'high' && lp === 'low') {
           const bad = [...rel.problems, ...prs.problems].find((p) => p.severity === 'error');
           if (bad) { fallback = `${g} changes level, but there is a fault. ${bad.text}`; continue; }
-          if (state.pins[g] !== 'input-pullup') { fallback = `${g} does read 1 then 0, but not because of its internal pull-up (its mode is "${PIN_MODES[state.pins[g]]}"). Set it to "Input, pull-up" and remove what you used instead.`; continue; }
+          if (state.pins[g] !== 'input-pullup') {
+            // An external pull-up is just as correct. Judge it by the current it wastes while the button is held.
+            const iPressed = Math.max(0, ...state.parts.filter((x) => x.type === 'resistor').map((x) => Math.abs(prs.result.components[x.id]?.i || 0)));
+            if (iPressed > 5e-3) { fallback = `${g} reads 1 then 0 through your external pull-up, but ${fmtSI(iPressed, 'A')} flows through it for as long as the button is held. A pull-up only has to beat leakage: use something like 10 kΩ.`; continue; }
+            return { ok: true, msg: `Released: your external pull-up holds ${g} at ${volts(rel.result.components[g].v)}, read as 1. Pressed: ${b.id} connects the pin to GND and it reads 0, with ${fmtSI(iPressed, 'A')} through the resistor. This does the same job as the pin's internal pull-up; the internal one saves a part, an external one lets you choose the value.` };
+          }
           return { ok: true, msg: `Released: the ~45 kΩ pull-up holds ${g} at ${volts(rel.result.components[g].v)}, read as 1. Pressed: ${b.id} connects the pin to GND, which wins easily against 45 kΩ, so it reads 0 while only ${fmtSI(Math.abs(prs.result.components[g].i), 'A')} flows.` };
         }
         if (fallback) continue;

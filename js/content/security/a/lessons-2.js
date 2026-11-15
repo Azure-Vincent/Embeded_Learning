@@ -36,9 +36,24 @@ From the ESP-IDF v6.1 flash encryption guide. The scheme differs between chip ge
 
 The naming is a trap worth noticing: XTS uses two keys, so "XTS_AES_128" has a 256-bit key block and "XTS_AES_256" a 512-bit one.
 
-**Development and release modes.** The ESP-IDF guide describes a development mode, intended for bench work where you still need to reflash, and a release mode for production in which the remaining plaintext-access paths are closed. Exactly which eFuses each mode burns, and how many times a development unit can be re-flashed, depends on the chip and ESP-IDF version: read the "Flash encryption" guide for your target before burning anything. The principle is the same on every platform: the convenient mode keeps a door open, and a product shipped in it is not protected.`,
+On the original ESP32 the offset tweak changes per 32-byte block, not per 16-byte AES block. The guide lists the consequence as a limitation: if the two 16-byte halves of one 32-byte block hold identical plaintext, their ciphertexts are identical too, so an observer can tell. Do not store secrets in a layout where that pattern carries information.
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Checking the flash-encryption mode at start-up (ESP-IDF). Written against the ESP-IDF header esp_flash_encrypt.h; not compiled or run on a board here.',
+**How it gets switched on.** You flash plaintext. On the first boot the second-stage bootloader generates the key with the hardware RNG (unless you burned one yourself), writes it to eFuse with read and write protection, encrypts the flash in place, and sets the first bit of the counter eFuse. Encrypted by default: the second-stage bootloader, the partition table, the NVS key partition, otadata and every \`app\` partition. Any other partition is encrypted only if it carries the \`encrypted\` flag in the partition table. The \`nvs\` partition cannot use flash encryption at all (see below).
+
+**Development and release modes.** The mode is a build option (\`CONFIG_SECURE_FLASH_ENCRYPTION_MODE\`, development by default) that decides which further eFuses the bootloader burns on that first boot. The guide states the difference like this:
+
+| | Development mode | Release mode |
+|---|---|---|
+| Purpose | "Recommended for use only during development" | "Recommended for manufacturing and production" |
+| Flashing plaintext over UART | Still possible: the ROM download mode accepts a new plaintext image and the bootloader encrypts it with the key in hardware. The guide notes that this "allows, indirectly, to read out the plaintext of the firmware in flash" | "Flashing plaintext firmware to the device without knowing the encryption key is no longer possible" |
+| Original ESP32 eFuses | \`DISABLE_DL_DECRYPT\` and \`DISABLE_DL_CACHE\` set; \`FLASH_CRYPT_CNT\` left writable | Those two plus \`DISABLE_DL_ENCRYPT\`; \`FLASH_CRYPT_CNT\` write-protected |
+| Newer chips (S3, C3, C6) | Download-mode cache access and JTAG disabled by default; \`SPI_BOOT_CRYPT_CNT\` left writable | Everything development mode sets, plus \`DIS_DOWNLOAD_MANUAL_ENCRYPT\`; \`SPI_BOOT_CRYPT_CNT\` write-protected |
+
+Why development mode is not protection: whoever holds the board can put it in download mode and flash a plaintext program of their own. The chip encrypts it and runs it, and code running on the chip reads the rest of the flash already decrypted. No key was learned and none was needed. Release mode removes the ROM's encrypt-on-download path and freezes the counter, so the only way to change an encrypted app is an OTA update (or pre-encrypting on the host with a key you kept, which is its own key-management decision). The guide's own words: "For production use, flash encryption should be enabled in the release mode only."
+
+On every platform the principle is the same: the convenient mode keeps a door open, and a product shipped in it is not protected.`,
+
+    { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Checking the flash-encryption mode at start-up (ESP-IDF v6.1). Every call, type and constant was checked against esp_flash_encrypt.h in the v6.1 bootloader_support component; the block was not compiled as a whole or run on a board.',
       code: String.raw`#include "esp_log.h"
 #include "esp_flash_encrypt.h"
 
@@ -59,7 +74,7 @@ bool flash_encryption_is_production(void)
 }`,
       explain: [
         { lines: '8', md: 'Reads the counter eFuse. This is the state of the silicon, independent of how the firmware was configured at build time.' },
-        { lines: '12-16', md: 'A unit that is encrypted but still in development mode has an open path by design. A factory end-of-line test should refuse to pass it.' },
+        { lines: '12-16', md: '`esp_get_flash_encryption_mode()` reads eFuses too: it reports release only when the counter eFuse is write-protected (or completely used up) **and** the download-mode disable bits for this chip are set. A unit that is encrypted but still in development mode has an open path by design, so a factory end-of-line test should refuse to pass it. The same header offers `esp_flash_encryption_cfg_verify_release_mode()`, which checks the full set of release-mode eFuses and logs each one that is missing.' },
       ] },
 
     `## What it stops, and what it does not
@@ -113,7 +128,7 @@ The design question is the same on any platform: **what encrypts the records, wh
 
 On units you own:
 
-- **Read the lifecycle bits.** The counter eFuse and the mode tell you whether encryption is on and whether the development paths are closed.
+- **Read the lifecycle bits.** The counter eFuse and the mode tell you whether encryption is on and whether the development paths are closed. On Espressif chips \`idf.py efuse-summary\` (read-only) shows them: an odd number of bits set in \`FLASH_CRYPT_CNT\` / \`SPI_BOOT_CRYPT_CNT\` means encrypted, and in release mode that field is write-protected and the download-mode encrypt bit (\`DISABLE_DL_ENCRYPT\` or \`DIS_DOWNLOAD_MANUAL_ENCRYPT\`) is set.
 - **Dump the flash and look.** Run a strings search and an entropy estimate over the dump of a test unit. Readable strings (your log messages, an SSID you provisioned) mean that region is plaintext. Encrypted regions look uniformly random. The \`firmware-inspector\` tool in this app lets you practise that on synthetic images.
 - **Check partition by partition.** It is common for the application to be encrypted while a data partition is not, because a flag was missed in the partition table.
 - **Write a known marker** through the application, dump the flash, and search for it.
@@ -145,7 +160,7 @@ On units you own:
         'Item 4 was the subject of the prediction above.',
         'For the log, think about who relies on it afterwards and what they need to trust.',
       ],
-      solution: `1. **Firmware:** integrity and authenticity (secure boot); confidentiality if the code is worth hiding or contains nothing secret but you want to slow analysis (flash encryption); freshness (anti-rollback).
+      solution: `1. **Firmware:** integrity and authenticity (secure boot); confidentiality only if the code itself is worth hiding, or to slow down analysis by someone holding a unit (flash encryption); freshness (anti-rollback).
 2. **Card list:** integrity and freshness, not confidentiality. An adversary wants to *add* an ID or restore a list from before a card was revoked. Authenticated record with a version bound to a monotonic counter.
 3. **PIN verifier:** confidentiality and integrity. Store a salted, slow hash rather than the PIN, inside an AEAD record, with flash encryption underneath. Confidentiality matters because a 4- to 6-digit PIN can be searched offline from its hash.
 4. **Failed-attempt count:** freshness above all. Keep it in monotonic storage, or increment it *before* checking the PIN in a way that cannot be rewound, so a restored flash image does not reset it.
@@ -155,7 +170,7 @@ On units you own:
 
 Carry the reasoning to a part that executes from **internal** flash, such as the MSPM0L2228 used in the 2026 eCTF or the MAX78000 used in 2024 and 2025. There is no separate flash chip to clip onto, so the readout path is the debug port and the factory bootloader instead. Which of this lesson's mechanisms still apply? Whole-flash transparent encryption may not exist on the part; the confidentiality job shifts to debug and bootloader lockdown plus read protection (next lesson). The integrity and freshness jobs do not change at all: stored records that matter still need authentication and a version. Both of these chips have an AES engine you can use for record-level AEAD through the vendor SDK. Check the device's security chapter for which modes are supported and how keys are loaded.`,
 
-    { t: 'callout', kind: 'security', title: 'Verification for data at rest', md: '1. Dump the flash of a production-configured test unit: no provisioned secret, SSID or log string is findable; entropy is uniform over encrypted partitions. 2. Copy the flash image of unit A onto unit B: B does not boot or does not yield A\'s data. 3. Flip one bit in a stored authenticated record: the firmware rejects the record and takes the documented safe action. 4. Restore an older copy of a versioned record: rejected as stale. 5. Lifecycle read-back shows release mode on every unit.' },
+    { t: 'callout', kind: 'security', title: 'Verification for data at rest', md: '1. Dump the flash of a production-configured test unit: no provisioned secret, SSID or log string is findable; entropy is uniform over encrypted partitions. 2. Copy the flash image of unit A onto unit B: B does not boot or does not yield A\'s data. 3. Flip one bit in a stored authenticated record: the firmware rejects the record and takes the documented safe action. 4. Restore an older copy of a versioned record: rejected as stale. 5. Lifecycle read-back shows release mode on every unit (on ESP32: the counter eFuse write-protected, the download-mode bits set, and the firmware\'s own start-up check above returning true). 6. On a release-mode test unit, try to flash a plaintext image over serial: the tool must fail or the unit must not boot it.' },
   ],
   quiz: [
     { q: 'Flash encryption is enabled on a device with external SPI flash. What does an adversary who desolders and reads the flash chip obtain?', kind: 'security',
@@ -182,11 +197,11 @@ Carry the reasoning to a part that executes from **internal** flash, such as the
         { t: 'Yes, because the nonce has been used before', why: 'The verifier does not remember which nonces it has seen unless you build that. A stored record legitimately keeps its nonce.' },
         { t: 'Yes, because GCM tags expire', why: 'A tag is a pure function of key, nonce, data and associated data. It has no notion of time.' },
       ] },
-    { q: 'A product ships with flash encryption enabled but left in the vendor\'s development mode. What is the practical consequence?', kind: 'security',
+    { q: 'An ESP32 product ships with flash encryption enabled but left in development mode, without secure boot. A buyer has a USB-serial cable and no key. What can they do?', kind: 'security',
       choices: [
-        { t: 'A path intended for re-flashing on the bench remains available, so the unit is not in the protected state the design assumed', ok: true, why: 'Development mode exists to keep units recoverable during bring-up. That convenience is, by definition, an opening.' },
-        { t: 'None: the flash contents are encrypted either way', why: 'Encryption of the stored bytes is only part of the mechanism. The mode decides which other access paths are closed.' },
-        { t: 'The device will run more slowly', why: 'The mode affects access control and one-way configuration, not decryption throughput.' },
+        { t: 'Flash a plaintext program of their own through the ROM download mode; the chip encrypts and runs it, and it can read the rest of the flash decrypted', ok: true, why: 'Development mode keeps the encrypt-on-download path so that boards can be re-flashed on the bench. The ESP-IDF guide notes that this indirectly allows the plaintext of the flash to be read out.' },
+        { t: 'Nothing useful: the flash contents are ciphertext in either mode', why: 'The stored bytes are ciphertext in both modes. What differs is whether the chip will still encrypt and run an image handed to it over the serial port.' },
+        { t: 'Read the encryption key out of eFuse over the serial port', why: 'The key block is read-protected in both modes, so no tool returns it. The route that development mode leaves open does not need the key at all.' },
       ] },
     { q: 'Which stored item most needs freshness rather than confidentiality?', kind: 'concept',
       choices: [

@@ -604,30 +604,30 @@ You are reviewing your own product or one you have been asked to assess.
 
     `## A verification you can run today, with no board
 
-The signing and verifying half of secure boot is ordinary host tooling, so you can watch a signature fail without burning anything. In an ESP-IDF v6.1 shell, in an empty directory:`,
+The signing and verifying half of secure boot is ordinary host tooling, so you can watch a signature fail without burning anything. In an ESP-IDF v6.1 shell (so that \`espsecure\` is on the path), in an empty directory:`,
 
-    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Sign, verify, tamper, verify again. Commands as given in the ESP-IDF v6.1 Secure Boot V2 guide; they were not run in this repository\'s environment. The key is a throwaway: never reuse it for a product.',
+    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Sign, verify, tamper, verify again with espsecure, the host tool that idf.py calls for its secure-* commands. Subcommands and options were checked against the ESP-IDF v6.1 Secure Boot V2 guide and tools/idf_py_actions/serial_ext.py; the commands were not run in this repository\'s environment. The key is a throwaway: never reuse it for a product.',
       code: String.raw`# 1. A throwaway RSA-3072 signing key (Secure Boot V2 format)
-idf.py secure-generate-signing-key --version 2 --scheme rsa3072 test_key.pem
+espsecure generate-signing-key --version 2 --scheme rsa3072 test_key.pem
 
 # 2. Something to sign: any file will do for the experiment
 head -c 8192 /dev/urandom > image.bin
 
 # 3. Sign it. The tool pads the data and appends a signature block.
-idf.py secure-sign-data --keyfile test_key.pem --output image_signed.bin image.bin
+espsecure sign-data --version 2 --keyfile test_key.pem --output image_signed.bin image.bin
 
 # 4. Verify, and look at what the signature block contains
-idf.py secure-verify-signature --keyfile test_key.pem image_signed.bin
+espsecure verify-signature --version 2 --keyfile test_key.pem image_signed.bin
 espsecure signature-info-v2 image_signed.bin
 
 # 5. Tamper: overwrite one byte in the middle of the signed data, verify again
 cp image_signed.bin tampered.bin
 printf 'ÿ' | dd of=tampered.bin bs=1 seek=100 conv=notrunc
-idf.py secure-verify-signature --keyfile test_key.pem tampered.bin
+espsecure verify-signature --version 2 --keyfile test_key.pem tampered.bin
 
 # 6. Wrong key: a second key must not verify the first key's signature
-idf.py secure-generate-signing-key --version 2 --scheme rsa3072 other_key.pem
-idf.py secure-verify-signature --keyfile other_key.pem image_signed.bin`,
+espsecure generate-signing-key --version 2 --scheme rsa3072 other_key.pem
+espsecure verify-signature --version 2 --keyfile other_key.pem image_signed.bin`,
       explain: [
         { lines: '8', md: 'Compare the sizes of `image.bin` and `image_signed.bin`. The guide gives the signed format as the data padded to a 4 KB boundary followed by a 4 KB signature block, so you should see 8192 bytes become 12288.' },
         { lines: '12', md: 'The second command prints the public-key digest for the block. That 32-byte value is what would be burned into eFuse: the device never stores the key itself, and never sees the private half at all.' },

@@ -78,7 +78,29 @@ and the store, the store writes back a stale copy and the interrupt's change is 
 pulse from the opening problem: the main loop loaded \`GPIO_OUT\`, the timer interrupt set pin 7, and the main loop
 stored its old copy with pin 7 low.
 
-A **set register** removes the read. Writing \`1u << 7\` to \`GPIO_SET\` is a single store; the hardware ORs it
+Here it is one instruction at a time on Bench-MCU, where \`GPIO_OUT\` is at \`0x4000_0004\`. Pins 3 and 7 both start
+low, so the latch holds \`0x0000_0000\`:
+
+\`\`\`
+     who    instruction                      r0 (main)    r1 (ISR)     GPIO_OUT latch
+ 1   main   load  r0 <- [0x40000004]         0x00000000                0x00000000
+ 2   main   r0 = r0 ^ 0x08                   0x00000008                0x00000000
+            -- timer interrupt taken here: r0 is saved and will be restored untouched --
+ 3   ISR    load  r1 <- [0x40000004]                      0x00000000   0x00000000
+ 4   ISR    r1 = r1 | 0x80                                0x00000080   0x00000000
+ 5   ISR    store [0x40000004] <- r1                      0x00000080   0x00000080   pin 7 high
+            -- return from interrupt --
+ 6   main   store [0x40000004] <- r0         0x00000008                0x00000008   pin 7 low again
+\`\`\`
+
+Step 6 is correct from main's point of view: it writes the value it computed. But that value was computed from a
+copy taken at step 1, before pin 7 changed. Nothing faulted and both pieces of code are correct by themselves; the
+bug exists only in the interleaving, which is why it shows once every few hours and never when you single-step.
+
+A **set register** removes the read. With \`GPIO_SET\` at \`0x4000_000C\` and \`GPIO_TOGGLE\` at \`0x4000_0014\`,
+the same two jobs are \`store [0x40000014] <- 0x08\` in main and \`store [0x4000000C] <- 0x80\` in the handler. Each
+is one bus write, the peripheral applies it to the latch itself, and whichever order they land in the result is
+\`0x0000_0088\`. Writing \`1u << 7\` to \`GPIO_SET\` is a single store; the hardware ORs it
 into the latch. Bits written as 0 are untouched. There is no window, so no lock is needed. Use set/clear/toggle
 registers for every output change in code that shares a port with an interrupt or another task.
 
@@ -124,7 +146,9 @@ the function, the peripheral is running but connected to nothing.
           title: 'Atomic set, clear and toggle',
           prompt: `Bench-MCU has write-only \`GPIO_SET\` (offset \`0x0C\`), \`GPIO_CLR\` (\`0x10\`) and \`GPIO_TOGGLE\` (\`0x14\`) registers. The predefined header already declares them.
 
-\`board_init()\` sets up six outputs with a starting pattern. Complete \`update_outputs()\` so that pin 5 is set, pin 0 is cleared and pin 9 is toggled, **without ever reading \`GPIO_OUT\`** and with exactly three stores. Other pins must not change.`,
+\`board_init()\` sets up six outputs with a starting pattern. Complete \`update_outputs()\` so that pin 5 is set, then pin 0 is cleared, then pin 9 is toggled, **without ever reading \`GPIO_OUT\`** and with exactly three stores, in that order. Other pins must not change.
+
+The test watches every change of the output latch, so it sees the three separate steps. What it cannot see is whether a store was preceded by a read: Bench-MCU would accept \`GPIO_OUT |= …\` here. The next lab shows why real hardware does not forgive it.`,
           starter: R`#include <stdint.h>
 #include <stdio.h>
 
@@ -174,11 +198,12 @@ int main(void)
 `,
           tests: [
             { name: 'pin 5 set, pin 0 cleared, pin 9 toggled, others unchanged', regs: { GPIO_OUT: 0x0332, GPIO_DIR: 0x0333 }, stdoutIncludes: 'OUT=332' },
+            { name: 'the latch changes in three single-pin steps: set 5, clear 0, toggle 9', gpioTrace: [0x0113, 0x0133, 0x0132, 0x0332] },
           ],
           hints: [
-            'Each of the three registers takes a mask: a 1 means "act on this pin", a 0 means "leave it".',
-            'These registers are write-only. Use \`=\`, never \`|=\`: an OR would first read a register that has no meaningful read value.',
-            'Work out the expected result by hand first: start \`0x0113\`, set bit 5, clear bit 0, toggle bit 9.',
+            'Work out the expected result by hand first: start \`0x0113\`, set bit 5, clear bit 0, toggle bit 9. Which register does each of those three jobs?',
+            'Each of the three registers takes a mask: a 1 means "act on this pin", a 0 means "leave it". So each statement names exactly one pin.',
+            'These registers are write-only. Use \`=\`, never \`|=\`: an OR would first read a register that has no meaningful read value. The first statement is \`GPIO_SET = (1u << 5);\`.',
           ],
           explain: 'Each statement compiles to a single store. An interrupt can arrive between any two of them, change other pins of the port, and nothing is lost, because no statement carries a stale copy of the latch.',
         } },
@@ -186,11 +211,138 @@ int main(void)
       { t: 'exercise',
         prompt: `Main code runs \`GPIO_OUT ^= 0x08;\` (toggle pin 3). \`GPIO_OUT\` is \`0x00\` beforehand. An interrupt handler that executes \`GPIO_OUT |= 0x80;\` (set pin 7) runs after main's load and before main's store. What is \`GPIO_OUT\` after both have finished? Answer in hex.`,
         hints: [
-          'Main loaded 0x00 into a register before the interrupt.',
-          'The handler makes the latch 0x80. Then main computes 0x00 ^ 0x08 from its stale copy and stores it.',
+          'Each of the two statements is three steps: load, modify, store. Write the six steps in the order they really execute.',
+          'Main\'s load happened before the interrupt. Does anything refresh main\'s copy after the handler has run?',
+          'The handler makes the latch 0x80. Main then computes its new value from the copy it loaded earlier (0x00), not from 0x80, and stores that.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?0?8h?\\s*$'], nudge: 'Which copy of the register does main store back?' },
         solution: `Main loads \`0x00\`. The handler sets the latch to \`0x80\`. Main stores \`0x00 ^ 0x08 = 0x08\`. Final value **0x08**: pin 7 is low again and the step pulse lasted only as long as the gap between handler exit and main's store, perhaps a hundred nanoseconds. With \`GPIO_TOGGLE = 0x08\` and \`GPIO_SET = 0x80\` the result would be \`0x88\`.` },
+
+      { t: 'widget', name: 'c-lab', title: 'C lab: catch the lost update, then remove it',
+        props: {
+          title: 'A read-modify-write that loses step edges',
+          prompt: `Now make the bug from the opening problem happen. A timer interrupt produces one edge on the stepper STEP pin (pin 7) per period and checks, each time it runs, that the pin is still in the state it left it in. Main code blinks the status LED on pin 3 two hundred times.
+
+\`led_toggle()\` is written as the three steps the compiler really emits: load, modify, store. Bench-MCU only takes interrupts *between statements*, so writing the steps out is what lets the interrupt land in the gap, as it can on real hardware between any two instructions.
+
+1. Run the starter and read the \`lost=\` figure.
+2. Change \`led_toggle()\` so that no step edge can be lost. Do not change the handler, and do not disable interrupts.
+
+A one-line \`GPIO_OUT ^= (1u << 3);\` would also pass here, because the simulator never splits a statement. It is the same three instructions on a real CPU and is not a fix.`,
+          starter: R`#include <stdint.h>
+#include <stdio.h>
+
+#define TIM_ENABLE       (1u << 0)
+#define TIM_AUTO_RELOAD  (1u << 1)
+#define TIM_IRQ_EN       (1u << 2)
+#define TIM_EXPIRED      (1u << 0)
+
+static volatile uint32_t steps;   /* edges the handler has produced on pin 7 */
+static volatile uint32_t lost;    /* times it found pin 7 changed behind its back */
+
+/* Timer handler: one edge on STEP (pin 7) per period. Do not change. */
+void __attribute__((interrupt(IRQ_TIMER))) step_isr(void)
+{
+    TIM_STATUS = TIM_EXPIRED;                          /* acknowledge (W1C) */
+    if (((GPIO_OUT >> 7) & 1u) != (steps & 1u)) {      /* not as we left it? */
+        lost++;
+        GPIO_TOGGLE = (1u << 7);                       /* put it back */
+    }
+    GPIO_TOGGLE = (1u << 7);                           /* the step edge */
+    steps++;
+}
+
+/* Main-loop job: blink the status LED on pin 3. */
+static void led_toggle(void)
+{
+    uint32_t copy = GPIO_OUT;     /* LOAD   */
+    copy ^= (1u << 3);            /* MODIFY */
+    GPIO_OUT = copy;              /* STORE  */
+}
+
+int main(void)
+{
+    uint32_t i;
+    uint32_t led_bad = 0u;
+
+    GPIO_DIR = (1u << 3) | (1u << 7);
+    GPIO_OUT = 0u;
+    TIM_LOAD = 9u;
+    TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
+
+    for (i = 0u; i < 200u; i++) {
+        led_toggle();
+        if (((GPIO_OUT >> 3) & 1u) != ((i + 1u) & 1u)) {
+            led_bad++;                                 /* LED did not toggle */
+        }
+    }
+    TIM_CTRL = 0u;
+
+    printf("led_ok=%d stepping=%d lost=%d\n",
+           led_bad == 0u ? 1 : 0, steps > 20u ? 1 : 0, (int)lost);
+    return 0;
+}
+`,
+          solution: R`#include <stdint.h>
+#include <stdio.h>
+
+#define TIM_ENABLE       (1u << 0)
+#define TIM_AUTO_RELOAD  (1u << 1)
+#define TIM_IRQ_EN       (1u << 2)
+#define TIM_EXPIRED      (1u << 0)
+
+static volatile uint32_t steps;
+static volatile uint32_t lost;
+
+void __attribute__((interrupt(IRQ_TIMER))) step_isr(void)
+{
+    TIM_STATUS = TIM_EXPIRED;
+    if (((GPIO_OUT >> 7) & 1u) != (steps & 1u)) {
+        lost++;
+        GPIO_TOGGLE = (1u << 7);
+    }
+    GPIO_TOGGLE = (1u << 7);
+    steps++;
+}
+
+static void led_toggle(void)
+{
+    GPIO_TOGGLE = (1u << 3);      /* one store, no copy to go stale */
+}
+
+int main(void)
+{
+    uint32_t i;
+    uint32_t led_bad = 0u;
+
+    GPIO_DIR = (1u << 3) | (1u << 7);
+    GPIO_OUT = 0u;
+    TIM_LOAD = 9u;
+    TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
+
+    for (i = 0u; i < 200u; i++) {
+        led_toggle();
+        if (((GPIO_OUT >> 3) & 1u) != ((i + 1u) & 1u)) {
+            led_bad++;
+        }
+    }
+    TIM_CTRL = 0u;
+
+    printf("led_ok=%d stepping=%d lost=%d\n",
+           led_bad == 0u ? 1 : 0, steps > 20u ? 1 : 0, (int)lost);
+    return 0;
+}
+`,
+          tests: [
+            { name: 'the LED still toggles 200 times, the stepper keeps stepping, and no edge is lost', stdoutIncludes: 'led_ok=1 stepping=1 lost=0' },
+          ],
+          hints: [
+            'Run the starter first. \`lost\` is not zero. Between which two of the three statements in \`led_toggle()\` must the handler run for an edge to be undone?',
+            'The damage is done by the STORE: it writes back a copy of the whole port taken before the handler changed pin 7. Which Bench-MCU register changes pin 3 without needing a copy of the port at all?',
+            'Replace the three statements with one write of the pin-3 mask to \`GPIO_TOGGLE\`.',
+          ],
+          explain: 'With \`GPIO_TOGGLE = (1u << 3);\` main never holds a copy of the port, so there is nothing stale to write back; the handler can run before or after that single store and both changes survive. Disabling interrupts around the three statements would also work, at the cost of interrupt latency. In the starter the handler lands in the gap dozens of times in 200 passes only because the simulated timer is absurdly fast compared with the loop; on a real board the same bug might show once an hour, which makes it far harder to find.',
+        } },
 
       `## Harder application
 
@@ -325,9 +477,11 @@ peripherals go a step further than a clock gate: each has its own power-enable r
 power is enabled do not take effect. TI's driver library calls this \`DL_<peripheral>_enablePower()\`, and generated
 code calls it first.
 
-**ESP32.** A crystal on the module (typically 40 MHz) feeds a PLL; the CPU clock is selectable up to 240 MHz, and most peripherals run from a
-bus clock (APB) that is typically 80 MHz — confirm both in the datasheet and technical reference manual for your chip. Peripheral clocks are enabled and held in reset through system-level registers; ESP-IDF
-drivers do it for you. Changing the CPU frequency for power saving can change the APB clock, and with it every
+**ESP32.** A crystal on the module feeds a PLL (ESP-IDF's default setting is 40 MHz, with 26 and 32 MHz as options);
+the CPU clock is selectable up to 240 MHz, and most peripherals run from a bus clock (APB) that ESP-IDF's \`soc.h\`
+defines as 80 MHz. The clock-tree figure in the technical reference manual shows how the two are derived.
+Peripheral clocks are enabled and held in reset through system-level registers; ESP-IDF drivers do it for you. When
+the CPU clock is switched below 80 MHz to save power, the APB clock follows the CPU clock, and with it every
 baud rate and timer period derived from it: the driver must be told.`,
 
       { t: 'predict',
@@ -366,8 +520,9 @@ often, or calibrate the RC oscillator against a known reference.`,
       { t: 'exercise',
         prompt: `A UART divides its clock by an integer divisor: baud = f_clk / divisor. With f_clk = 8,000,000 Hz and a target of 115,200 baud, choose the nearest integer divisor and give the resulting baud-rate error in percent (sign not required, one decimal place).`,
         hints: [
-          '8,000,000 / 115,200 = 69.44. Nearest integer is 69.',
-          'Actual baud = 8,000,000 / 69. Error = (actual − target) / target.',
+          'What divisor would give exactly 115,200 baud? It will not be a whole number; the register only holds whole numbers.',
+          'The ideal divisor is 8,000,000 / 115,200 = 69.44. Round it, then work out what baud rate that rounded divisor really produces.',
+          'Actual baud = 8,000,000 / 69. Error = (actual − target) / target, as a percentage.',
         ],
         answer: { type: 'number', value: 0.6, tol: 0.1, unit: '%' },
         solution: `Divisor 69 → 8,000,000 / 69 = 115,942 baud. Error = (115,942 − 115,200) / 115,200 = **+0.64 %**. That leaves about 1.3 % of the ±2 % budget for the oscillator itself.` },
@@ -426,7 +581,7 @@ and the energy spent listening, small.)`,
       `## The problem
 
 A UART delivers a byte every 87 µs at 115,200 baud. The main loop takes 4 ms per pass because it updates a display.
-If the loop is the only thing that reads the UART, 45 bytes arrive per pass and the receive register holds one.
+If the loop is the only thing that reads the UART, 46 bytes arrive per pass and the receive register holds one.
 Polling faster is not an option. The hardware needs a way to say "now", and the CPU needs a way to obey without the
 main loop knowing.`,
 
@@ -468,7 +623,49 @@ The interrupted code has live values in registers. Something must preserve them.
 - **RISC-V**: the hardware saves almost nothing on the stack. It copies PC to the \`mepc\` register, records the
   cause in \`mcause\`, disables interrupts, and jumps to the address in \`mtvec\`. **Software** must save and restore
   every register it uses; the compiler does it for functions marked \`__attribute__((interrupt))\`, or an assembly
-  stub does it.`,
+  stub does it.
+
+### One interrupt, step by step
+
+A Cortex-M0+ is running main code from the 2026 eCTF layout (vector table at \`0x0000_6000\`, so VTOR =
+\`0x0000_6000\`). It has just finished the 2-byte instruction at \`0x0000_61A4\`; SP (the main stack pointer) is
+\`0x2020_7FE0\`. Peripheral interrupt number 2 becomes pending, is enabled, and nothing of equal or higher priority
+is running. The addresses are invented for the example; the sequence is what the architecture defines.
+
+\`\`\`
+ 1  Stack 8 words below SP (hardware, no instructions executed):
+        0x2020_7FDC  xPSR   flags and state of the interrupted code
+        0x2020_7FD8  PC     0x0000_61A6   <- where to resume: the NEXT instruction
+        0x2020_7FD4  LR     main code's own link register
+        0x2020_7FD0  r12
+        0x2020_7FCC  r3
+        0x2020_7FC8  r2
+        0x2020_7FC4  r1
+        0x2020_7FC0  r0                   <- SP is now 0x2020_7FC0
+ 2  Exception number = 16 + 2 = 18.  Vector address = VTOR + 4 x 18 = 0x0000_6048.
+    Read that word: 0x0000_6231  (bit 0 set = Thumb)  ->  PC = 0x0000_6230
+ 3  LR = 0xFFFF_FFF9 (a marker, not an address); the core is now in handler mode.
+ 4  Your handler runs as an ordinary function. It must clear the peripheral's flag.
+ 5  The handler returns by loading 0xFFFF_FFF9 into PC. The core recognises the marker,
+    pops the 8 words, SP is 0x2020_7FE0 again, PC = 0x0000_61A6. Main code continues.
+\`\`\`
+
+Thirty-two bytes of stack were used before the first handler instruction, and r4–r11 were not saved: if the handler
+uses them, its compiled prologue pushes them, like any function.
+
+The same event on a RISC-V core in machine mode, interrupted at \`pc = 0x4200_1A3C\` by the machine timer:
+
+\`\`\`
+ 1  mepc    <- 0x4200_1A3C         the instruction to resume at
+ 2  mcause  <- 0x8000_0007         top bit = interrupt, code 7 = machine timer
+ 3  mstatus: MPIE <- MIE (1), MIE <- 0     further interrupts are now off
+ 4  pc      <- handler address from mtvec
+    sp is unchanged, no memory was written, a0-a7/t0-t6/ra still hold main code's values.
+ 5  The handler's first instructions must save every register it will use.
+ 6  mret:   pc <- mepc, MIE <- MPIE
+\`\`\`
+
+Both architectures get the same detail in their own lessons at the end of this section.`,
 
       { t: 'widget', name: 'interrupt-flow', props: { arch: 'cortex-m' }, title: 'Interrupt on a Cortex-M',
         caption: 'Step from the pending request to the first handler instruction. Count the memory writes that happen before any of your code runs.' },
@@ -489,7 +686,8 @@ The interrupted code has live values in registers. Something must preserve them.
 ### Priority and nesting
 
 Each interrupt has a priority. A request of **higher** priority than the running handler preempts it (nesting); one
-of equal or lower priority waits, pending. On Cortex-M a *lower number* is a *higher* priority. Cortex-M0+ parts
+of equal or lower priority waits, pending. Equal priority never preempts: two interrupts at the same level simply
+take turns. On Cortex-M a *lower number* is a *higher* priority. Cortex-M0+ parts
 such as the MSPM0L2228 have 2 priority bits (4 levels); Cortex-M4 parts have between 3 and 8 bits, chosen by the
 chip maker.
 
@@ -559,8 +757,9 @@ bool uart_get(uint8_t *out)
       { t: 'exercise',
         prompt: `A system has three interrupt sources. Their handlers take: A (highest priority) 20 µs, B 150 µs, C (lowest) 400 µs. Main code masks all interrupts for at most 50 µs. Hardware entry time is negligible. What is the worst-case delay, in µs, from B's request to the *start* of B's handler? Assume A can occur at most once in that interval, and that a lower-priority handler is preempted by a higher-priority request.`,
         hints: [
-          'C has lower priority than B, so a running C handler is preempted and adds no delay.',
-          'Two things can delay B: the longest masked section, and the higher-priority handler A running first.',
+          'For each of the four items (A, C, the masked section, B itself) ask: can it be running, and unstoppable by B, at the moment B is requested?',
+          'C has lower priority than B, so a running C handler is preempted and adds no delay. What about A, and what about code that has masked all interrupts?',
+          'Two things can delay B: the longest masked section, and the higher-priority handler A running first. In the worst case both happen, one after the other.',
         ],
         answer: { type: 'number', value: 70, tol: 0, unit: 'µs' },
         solution: `B waits for the masked section (up to 50 µs) and for A if A becomes pending in the same window (20 µs). C does not delay B because B preempts it. Worst case **70 µs**. If priorities were all equal, B could also wait for all of C: 470 µs.` },

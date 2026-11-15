@@ -1,8 +1,9 @@
-import { h, clear, append } from './core/dom.js';
+import { h, s as svg, clear, append } from './core/dom.js';
 import { md, inline } from './core/md.js';
-import { store, PASS } from './core/store.js';
+import { store, PASS, INTERVALS } from './core/store.js';
 import * as C from './core/curriculum.js';
-import { renderBlocks, renderLab, quiz } from './core/render.js';
+import { renderBlocks, renderLab, quiz, question } from './core/render.js';
+import { practiceLabel } from './core/keys.js';
 import { WIDGETS, mountWidget } from './widgets/registry.js';
 
 const main = document.getElementById('main');
@@ -17,6 +18,7 @@ function applyTheme() {
 }
 
 function renderNav() {
+  const due = C.reviewDue().length;
   const cur = location.hash.split('/')[2];
   append(clear(nav), [
     h('a', { class: 'navlink' + (location.hash === '#/' || !location.hash ? ' on' : ''), href: '#/' }, 'Dashboard'),
@@ -28,8 +30,8 @@ function renderNav() {
         h('span', { class: 'st' }, locked ? 'locked' : p.pct >= 1 ? 'done' : p.pct > 0 ? pct(p.pct) : ''));
     }),
     h('div', { class: 'navhead' }, 'Bench'),
-    [['workbench', 'Workbench tools'], ['skills', 'Skills matrix'], ['notebook', 'Lab notebook'], ['bookmarks', 'Bookmarks'], ['glossary', 'Glossary'], ['troubleshooting', 'Troubleshooting'], ['references', 'Primary sources'], ['settings', 'Settings']]
-      .map(([r, t]) => h('a', { class: 'navlink' + (location.hash.startsWith('#/' + r) ? ' on' : ''), href: '#/' + r }, t)),
+    [['review', 'Review'], ['practice', 'Practice'], ['workbench', 'Workbench tools'], ['skills', 'Skills matrix'], ['notebook', 'Lab notebook'], ['bookmarks', 'Bookmarks'], ['glossary', 'Glossary'], ['troubleshooting', 'Troubleshooting'], ['references', 'Primary sources'], ['settings', 'Settings']]
+      .map(([r, t]) => h('a', { class: 'navlink' + (location.hash.startsWith('#/' + r) ? ' on' : ''), href: '#/' + r }, t, r === 'review' && due ? h('span', { class: 'due-pill', title: 'questions due for review' }, due) : null)),
   ]);
 }
 
@@ -54,15 +56,20 @@ function dashboard() {
     h('section', { class: 'stats' },
       [['Lessons mastered', `${mast} / ${totalL}`], ['Labs completed', `${labsDone} / ${totalLabs}`], ['Labs verified on hardware', hwLabs], ['Average assessment score', scores.length ? pct(avg) : '—']]
         .map(([k, v]) => h('div', { class: 'stat' }, h('div', { class: 'v' }, v), h('div', { class: 'k' }, k)))),
+    reviewPanel(),
     h('section', { class: 'cols2' },
       h('div', { class: 'panel' }, h('h2', {}, 'Proficiency'), h('p', { class: 'muted' }, 'Average demonstrated level across each track’s skills. Reading alone does not move these.'),
         [['programming', 'Programming'], ['hardware', 'Hardware'], ['security', 'Security']].map(([k, t]) => h('div', { class: 'profrow' }, h('span', {}, t), meter(prof[k] || 0, t), h('span', { class: 'num' }, pct(prof[k] || 0)))),
+        h('h3', { style: { fontSize: '1rem', margin: '16px 0 4px' } }, 'First-attempt accuracy by question type'),
+        Object.keys(store.s.kinds).length ? [['concept', 'Concepts'], ['code', 'Code reading'], ['circuit', 'Circuit analysis'], ['arch', 'Architecture'], ['security', 'Security reasoning']].map(([k, t]) => { const v = store.s.kinds[k]; return h('div', { class: 'kindrow' }, h('span', {}, t), v ? meter(v.ok / v.n, t) : h('span', { class: 'muted' }, 'no answers yet'), h('span', { class: 'num' }, v ? `${pct(v.ok / v.n)} of ${v.n}` : '')); })
+          : h('p', { class: 'muted' }, 'Appears once you have answered assessment questions. It shows which kind of reasoning to practise.'),
         h('div', { class: 'profrow ready' }, h('span', {}, 'Competition readiness'), meter(ready, 'Competition readiness'), h('span', { class: 'num' }, pct(ready))),
         h('p', {}, h('a', { href: '#/skills' }, 'Open the skills matrix'))),
       h('div', { class: 'panel' }, h('h2', {}, 'Recent notebook entries'),
         store.s.notes.length ? h('ul', { class: 'plain' }, store.s.notes.slice(0, 4).map((n) => h('li', {}, h('a', { href: '#/notebook' }, n.title || 'Untitled'), h('span', { class: 'muted' }, ' ' + new Date(n.ts).toLocaleDateString()))))
           : h('p', { class: 'muted' }, 'Nothing yet. Engineers keep notebooks: record what you measured, what surprised you and what you would do differently.'),
         h('p', {}, h('a', { href: '#/notebook' }, 'Open the notebook')))),
+    h('section', {}, h('h2', {}, 'Learning path'), h('p', { class: 'muted' }, 'Arrows show what each section builds on. Filled: demonstrated. Outlined: open to you now. Dashed: still locked.'), pathDiagram()),
     h('section', {}, h('h2', {}, 'Curriculum map'), h('p', { class: 'muted' }, 'A section unlocks when 80% of the lessons in each prerequisite are mastered, or when you pass that prerequisite’s checkpoint test.'),
       h('div', { class: 'secgrid' }, C.sections.map((sec, i) => {
         const p = C.sectionProgress(sec), locked = C.isLocked(sec);
@@ -70,6 +77,43 @@ function dashboard() {
           h('div', { class: 'pin' }, String(i + 1).padStart(2, '0')), h('h3', {}, sec.title), h('p', {}, sec.tagline || ''), meter(p.pct, sec.title),
           h('div', { class: 'meta' }, locked ? 'Needs: ' + C.missingPrereqs(sec).map((r) => r.title).join(', ') : `${p.mastered}/${p.lessons} lessons` + (p.labs ? `, ${p.labsDone}/${p.labs} labs` : '')));
       }))));
+}
+
+/** Prerequisite graph of the sections, laid out by depth, coloured by the learner's state. */
+function pathDiagram() {
+  const depth = {}; const d = (sec) => depth[sec.id] ?? (depth[sec.id] = (sec.requires || []).length ? 1 + Math.max(...sec.requires.map((r) => d(C.section(r)))) : 0);
+  C.sections.forEach(d);
+  const cols = []; for (const sec of C.sections) (cols[depth[sec.id]] ||= []).push(sec);
+  // top-to-bottom: one row per prerequisite depth, so it stays legible on a phone
+  const W = 168, H = 34, GX = 14, GY = 26, per = Math.max(...cols.map((c) => c.length));
+  const width = per * (W + GX) - GX + 4, height = cols.length * (H + GY) - GY + 4, pos = {};
+  cols.forEach((row, ri) => row.forEach((sec, ci) => { pos[sec.id] = { x: 2 + (width - 4 - (row.length * (W + GX) - GX)) / 2 + ci * (W + GX), y: 2 + ri * (H + GY) }; }));
+  const el = svg('svg', { class: 'pathmap', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': 'Prerequisite map of the twelve sections' },
+    svg('defs', {}, svg('marker', { id: 'arr', viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 7, markerHeight: 7, orient: 'auto' }, svg('path', { d: 'M0 0 8 4 0 8z', fill: 'var(--muted)' }))));
+  for (const sec of C.sections) for (const r of sec.requires || []) {
+    const a = pos[r], b = pos[sec.id], x1 = a.x + W / 2, y1 = a.y + H, x2 = b.x + W / 2, y2 = b.y - 2, my = (y1 + y2) / 2;
+    el.append(svg('path', { d: `M${x1} ${y1} C${x1} ${my} ${x2} ${my} ${x2} ${y2}`, fill: 'none', stroke: 'var(--muted)', 'stroke-width': 1.2, 'marker-end': 'url(#arr)', opacity: .7 }));
+  }
+  for (const sec of C.sections) {
+    const { x, y } = pos[sec.id], passed = C.sectionPassed(sec), locked = C.isLocked(sec);
+    const words = sec.title.split(' '), half = Math.ceil(words.length / 2);
+    const lines = sec.title.length > 26 ? [words.slice(0, half).join(' '), words.slice(half).join(' ')] : [sec.title];
+    const g = svg('a', { href: '#/section/' + sec.id, 'aria-label': `${sec.title}: ${passed ? 'demonstrated' : locked ? 'locked' : 'open'}` },
+      svg('rect', { x, y, width: W, height: H, rx: 4, fill: passed ? 'var(--mask)' : 'var(--surface)', stroke: locked ? 'var(--muted)' : 'var(--mask)', 'stroke-width': 1.5, 'stroke-dasharray': locked ? '4 3' : null }),
+      lines.map((t, i) => svg('text', { x: x + W / 2, y: y + H / 2 + (lines.length === 1 ? 4 : i * 13 - 2), 'text-anchor': 'middle', 'font-size': 12.5, fill: passed ? 'var(--mask-ink)' : locked ? 'var(--muted)' : 'var(--ink)' }, t)));
+    el.append(g);
+  }
+  return h('div', { class: 'pathwrap' }, el);
+}
+
+function reviewPanel() {
+  const deck = C.reviewDeck(), due = deck.filter((c) => c.due <= Date.now()).length, last = store.s.last;
+  if (!deck.length && !last) return null;
+  return h('section', { class: 'cols2' },
+    h('div', { class: 'panel' }, h('h2', {}, 'Review'), deck.length
+      ? [h('p', {}, due ? `${due} question${due === 1 ? ' is' : 's are'} due from lessons you mastered earlier.` : `Nothing due. ${deck.length} questions are scheduled.`), h('a', { class: due ? 'btn' : 'btn ghost', href: '#/review' }, due ? 'Review now' : 'Open review')]
+      : h('p', { class: 'muted' }, 'Questions join the review deck when you master a lesson, and return at growing intervals.')),
+    last ? h('div', { class: 'panel' }, h('h2', {}, 'Where you left off'), h('p', {}, last.title), h('a', { class: 'btn ghost', href: last.href }, 'Return to it')) : null);
 }
 
 // ---- Section ---------------------------------------------------------------
@@ -89,13 +133,15 @@ function sectionView(sid) {
     : h('a', { class: 'item ' + (cls || ''), href }, h('span', { class: 'ititle' }, title), h('span', { class: 'imeta' }, meta), h('span', { class: 'istate ' + (state ? 's-' + state.replace(/\W.*/, '').toLowerCase() : '') }, state || ''));
   if (sec.lessons?.length) kids.push(h('section', {}, h('h2', {}, 'Lessons'), h('div', { class: 'items' }, sec.lessons.map((l) => {
     const r = store.s.lessons[l.id];
-    return row(`#/lesson/${sec.id}/${l.id}`, l.title, `${l.minutes || 20} min`, C.lessonMastered(l) ? 'Mastered' : r ? `Best ${pct(r.best)}` : '');
+    const pk = C.practiceKeys(l), pd = pk.filter(store.isDone).length;
+    const isNext = l === sec.lessons.find((x) => !C.lessonMastered(x));
+    return row(`#/lesson/${sec.id}/${l.id}`, l.title, `${l.minutes || 20} min` + (pk.length ? ` · practice ${pd}/${pk.length}` : ''), C.lessonMastered(l) ? 'Mastered' : r ? `Best ${pct(r.best)}` : isNext ? 'Next' : '');
   }))));
   if (sec.labs?.length) kids.push(h('section', {}, h('h2', {}, sec.labsTitle || 'Laboratories'), h('div', { class: 'items' }, sec.labs.map((l) => {
     const r = store.s.labs[l.id];
     return row(`#/lab/${sec.id}/${l.id}`, l.title, l.kind || `${l.minutes || 60} min`, r?.done ? (r.mode === 'hardware' ? 'Hardware-verified' : 'Done (no hardware)') : '');
   }))));
-  if (sec.lessons?.length) kids.push(h('section', { class: 'panel' }, h('h2', {}, 'Checkpoint test'), h('p', {}, `Ten questions drawn from across this section. Passing at ${PASS * 100}% counts as demonstrating the section and unlocks what depends on it — the route for learners who already know the material.`),
+  if (sec.lessons?.length) kids.push(h('section', { class: 'panel' }, h('h2', {}, 'Checkpoint test'), h('p', {}, `A test with at least one question from every lesson in this section. Passing at ${PASS * 100}% counts as demonstrating the section and unlocks what depends on it — the route for learners who already know the material.`),
     h('div', { class: 'row' }, h('a', { class: 'btn ghost', href: '#/checkpoint/' + sec.id }, 'Take the checkpoint'), store.s.checkpoints[sec.id] != null ? h('span', { class: 'muted' }, 'Best: ' + pct(store.s.checkpoints[sec.id])) : null)));
   page(sec.title, sec.tagline, h('div', { class: 'secprog' }, meter(p.pct, 'Section progress'), h('span', {}, pct(p.pct))), ...kids);
 }
@@ -107,7 +153,7 @@ function toolbar(ref, title) {
   return h('div', { class: 'toolbar' }, bm, h('button', { type: 'button', class: 'btn small ghost', onclick: () => { store.addNote({ title: 'Notes: ' + title, ref }); go('#/notebook'); } }, 'Add notebook entry'));
 }
 
-function lessonView(sid, lid) {
+function lessonView(sid, lid, focusKey) {
   const sec = C.section(sid), l = C.lessonOf(sid, lid); if (!l) return notFound();
   if (C.isLocked(sec)) return sectionView(sid);
   const idx = sec.lessons.indexOf(l), prev = sec.lessons[idx - 1], nxt = sec.lessons[idx + 1];
@@ -120,13 +166,42 @@ function lessonView(sid, lid) {
   };
   const refresh = () => { drawState(); renderNav(); };
   const unsub = store.subscribe(() => (document.body.contains(state) ? drawState() : unsub()));
+  const article = h('article', { class: 'lesson' }, renderBlocks(l.blocks, l.id));
+  const bar = h('div', { class: 'readbar', 'aria-hidden': 'true' }, h('span'));
+  const quizEl = l.quiz?.length ? quiz(l.quiz, { best: store.s.lessons[l.id]?.best,
+    onAnswer: (q, first) => store.recordKind(q.kind, first),
+    onFinish: (sc) => { store.recordQuiz(l.id, sc); if (C.lessonMastered(l)) C.enrollLesson(sec, l); refresh(); } }) : null;
+  store.setLast(`#/lesson/${sid}/${lid}`, l.title);
   page(l.title, l.summary,
     crumbs(['Dashboard', '#/'], [sec.title, '#/section/' + sid], [`Lesson ${idx + 1} of ${sec.lessons.length}`]),
     h('div', { class: 'lessonmeta' }, state, toolbar(`#/lesson/${sid}/${lid}`, l.title)),
-    h('article', { class: 'lesson' }, renderBlocks(l.blocks, l.id)),
-    l.quiz?.length ? quiz(l.quiz, { best: store.s.lessons[l.id]?.best, onFinish: (sc) => { store.recordQuiz(l.id, sc); refresh(); } }) : null,
+    bar, outline(article, quizEl), article, quizEl,
     h('nav', { class: 'pager' }, prev ? h('a', { href: `#/lesson/${sid}/${prev.id}` }, '← ' + prev.title) : h('span'), nxt ? h('a', { href: `#/lesson/${sid}/${nxt.id}` }, nxt.title + ' →') : h('a', { href: '#/section/' + sid }, 'Back to ' + sec.title)));
   refresh();
+  // reading progress: how far through the lesson body the learner has scrolled
+  const onScroll = () => {
+    if (!bar.isConnected) return window.removeEventListener('scroll', onScroll);
+    const r = article.getBoundingClientRect(), total = r.height - window.innerHeight * 0.5;
+    bar.firstChild.style.width = Math.max(0, Math.min(1, total > 0 ? -r.top / total : 1)) * 100 + '%';
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  if (focusKey) { const el = article.querySelector(`[data-key="${CSS.escape(decodeURIComponent(focusKey))}"]`); if (el) setTimeout(() => el.scrollIntoView({ block: 'start' }), 50); }
+}
+
+/** "In this lesson": headings plus the things to do, so a long lesson can be navigated and resumed. */
+function outline(article, quizEl) {
+  const items = [];
+  for (const el of article.children) {
+    if (el.matches('.prose')) el.querySelectorAll('h2, h3').forEach((hd) => items.push({ el: hd, text: hd.textContent, sub: false }));
+    else if (el.matches('.exercise')) items.push({ el, text: 'Exercise', sub: true });
+    else if (el.matches('.predict')) items.push({ el, text: 'Predict first', sub: true });
+    else if (el.matches('.widget')) items.push({ el, text: 'Hands-on: ' + (el.querySelector('.widget-title')?.textContent || 'tool'), sub: true });
+  }
+  if (quizEl) items.push({ el: quizEl, text: 'Check your understanding', sub: false });
+  if (items.length < 4) return null;
+  const jump = (el) => { const y = el.getBoundingClientRect().top + window.scrollY - 64; window.scrollTo({ top: y }); };
+  return h('details', { class: 'outline' }, h('summary', {}, `In this lesson (${items.filter((i) => i.sub).length} things to do)`),
+    h('ol', {}, items.map((it) => h('li', { class: it.sub ? 'sub' : '' }, h('button', { type: 'button', onclick: () => jump(it.el) }, it.text)))));
 }
 
 function labView(sid, lid) {
@@ -134,6 +209,7 @@ function labView(sid, lid) {
   if (C.isLocked(sec)) return sectionView(sid);
   const miss = (lab.requires || []).map(C.section).filter((r) => r && !C.sectionPassed(r));
   const head = [crumbs(['Dashboard', '#/'], [sec.title, '#/section/' + sid], [lab.kind || 'Laboratory'])];
+  store.setLast(`#/lab/${sid}/${lid}`, lab.title);
   if (miss.length && !store.s.settings.review) {
     // Lab-level prerequisites lock the lab itself; the learner still sees what it will ask of them.
     return page(lab.title, lab.summary, ...head,
@@ -149,9 +225,57 @@ function labView(sid, lid) {
 
 function checkpointView(sid) {
   const sec = C.section(sid); if (!sec) return notFound();
-  const pool = (sec.lessons || []).flatMap((l) => l.quiz || []);
-  page('Checkpoint: ' + sec.title, `Ten questions sampled from the whole section. ${PASS * 100}% on first attempts demonstrates it.`, crumbs(['Dashboard', '#/'], [sec.title, '#/section/' + sid], ['Checkpoint']),
-    pool.length ? quiz(pool, { sample: Math.min(10, pool.length), title: 'Checkpoint test', best: store.s.checkpoints[sid], onFinish: (sc) => { store.recordCheckpoint(sid, sc); renderNav(); } }) : h('p', {}, 'No questions available yet.'));
+  const n = C.checkpointQuestions(sec).length;
+  page('Checkpoint: ' + sec.title, `${n} questions, with at least one from every lesson in the section. ${PASS * 100}% on first attempts demonstrates it.`, crumbs(['Dashboard', '#/'], [sec.title, '#/section/' + sid], ['Checkpoint']),
+    n ? quiz(() => C.checkpointQuestions(sec), { title: 'Checkpoint test', best: store.s.checkpoints[sid], onAnswer: (q, first) => store.recordKind(q.kind, first), onFinish: (sc) => { store.recordCheckpoint(sid, sc); renderNav(); } }) : h('p', {}, 'No questions available yet.'));
+}
+
+// ---- Spaced review -----------------------------------------------------------
+function reviewView(mode) {
+  const deck = C.reviewDeck(), now = Date.now();
+  const due = deck.filter((c) => c.due <= now).sort((a, b) => a.due - b.due);
+  const early = mode === 'early';
+  const cards = (early ? [...deck].sort((a, b) => a.box - b.box || a.due - b.due) : due).slice(0, 12);
+  const kids = [h('div', { class: 'prose', html: md(`Questions from lessons you have mastered come back here at growing intervals: after ${INTERVALS.slice(1).join(', ')} days. Answer from memory. A miss sends the question back to tomorrow and points you at the lesson. This is what keeps week-two material available in week ten.`) })];
+  if (!deck.length) kids.push(h('p', { class: 'muted' }, 'Nothing to review yet. Questions join the review deck when you master a lesson.'), h('a', { class: 'btn', href: '#/' }, 'Go to the dashboard'));
+  else if (!cards.length) {
+    const next = Math.min(...deck.map((c) => c.due));
+    kids.push(h('section', { class: 'panel' }, h('h2', {}, 'Nothing is due'), h('p', {}, `${deck.length} questions are in your deck. The next one is due ${new Date(next).toLocaleDateString()}.`), h('a', { class: 'btn ghost', href: '#/review/early' }, 'Review early anyway')));
+  } else {
+    let left = cards.length, right = 0;
+    const summary = h('div', { class: 'quiz-status', 'aria-live': 'polite' }, `${cards.length} of ${early ? deck.length : due.length} ${early ? 'in the deck' : 'due'} in this session.`);
+    kids.push(...cards.map((c, i) => {
+      const from = h('div', { class: 'from' });
+      const q = question(c.q, i, (first) => {
+        store.reviewAnswer(c.qid, first); store.recordKind(c.q.kind, first);
+        left--; if (first) right++;
+        append(clear(from), [first ? `Remembered. Returns in ${INTERVALS[store.s.review[c.qid].box]} days.` : 'Missed, so it returns tomorrow. Revisit ', first ? null : h('a', { href: `#/lesson/${c.sec.id}/${c.lesson.id}` }, c.lesson.title), first ? null : '.']);
+        if (!left) { summary.className = 'quiz-status pass'; append(clear(summary), [`Session done: ${right} of ${cards.length} from memory. `, h('a', { href: '#/review' }, 'Check for more'), ' · ', h('a', { href: '#/' }, 'Dashboard')]); renderNav(); }
+      });
+      return h('div', { class: 'review-card' }, q, from, h('div', { class: 'from' }, `${c.sec.title} · ${c.lesson.title}`));
+    }), summary);
+  }
+  page('Review', `${due.length} due now · ${deck.length} in your deck`, ...kids);
+}
+
+// ---- Practice index ------------------------------------------------------------
+function practiceView(filter) {
+  const only = filter === 'c' ? 'C exercise' : null;
+  let total = 0, done = 0;
+  const secs = C.sections.map((sec) => {
+    const locked = C.isLocked(sec);
+    const rows = [];
+    for (const l of sec.lessons || []) for (const it of C.practiceItems(l)) {
+      const kind = practiceLabel(it.b); if (only && kind !== only) continue;
+      const d = store.isDone(it.key); total++; if (d) done++;
+      const name = it.b.t === 'exercise' ? (it.b.prompt || '').replace(/[`*#\[\]]/g, '').split(/(?<=[.?!])\s/)[0].slice(0, 90) : (it.b.props?.title || it.b.title || WIDGETS[it.b.name]?.title || it.b.name) + (it.b.name !== 'c-lab' ? ': ' + (it.b.props.challenge || it.b.props.scenario || it.b.props.device || it.b.props.capture || it.b.props.image || '') : '');
+      rows.push(locked ? h('div', { class: 'pitem' }, h('span', { class: 'mk' }, '○'), h('span', { class: 'muted' }, name), h('span', { class: 'kind' }, 'locked'))
+        : h('a', { class: 'pitem' + (d ? ' done' : ''), href: `#/lesson/${sec.id}/${l.id}/${encodeURIComponent(it.key)}` }, h('span', { class: 'mk' }, d ? '●' : '○'), h('span', {}, name, h('span', { class: 'muted' }, ' — ' + l.title)), h('span', { class: 'kind' }, kind)));
+    }
+    return rows.length ? h('section', {}, h('h2', {}, sec.title), h('div', { class: 'items' }, rows)) : null;
+  });
+  page('Practice', `${done} of ${total} done. Every exercise and tool challenge in the course, so you can drill one skill without rereading a lesson.`,
+    h('div', { class: 'w-tabs' }, h('a', { class: 'w-tab' + (!only ? ' on' : ''), href: '#/practice' }, 'Everything'), h('a', { class: 'w-tab' + (only ? ' on' : ''), href: '#/practice/c' }, 'C programming only')), ...secs);
 }
 
 // ---- Bench pages -----------------------------------------------------------
@@ -214,9 +338,33 @@ function glossaryView(term) {
   page('Glossary', `${g.length} terms. Type to filter.`, ...filterable('Filter terms…', g, (it) => {
     const ref = '#/glossary/' + encodeURIComponent(it.term.toLowerCase());
     const bm = h('button', { type: 'button', class: 'linkbtn', onclick: () => { store.toggleBookmark(ref, 'Glossary: ' + it.term); bm.textContent = store.isBookmarked(ref) ? 'bookmarked' : 'bookmark'; } }, store.isBookmarked(ref) ? 'bookmarked' : 'bookmark');
-    return h('div', { class: 'gterm' }, h('dt', {}, it.term, ' ', bm), h('dd', { html: md(it.def) }));
+    return h('div', { class: 'gterm' }, h('dt', {}, it.term, ' ', bm), h('dd', { html: md(it.def) }),
+      h('dd', { class: 'muted', style: { fontSize: '.8rem' } }, 'Taught in ', it.sections.map((x, i) => [i ? ', ' : '', h('a', { href: '#/section/' + x.id }, x.title)])));
   }, (it) => it.term + ' ' + it.def, q));
 }
+
+/** Clicking a glossary link inside a lesson shows the definition in place instead of leaving the lesson. */
+function glossPopover(a) {
+  document.querySelector('.gloss-pop')?.remove();
+  const term = decodeURIComponent(a.getAttribute('href').split('/').pop());
+  const g = C.glossaryLookup(term);
+  const pop = h('div', { class: 'gloss-pop', role: 'dialog', 'aria-label': 'Definition' },
+    g ? [h('h4', {}, g.term), h('div', { html: md(g.def) }), h('div', { class: 'meta' }, h('a', { href: '#/glossary/' + encodeURIComponent(g.term.toLowerCase()) }, 'Open in glossary'))]
+      : [h('p', {}, `“${term}” is not in the glossary yet.`), h('div', { class: 'meta' }, h('a', { href: '#/search/' + encodeURIComponent(term) }, 'Search the course for it'))]);
+  document.body.append(pop);
+  const r = a.getBoundingClientRect();
+  pop.style.top = r.bottom + window.scrollY + 6 + 'px';
+  pop.style.left = Math.max(8, Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - pop.offsetWidth - 8)) + 'px';
+}
+document.addEventListener('click', (e) => {
+  const a = e.target.closest?.('a.gloss');
+  if (a && main.contains(a) && !a.closest('.gloss-pop')) { e.preventDefault(); glossPopover(a); return; }
+  if (!e.target.closest?.('.gloss-pop')) document.querySelector('.gloss-pop')?.remove();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelector('.gloss-pop')?.remove();
+  if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '') && !document.activeElement?.isContentEditable) { e.preventDefault(); document.querySelector('#search input').focus(); }
+});
 
 function troubleView() {
   page('Troubleshooting', 'Symptoms first. Find what you are seeing, then check causes in order of likelihood.', ...filterable('Describe the symptom…', C.troubleshooting(), (t) =>
@@ -288,9 +436,10 @@ function searchView(q) {
 function notFound() { page('Page not found', 'That address does not match anything in the course.', h('a', { class: 'btn', href: '#/' }, 'Go to the dashboard')); }
 
 function route() {
-  const [, r, a, b] = location.hash.split('/');
+  const [, r, a, b, c] = location.hash.split('/');
+  document.querySelector('.gloss-pop')?.remove();
   document.body.classList.remove('navopen');
-  ({ '': dashboard, section: () => sectionView(a), lesson: () => lessonView(a, b), lab: () => labView(a, b), checkpoint: () => checkpointView(a), skills: skillsView, notebook: notebookView, bookmarks: bookmarksView,
+  ({ '': dashboard, section: () => sectionView(a), lesson: () => lessonView(a, b, c), review: () => reviewView(a), practice: () => practiceView(a), lab: () => labView(a, b), checkpoint: () => checkpointView(a), skills: skillsView, notebook: notebookView, bookmarks: bookmarksView,
     glossary: () => glossaryView(a), troubleshooting: troubleView, references: referencesView, workbench: () => workbenchView(a), settings: settingsView, search: () => searchView(a) }[r || ''] || notFound)();
   renderNav();
 }

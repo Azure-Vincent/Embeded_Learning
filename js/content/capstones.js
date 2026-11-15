@@ -10,7 +10,7 @@ const parts = [intro, cap1, cap2, cap3, cap4, cap5, cap6];
 const cat = (k) => parts.flatMap((p) => p[k] || []);
 
 export default {
-  id: 'capstones', title: 'Capstone Projects', track: 'competition', requires: ['esp32'],
+  id: 'capstones', title: 'Capstone Projects', track: 'competition', requires: ['esp32', 'protocols'],
   tagline: 'Six integrative projects where you design, build, debug, analyse and secure a whole system on your own.',
   labsTitle: 'Capstones',
   intro: `These are not exercises with one right answer. Each capstone hands you a brief — requirements, a method, scaffolding, a test plan and a rubric — and asks you to pull the whole course together into a working, defensible system. You get the engineering milestones, the design questions worth arguing about, and the tests that decide whether you are done. You do not get a finished solution: the point is to prove you can produce one.

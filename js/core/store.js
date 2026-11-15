@@ -7,6 +7,9 @@ const blank = () => ({
   checkpoints: {},  // sectionId -> best score 0..1
   bookmarks: [],    // [{ref, title}]
   notes: [],        // [{id, ts, title, body, ref}]
+  review: {},       // questionId -> { box: 1..5, due: epoch ms, lesson, section }
+  kinds: {},        // question kind -> { n, ok } over first attempts
+  last: null,       // { href, title } of the lesson or lab last opened
   settings: { theme: 'auto', review: false },
 });
 let state = load();
@@ -25,6 +28,16 @@ export const store = {
     const r = state.lessons[lessonId] || { best: 0, attempts: 0 };
     r.best = Math.max(r.best, score); r.attempts++; r.last = score; state.lessons[lessonId] = r; save();
   },
+  recordKind(kind, ok) { const k = state.kinds[kind || 'concept'] || (state.kinds[kind || 'concept'] = { n: 0, ok: 0 }); k.n++; if (ok) k.ok++; save(); },
+  setLast(href, title) { state.last = { href, title }; save(); },
+  enroll(qid, lesson, section) { if (!state.review[qid]) { state.review[qid] = { box: 1, due: Date.now() + DAY, lesson, section }; return true; } return false; },
+  commit() { save(); },
+  reviewAnswer(qid, ok) {
+    const r = state.review[qid]; if (!r) return;
+    r.box = ok ? Math.min(r.box + 1, INTERVALS.length - 1) : 1;
+    r.due = Date.now() + INTERVALS[r.box] * DAY; r.last = Date.now(); save();
+  },
+  dropReview(qid) { delete state.review[qid]; },
   markDone(key) { if (!state.done[key]) { state.done[key] = true; save(); } },
   isDone: (key) => !!state.done[key],
   lab(id) { return state.labs[id] || (state.labs[id] = { steps: {}, quiz: 0, mode: null, done: false }); },
@@ -45,3 +58,6 @@ export const store = {
   reset() { state = blank(); save(); },
 };
 export const PASS = 0.8;
+export const DAY = 86400000;
+/** Days until a question returns, by box. Box 1 is tomorrow; a wrong answer sends it back to box 1. */
+export const INTERVALS = [0, 1, 3, 7, 16, 35];

@@ -23,6 +23,12 @@ export default [
       last had, and any nearby electric field (mains wiring, a finger, the adjacent pin toggling) moves that charge about.
       The pin **floats**. Reading it returns noise.
 
+      Put numbers on it (illustrative values; your chip's are in its datasheet). Take a pin capacitance of 5 pF and a stray
+      current of 10 nA from leakage or coupling. From I = C × dV/dt, the pin voltage moves at
+      10 nA / 5 pF = 2000 V/s: two volts every millisecond, enough to cross from a 0 to a 1 between two reads. Now add a
+      10 kΩ pull-up. The same 10 nA flowing through 10 kΩ shifts the pin by 10 nA × 10 kΩ = 0.1 mV. The stray current has not
+      gone away; it has been given an easy path, and the pin stays within a fraction of a millivolt of the rail.
+
       A floating input has a second cost. When its voltage drifts into the region between low and high, both transistors of
       the input stage conduct partially at once and the pin draws extra supply current. On a battery device, floating pins
       can dominate the sleep current.
@@ -92,7 +98,7 @@ export default [
 
       { t: 'widget', name: 'circuit-debug', props: { scenario: 'floating-input' }, caption: 'A button input that misbehaves. Find out why with the multimeter and fix it.' },
 
-      { t: 'widget', name: 'breadboard', props: { challenge: 'button-pullup' }, caption: 'Build the button with its pull-up on the virtual breadboard so that the input reads 1 when released and 0 when pressed.' },
+      { t: 'widget', name: 'breadboard', props: { challenge: 'button-pullup' }, caption: 'Wire a button on the virtual breadboard so that the input reads 1 when released and 0 when pressed. This task uses the pin\'s internal pull-up (about 45 kΩ in this model), so you set the pin mode instead of fitting a resistor. Try "Input (no pull)" first and see what the simulator says about the released level.' },
 
       `## Open-drain outputs and shared buses
 
@@ -134,7 +140,7 @@ export default [
       R max down.`,
 
       { t: 'exercise', prompt: `An I2C bus runs in standard mode (rise time limit 1000 ns) on a breadboard with long wires, giving about 200 pF of bus capacitance. What is the largest pull-up resistance that still meets the rise time, in ohms?`,
-        hints: [`Rise time (30 % to 70 %) = 0.8473 × R × C.`, `R max = t / (0.8473 × C), with t = 0.000 001 s and C = 0.000 000 000 2 F.`],
+        hints: [`Which limit is this: the one set by how much current a device can sink, or the one set by how fast the resistor can charge the bus capacitance? Only one of them gets worse as R grows.`, `Rise time (30 % to 70 %) = 0.8473 × R × C. Set it equal to the limit and solve for R.`, `R max = t / (0.8473 × C), with t = 0.000 001 s and C = 0.000 000 000 2 F.`],
         solution: `R max = 1000 ns / (0.8473 × 200 pF) = **5.9 kΩ**. The common 4.7 kΩ meets it; 10 kΩ does not, even though 10 kΩ pull-ups are fitted to many breakout boards. A marginal rise time shows up as occasional NACKs and corrupted bytes that vanish when you shorten the wires or lower the clock speed.`,
         answer: { type: 'number', value: 5900, tol: 120, unit: 'Ω' } },
 
@@ -162,7 +168,7 @@ export default [
     quiz: [
       { q: 'Why does an unconnected CMOS input read unpredictable values?', kind: 'concept', choices: [
         { t: 'Its tiny capacitance holds stray charge and nothing sets its voltage, so nearby fields move it across the thresholds', ok: true, why: 'With nanoamp leakage and picofarad capacitance, a very small coupled charge is enough to swing the pin.' },
-        { t: 'The microcontroller deliberately randomises unconnected pins', why: 'No such mechanism exists. The randomness is physical: an insulated node with no defined voltage.' },
+        { t: 'The input draws a current from neighbouring pins, and that current varies', why: 'A CMOS input draws almost no current from anywhere. That is the root of the problem, not the cure: with no current path, nothing holds the voltage still.' },
         { t: 'Unconnected pins default to ground but the reading is delayed', why: 'There is no default. Unless a resistor or driver is connected, the pin has no path to either rail.' },
       ] },
       { q: 'A button with a 10 kΩ pull-up to 3.3 V is held down. What current flows through the resistor?', kind: 'circuit', choices: [
@@ -266,7 +272,7 @@ export default [
       while the chip runs at 3.3 V. This is a property of a specific pin on a specific chip, stated in its datasheet, often
       with conditions (only in digital input mode, only while the chip is powered, not on analog-capable pins).`,
 
-      { t: 'callout', kind: 'warn', md: `**"5 V tolerant" must be verified per chip and per pin, in the datasheet.** Do not infer it from a product family, a forum post, or the fact that a board survived. The ESP32 datasheets do not specify the GPIO pins as 5 V tolerant: the absolute maximum ratings and recommended operating conditions are given relative to the chip's 3.3 V-class supply. Design as if 5 V on an ESP32 GPIO is out of specification, and look up the exact limits in the datasheet for your chip (sections "Absolute Maximum Ratings" and "DC Characteristics").` },
+      { t: 'callout', kind: 'warn', md: `**"5 V tolerant" must be verified per chip and per pin, in the datasheet.** Do not infer it from a product family, a forum post, or the fact that a board survived. For the ESP32 family this course quotes no pin voltage limit, because the datasheets could not be opened while it was written (see \`docs/FACTS.md\`). Until you have read the "Absolute Maximum Ratings" and "DC Characteristics" sections of the datasheet for your exact chip, design as if 5 V on any ESP32 GPIO is out of specification. That assumption costs two resistors; the opposite assumption can cost the chip.` },
 
       { t: 'predict', q: `A 5 V sensor output is connected directly to a GPIO of a 3.3 V microcontroller whose pins are not 5 V tolerant. The board appears to work. Where does current flow when the sensor output is high?`,
         reveal: `From the sensor output, into the pin, up through the pin's internal protection diode and into the microcontroller's 3.3 V rail. The pin is clamped at roughly 3.3 V plus a diode drop, around 3.9 V, and the only thing limiting the current is the sensor's output resistance. It "works" because the pin still reads a 1. Meanwhile the diode carries a current it was never rated for, the 3.3 V rail is being pushed upward by an outside source, and if the microcontroller is unpowered while the sensor is on, the chip is partially powered through a signal pin. Failures from this tend to appear weeks later as a dead pin or an erratic chip.` },
@@ -278,7 +284,9 @@ export default [
       ### 1. Resistor divider (5 V output to 3.3 V input, one direction)
 
       Two resistors scale the signal: Vout = 5 × R2 / (R1 + R2). With R1 = 10 kΩ on top and R2 = 20 kΩ below, the output is
-      3.33 V.
+      3.33 V. That is the textbook pair, but look at it critically: it lands a few tens of millivolts *above* a nominal 3.3 V
+      rail before any tolerance is counted. A ratio that lands just below the rail, as in the exercise further down, is the
+      better design.
 
       It is cheap and adequate for slow, one-way signals: an echo pulse, a UART receive line at moderate baud rate. Its limits:
       the divider's output resistance (R1 in parallel with R2, 6.7 kΩ here) forms an RC with the pin and wiring capacitance
@@ -310,10 +318,10 @@ export default [
       circuit is what the small "bidirectional logic level converter" breakout boards contain. It is too slow for fast
       push-pull signals, because the high level is produced only by the pull-ups.`,
 
-      { t: 'widget', name: 'voltage-divider', props: { vin: 5, r1: 10000, r2: 10000, challenge: 'level-shift-5v-3v3' }, caption: 'Choose R1 and R2 so a 5 V output is safe for a 3.3 V input and is still read as a 1.' },
+      { t: 'widget', name: 'voltage-divider', props: { challenge: 'level-shift-5v-3v3' }, caption: 'Choose R1 and R2 so a 5 V output is safe for a 3.3 V input and is still read as a 1. The thresholds the tool checks against (0.7 × VDD for a high, VDD + 0.3 V as the damage limit) are typical CMOS figures, not those of a particular chip.' },
 
       { t: 'exercise', prompt: `You have a 3.3 kΩ resistor for the lower leg (R2) and choose 1.8 kΩ for the upper leg (R1). What voltage does a 5 V signal produce at the divider output?`,
-        hints: [`Vout = Vin × R2 / (R1 + R2).`, `5 × 3.3 / (1.8 + 3.3).`],
+        hints: [`Which of the two resistors is the output taken across? Its share of the total resistance is the share of the voltage you get.`, `Vout = Vin × R2 / (R1 + R2).`, `5 × 3.3 / (1.8 + 3.3).`],
         solution: `Vout = 5 × 3.3 / 5.1 = **3.24 V**. That is below 3.3 V, so it is within the supply of a 3.3 V part, and far above a 3.3 V CMOS VIH of about 2.3 V. Check the tolerance too: with 5 % resistors at their worst (R1 low, R2 high) and the 5 V rail at 5.25 V, the output reaches about 3.5 V. Use 1 % resistors or a slightly larger R1 if the limit matters.`,
         answer: { type: 'number', value: 3.235, tol: 0.03, unit: 'V' } },
 
@@ -366,7 +374,7 @@ export default [
       { q: 'A module is sold as "5 V". Before adding a level shifter, what should you check first?', kind: 'concept', choices: [
         { t: 'The datasheet of the chip on the module: its supply range and its VIH relative to that supply', ok: true, why: 'Many such modules run correctly from 3.3 V, or accept a 3.3 V high, which removes the need for any shifting.' },
         { t: 'Whether other people report that it works without one', why: 'A working sample shows only that one unit at one temperature switched. It does not show there is margin.' },
-        { t: 'The colour of the circuit board', why: 'Board colour carries no electrical information. The component datasheets do.' },
+        { t: 'The module\'s supply current, so that the 5 V rail can be sized for it', why: 'That belongs in the power budget. It says nothing about which voltages the module\'s pins accept or produce.' },
       ] },
     ],
   },
@@ -501,10 +509,10 @@ export default [
         for very low-power designs, switch the divider with a MOSFET.
       - Source impedance: 100 kΩ ∥ 100 kΩ = 50 kΩ, far too high for direct sampling. Add 100 nF at the pin.
       - Firmware: take 16 or more samples, average, convert with the calibration API to millivolts, multiply by 2.
-      - Tolerance: two 1 % resistors can put the ratio off by up to 2 %, or about 80 mV at 4.2 V. A one-point calibration
-        against a multimeter removes most of it.`,
+      - Tolerance: with two equal 1 % resistors the worst case (one high, one low) moves the ratio by 1 %, about 40 mV
+        at 4.2 V. A one-point calibration against a multimeter removes most of it.`,
 
-      { t: 'widget', name: 'voltage-divider', props: { vin: 4.2, r1: 100000, r2: 100000, challenge: 'adc-battery' }, caption: 'Scale the battery voltage into the ADC range without wasting battery current, and see the code the ADC returns.' },
+      { t: 'widget', name: 'voltage-divider', props: { challenge: 'adc-battery' }, caption: 'The same design problem with a different battery: a 9 V block that reads up to 9.6 V when fresh, into an idealised 12-bit ADC that measures 0 to 3.3 V. Scale it into range without wasting battery current, and see the code the ADC returns. (A real ESP32 ADC input has a narrower accurate range, as described above.)' },
 
       { t: 'exercise', prompt: `A 10-bit ADC uses a 3.3 V reference. It returns the code 512. What input voltage does that represent, in volts?`,
         hints: [`One LSB is Vref / 2^N = 3.3 / 1024.`, `Vin ≈ code × LSB.`],
@@ -567,7 +575,7 @@ export default [
       { q: 'Why does ESP-IDF provide ADC calibration functions instead of expecting code × Vref / 4095?', kind: 'arch', choices: [
         { t: 'The internal reference differs from chip to chip and the response is not perfectly linear, so per-chip stored data is used to correct readings', ok: true, why: 'Factory-measured values in eFuse let the driver map raw codes to millivolts for the individual chip.' },
         { t: 'Multiplication is too slow on the processor', why: 'A multiply and divide take well under a microsecond. Calibration exists for accuracy, not speed.' },
-        { t: 'The raw codes are encrypted', why: 'Raw ADC codes are plain integers. They simply do not map to voltage by one universal straight line.' },
+        { t: 'To correct the small error between dividing by 4095 and by 4096', why: 'That difference is one part in 4096, about a quarter of a millivolt per volt. The errors that calibration corrects are a hundred times larger.' },
       ] },
       { q: 'An 8-bit DAC with a 3.3 V reference is asked for code 128. Its output, unloaded, is about:', kind: 'circuit', choices: [
         { t: '1.65 V', ok: true, why: '128 of 256 steps is half the reference.' },
@@ -899,7 +907,7 @@ export default [
 
       { t: 'refs', items: [
         { title: 'IEEE Std 315 / ANSI Y32.2: Graphic Symbols for Electrical and Electronics Diagrams', url: 'https://standards.ieee.org/ieee/315/518/', note: 'the symbol standard; IEC 60617 is the international counterpart' },
-        { title: 'Espressif: ESP32-DevKitC V4 getting started guide (schematic linked)', url: 'https://github.com/espressif/esp-idf/blob/v5.1/docs/en/hw-reference/esp32/get-started-devkitc.rst', note: 'a real development-board schematic to practise reading: find the regulator, decoupling, strapping resistors and auto-reset transistors' },
+        { title: 'Espressif: ESP32-DevKitC V4 getting started guide (schematic linked)', url: 'https://github.com/espressif/esp-idf/blob/v5.1/docs/en/hw-reference/esp32/get-started-devkitc.rst', note: 'a real development-board schematic to practise reading: find the regulator, decoupling, strapping resistors and auto-reset transistors. The link is to the v5.1 tree; later ESP-IDF releases moved the board guides out of the repository' },
       ] },
     ],
     quiz: [
@@ -1034,9 +1042,10 @@ export default [
       an unpowered hub. Many ports protect themselves by cutting off when overloaded.
 
       **Peak against average.** A radio-equipped microcontroller draws tens of milliamps on average but several hundred
-      milliamps in short bursts when transmitting. Espressif's hardware design guidelines call for a supply able to deliver
-      500 mA or more for ESP32-class chips for this reason. The peak figure for a given chip and mode is in its datasheet's
-      current consumption tables.
+      milliamps in short bursts when transmitting. Espressif's hardware design guidelines state a minimum current the supply must be
+      able to deliver for this reason; a figure of 500 mA or more is widely quoted for ESP32-class chips, but that document
+      could not be opened while this course was written, so read the requirement there. The peak figure for a given chip
+      and mode is in its datasheet's current consumption tables.
 
       A budget for a small USB-powered node might look like this (illustrative values; use datasheet figures for your parts):
 
@@ -1131,7 +1140,7 @@ export default [
       { t: 'refs', items: [
         { title: 'Texas Instruments: Linear and Switching Voltage Regulator Fundamentals (SNVA558)', url: 'https://www.ti.com/lit/an/snva558/snva558.pdf', note: 'dropout, efficiency, topologies' },
         { title: 'Texas Instruments: Understanding the Terms and Definitions of LDO Voltage Regulators (SLVA079)', url: 'https://www.ti.com/lit/an/slva079/slva079.pdf', note: 'dropout, thermal resistance, capacitor requirements' },
-        { title: 'Espressif: ESP32 Hardware Design Guidelines', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_hardware_design_guidelines_en.pdf', note: 'power supply current requirement and decoupling recommendations; URL not load-tested from this environment' },
+        { title: 'Espressif: ESP32 Hardware Design Guidelines', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_hardware_design_guidelines_en.pdf', note: 'power supply current requirement and decoupling recommendations; could not be opened from the authoring environment, so nothing in this lesson is quoted from it as verified' },
         { title: 'Analog Devices MT-101: Decoupling Techniques', url: 'https://www.analog.com/media/en/training-seminars/tutorials/MT-101.pdf', note: 'why local decoupling works and how to place it' },
         { title: 'USB-IF: USB 2.0 Specification', url: 'https://www.usb.org/document-library/usb-20-specification', note: 'chapter 7: bus-powered device current limits' },
       ] },
@@ -1202,7 +1211,7 @@ export default [
       { t: 'predict', q: `Board A (powered from a laptop's USB) drives a low-side MOSFET on board B, which switches a 12 V lamp from its own 12 V adapter. The GPIO goes to the MOSFET gate. There is no wire between the two grounds. What does the lamp do?`,
         reveal: `It is unpredictable. The MOSFET responds to the voltage between its gate and its *source*, and the source is on the 12 V adapter's ground. With no connection between the grounds, the GPIO's 3.3 V is 3.3 V relative to something else entirely. The gate-to-source voltage is set by stray capacitance and leakage through the two power supplies. The lamp may stay off, glow dimly, flicker with mains hum, or switch when you touch the board. Add one wire between the grounds and it works. This was the missing connection in the opening problem too.` },
 
-      { t: 'widget', name: 'circuit-debug', props: { scenario: 'missing-ground' }, caption: 'Two modules that will not communicate. Probe both sides. Pay attention to which ground your black probe is on.' },
+      { t: 'widget', name: 'circuit-debug', props: { scenario: 'missing-ground' }, caption: 'The same missing connection in its most common breadboard form: an LED whose cathode is plugged into the − rail, and no current flows. Measure what that "ground" rail reads against the board\'s GND pin, in volts and on the continuity range.' },
 
       `## Ground is not perfectly 0 V
 

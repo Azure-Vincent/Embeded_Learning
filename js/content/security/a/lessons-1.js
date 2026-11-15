@@ -207,7 +207,7 @@ No single primitive gives all four. Freshness is never given by a primitive at a
 
     `## Hash functions
 
-A cryptographic hash such as SHA-256 (specified in FIPS 180-4) takes any number of bytes and returns a fixed-size digest, 32 bytes for SHA-256. Three properties matter: you cannot find an input for a given digest, you cannot find a second input matching a given input's digest, and you cannot find any two inputs that collide.
+A cryptographic hash such as SHA-256 (specified in FIPS 180-4) takes any number of bytes and returns a fixed-size digest, 32 bytes for SHA-256. Three properties matter: you cannot find an input for a given digest (*preimage resistance*), you cannot find a second input matching a given input's digest (*second-preimage resistance*), and you cannot find any two inputs that collide (*collision resistance*). Collisions are the cheapest of the three to look for: by the birthday effect a collision in an n-bit digest takes about 2^(n/2) attempts, so SHA-256 gives about 128 bits of collision resistance, not 256.
 
 **How it works at the level you need:** the message is padded and cut into 64-byte blocks. A 256-bit internal state is mixed with each block through 64 rounds of additions, rotations and bitwise functions. Changing one input bit changes about half the output bits. Microcontrollers with a SHA accelerator do the rounds in hardware; you feed blocks into a register interface or call the vendor driver.
 
@@ -253,7 +253,23 @@ A signature scheme has three operations: generate a key pair, sign with the priv
 - The private key never leaves a controlled signing environment.
 - The device's copy of the public key (or its digest) cannot be replaced by the adversary. A verifier that reads its trusted key from writable flash is verifying against whatever the adversary wrote there.
 - ECDSA needs a fresh, unpredictable per-signature random value. If that value repeats or is predictable, the private key can be computed from the signatures. Use a library that derives it deterministically or from a proper [[DRBG]]. This matters for devices that sign; devices that only verify are not exposed to it.
-- The whole signed range is covered, including version fields and lengths in the header.`,
+- The whole signed range is covered, including version fields and lengths in the header.
+
+### RSA-PSS or ECDSA
+
+These are the two signature schemes you will meet in boot ROMs. At the sizes below they are rated at about the same strength (roughly 128 bits; see the size table later in this lesson), and they differ in everything else.
+
+| | RSA-3072 with PSS padding | ECDSA on curve P-256 |
+|---|---|---|
+| Public key | 384-byte modulus plus a small exponent | 64 bytes (X and Y coordinates) |
+| Signature | 384 bytes | 64 bytes (r and s) |
+| Verifying | Cheap: one modular exponentiation with a small public exponent (normally 65537) | Several times dearer: two elliptic-curve scalar multiplications |
+| Signing | Expensive: an exponentiation with the full-size private exponent | Cheap |
+| Randomness when signing | PSS adds a random salt; a poor salt weakens the proof but does not hand over the key | Needs the per-signature secret described above; a repeated or biased value reveals the private key |
+
+"RSA" alone does not name a signature scheme. The bare RSA operation on a digest is forgeable, so the digest is first expanded by a padding scheme. **PSS** (RFC 8017, section 8.1) is the current one: randomised, with a security proof. The older PKCS #1 v1.5 padding is deterministic and still widely deployed; several real forgeries came from verifiers that parsed its padding loosely. Either way the padding check is part of verification and belongs to the library, not to your code.
+
+How this decides a design: a device that only **verifies** (a bootloader) cares about verification time and code size, and RSA verification is fast. The ESP-IDF Secure Boot V2 guide gives, for the ESP32-C6 ROM, about 10.2 ms for RSA-3072 against about 83.9 ms for ECDSA P-256, and recommends RSA where boot time matters and ECDSA where a shorter key matters. A device that must **sign** (a device identity key answering a challenge) usually chooses ECDSA, because RSA private-key operations are slow and the keys are large, and then the per-signature randomness becomes that device's problem.`,
 
     { t: 'widget', name: 'crypto-lab', props: { tab: 'sign' }, title: 'ECDSA P-256: sign, verify, tamper',
       caption: 'Sign a message, verify it, then alter one character of the message or swap in a different public key.' },
@@ -264,7 +280,15 @@ Encryption alone gives confidentiality and nothing else. With a stream-like mode
 
 **Authenticated encryption with associated data** ([[AEAD]]) fixes this by producing ciphertext plus a tag in one operation. AES-GCM (NIST SP 800-38D) and ChaCha20-Poly1305 are the common choices. Inputs: key, nonce, plaintext, and *associated data* that is authenticated but sent in the clear (a header, a device ID, a message counter). Decryption either returns the plaintext or fails; on failure no plaintext may be used.
 
-**The nonce requirement is absolute.** For AES-GCM, using the same nonce twice with the same key lets an observer XOR the two ciphertexts to cancel the keystream, and reveals enough to forge tags for that key. On a microcontroller the usual ways this happens are a nonce counter kept in RAM that restarts at zero after reset, and a random nonce from an unseeded generator. Sound designs use a counter stored so that it survives reset and never repeats, a fresh session key per boot derived with a random contribution, or a nonce-misuse-resistant mode from a vetted library where one is available.`,
+**The nonce requirement is absolute.** For AES-GCM, using the same nonce twice with the same key lets an observer XOR the two ciphertexts to cancel the keystream, and reveals enough to forge tags for that key. On a microcontroller the usual ways this happens are a nonce counter kept in RAM that restarts at zero after reset, and a random nonce from an unseeded generator. Sound designs use a counter stored so that it survives reset and never repeats, a fresh session key per boot derived with a random contribution, or a nonce-misuse-resistant mode from a vetted library where one is available.
+
+Three numbers from SP 800-38D to design with:
+
+- **Nonce length: 96 bits.** Other lengths are permitted, but they are hashed down to a counter block, and the simple "never repeat the nonce" argument no longer covers them. Use exactly 12 bytes.
+- **Random nonces: at most 2^32 encryptions per key.** Two random 96-bit values can collide; the limit keeps that probability negligible. A counter nonce has no such limit, which is one reason to prefer it when you can store it.
+- **Tag length: 128 bits** unless the protocol has been analysed for less. A short GCM tag is weaker than its length suggests, because each successful forgery also reveals information about the authentication key.
+
+A counter that must survive reset does not need a flash write per message. Reserve nonces in blocks: store \`counter + 1000\` *before* using the next thousand values, and after any reset start from the stored value. Some nonces are skipped, which is harmless; none is ever used twice.`,
 
     { t: 'widget', name: 'crypto-lab', props: { tab: 'aead' }, title: 'AES-GCM: tamper and nonce reuse',
       caption: 'Encrypt, flip a ciphertext byte and decrypt. Then encrypt two messages with the same nonce and see what the demo recovers.' },
@@ -343,6 +367,41 @@ This runs on the Bench-MCU simulator. Step counts stand in for time here; they a
 3. **AEAD** (for example AES-GCM) with a key held in hardware-protected storage. Does not give: protection against replacing the record with an older valid record, and it relies on a unique nonce per write. Store the nonce with the record and never reuse it.
 4. **A plain hash or CRC** is acceptable for this step because the adversary is not what it guards against; the signature check that follows is. Does not give: authenticity. It must never be the only check.` },
 
+    `## Choosing sizes: security strength
+
+A key or digest size means something only as the amount of work the best known attack needs. That is quoted as "bits of security": n bits means about 2^n operations. NIST SP 800-57 Part 1 gives the comparison table that designs are sized from:
+
+| Strength | Symmetric cipher | Hash, against collisions | RSA modulus | Elliptic curve |
+|---|---|---|---|---|
+| about 112 bits | (none in current use) | SHA-224 | 2048 bits | P-224 |
+| about 128 bits | AES-128 | SHA-256 | 3072 bits | P-256 |
+| about 192 bits | AES-192 | SHA-384 | 7680 bits | P-384 |
+| about 256 bits | AES-256 | SHA-512 | 15360 bits | P-521 |
+
+Three things follow from it.
+
+1. **Asymmetric key lengths are not security levels.** An RSA-3072 key is not "3072-bit security". RSA is attacked by factoring the modulus and elliptic curves by solving a discrete logarithm, both far cheaper than trying every key, so the keys must be much longer for the same strength. This is why a boot ROM pairs RSA-3072 or P-256 with SHA-256: all three sit on the 128-bit row.
+2. **The weakest primitive on a path sets the strength of that path.** AES-256 for storage does nothing for firmware that is verified with an RSA-1024 signature (about 80 bits, and long retired).
+3. **A tag is guessed, not searched for offline.** Forging a MAC or AEAD tag without the key means sending guesses to the device, and each guess succeeds with probability 2^-t for a t-bit tag whatever the key size. So tag length is sized against how many guesses the device will entertain, and a design may truncate a tag when frames are short and the receiver limits attempts. It must do the arithmetic first.`,
+
+    { t: 'exercise',
+      prompt: `A radio command frame is authenticated with HMAC-SHA-256 under a 256-bit key, and the tag is truncated to **16 bits** to save air time. The receiver processes at most 100 frames per second and silently ignores frames whose tag is wrong. An adversary without the key chooses one command and sends it with every possible tag value in turn.
+
+How many **seconds** does it take, in the worst case, until one of those frames has been accepted? Then work out the same figure in years for a 64-bit tag, and say what the 256-bit key contributed in each case.`,
+      hints: [
+        'What is the adversary guessing: the key, or the tag? How many different values can a 16-bit tag have?',
+        'Each guess costs one frame, and the receiver handles 100 frames per second. The receiver gives no hint about how close a guess was, so the guesses cannot be narrowed down.',
+        'Worst-case time = number of possible tags / frames per second. On average the right tag turns up after about half of that.',
+      ],
+      answer: { type: 'number', value: 655.36, tol: 1, unit: 's' },
+      solution: `A 16-bit tag has 2^16 = 65,536 possible values. At 100 frames per second every one of them has been tried after 65,536 / 100 = **655.36 s**, about 11 minutes, and on average the right one turns up after about half that.
+
+For a 64-bit tag: 2^64 / 100 = 1.8 × 10^17 s, about 5.8 × 10^9 years.
+
+The 256-bit key contributed nothing to either figure. It makes *computing* the right tag infeasible; it does not make *guessing* it any harder. The numbers that matter here are the tag length and the rate at which the receiver accepts attempts. That is why a short tag needs a lockout or rate limit to go with it, and why 8 bytes is a common floor for radio frames. (The lab at the end of this half uses an 8-byte tag for this reason.)
+
+Note also what a successful guess buys: one accepted frame. If the frame carries a counter that the receiver then advances, the same frame does not work twice. Freshness and tag length are separate decisions.` },
+
     `## Harder application: review a protocol sketch
 
 A colleague proposes this for the lock: "The phone sends \`AES-CBC(key, command)\`. The lock decrypts and, if the result parses as a known command, executes it." Apply the map from this lesson. Confidentiality: yes. Integrity and authenticity: none, because nothing detects modified ciphertext, and "parses as a command" is a weak filter that an adversary can probe by sending altered ciphertexts and watching the lock's reaction. Freshness: none, so a recorded message works again. The repair is not to add a CRC inside the plaintext. It is to replace the construction with an AEAD and put a fresh challenge or counter inside the authenticated data.`,
@@ -386,6 +445,12 @@ A colleague proposes this for the lock: "The phone sends \`AES-CBC(key, command)
         { t: 'A hardware TRNG (directly or through a DRBG seeded from it), or a provisioning system that uses one', ok: true, why: 'Keys need full unpredictability. A physical noise source, correctly enabled and conditioned, is the only on-chip source of it.' },
         { t: 'rand() seeded with the timer count at boot', why: 'The timer value at a given point after reset varies over a small range, so the set of possible keys is small enough to enumerate.' },
         { t: 'A hash of the firmware build date and the device serial number', why: 'Both inputs are known or guessable to an adversary. Hashing guessable inputs produces a guessable key.' },
+      ] },
+    { q: 'A product encrypts stored data with AES-256 and hashes with SHA-256, but its old bootloader verifies firmware with an RSA-1024 signature. How strong is the protection against forged firmware?', kind: 'security',
+      choices: [
+        { t: 'Roughly 80 bits: the signature is the only thing that authenticates firmware, and RSA-1024 is far below the other parts', ok: true, why: 'Each guarantee is as strong as the weakest primitive it depends on. Firmware authenticity depends on the signature scheme and the hash, and the 1024-bit modulus is the weak one.' },
+        { t: 'About 256 bits, because the strongest key in the product is AES-256', why: 'The storage cipher takes no part in deciding whether a signature is accepted. A strong primitive elsewhere does not lend its strength to a different guarantee.' },
+        { t: 'About 1024 bits, because that is the length of the signing key', why: 'An RSA key is not attacked by trying every key. Factoring the modulus is far cheaper, so the key length overstates the work needed by a wide margin.' },
       ] },
   ],
 };

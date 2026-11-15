@@ -165,3 +165,19 @@ a.gloss { color: inherit; text-decoration: underline dotted var(--mask); }
 /* dark theme: a quiet header instead of a bright bar */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .top { background: #0f3a30; color: #e2e9ec; } :root:not([data-theme="light"]) #search input { background: #0a2620; color: #e2e9ec; } :root:not([data-theme="light"]) #search input::placeholder { color: #8fb3a8; } }
 :root[data-theme="dark"] .top { background: #0f3a30; color: #e2e9ec; } :root[data-theme="dark"] #search input { background: #0a2620; color: #e2e9ec; } :root[data-theme="dark"] #search input::placeholder { color: #8fb3a8; }
+
+/* practice state, review, outline, glossary popover */
+.practice-state { font: 500 .74rem var(--mono); color: var(--muted); margin-bottom: 6px; } .practice-state.done { color: var(--ok); }
+.widget > .practice-state { padding: 6px 14px 0; margin: 0; }
+.outline { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 8px 14px; margin: 0 0 20px; font-size: .9rem; max-width: 72ch; }
+.outline summary { cursor: pointer; font: 600 .86rem var(--cond); color: var(--muted); } .outline ol { margin: 8px 0 4px; padding-left: 1.3em; columns: 2 18em; } .outline li { break-inside: avoid; }
+.outline button { background: none; border: 0; padding: 0; color: var(--link); font: inherit; text-align: left; cursor: pointer; } .outline button:hover { text-decoration: underline; } .outline li.sub { list-style: none; margin-left: 1em; font-size: .86rem; }
+.readbar { position: sticky; top: 52px; z-index: 5; height: 3px; background: transparent; margin: 0 0 -3px; } .readbar span { display: block; height: 100%; width: 0; background: var(--copper); }
+.gloss-pop { position: absolute; z-index: 30; max-width: min(92vw, 380px); background: var(--surface); border: 1px solid var(--mask); border-radius: var(--r); box-shadow: 0 6px 24px rgb(0 0 0 / .18); padding: 10px 14px; font-size: .9rem; }
+.gloss-pop h4 { margin: 0 0 4px; } .gloss-pop p { margin: 0 0 6px; } .gloss-pop .meta { font-size: .78rem; color: var(--muted); }
+.kindrow { display: grid; grid-template-columns: 9.5em 1fr 6.5em; gap: 10px; align-items: center; margin: 6px 0; font-size: .9rem; } .kindrow .num { text-align: right; }
+.review-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 18px 12px; margin-bottom: 12px; } .review-card .from { font-size: .8rem; color: var(--muted); margin-top: 6px; }
+.pitem { display: grid; grid-template-columns: 1.6em 1fr auto; gap: 8px; align-items: baseline; padding: 6px 16px; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: .93rem; } .pitem:hover { background: var(--mask-soft); } .pitem .mk { color: var(--line); } .pitem.done .mk { color: var(--ok); } .pitem .kind { font: .74rem var(--mono); color: var(--muted); }
+.due-pill { display: inline-block; font: 500 .74rem var(--mono); background: var(--copper); color: #fff; border-radius: 9px; padding: 0 7px; margin-left: 6px; }
+.pathwrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; } .pathmap { min-width: 520px; max-width: 760px; width: 100%; height: auto; display: block; margin: 0 auto; } .pathmap text { font-family: var(--sans); } .pathmap a:focus-visible rect { stroke-width: 3; }
+.istate.s-next { color: var(--copper); }

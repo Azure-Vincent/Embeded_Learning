@@ -3,6 +3,7 @@ import { h, clear, append } from './dom.js';
 import { md, inline } from './md.js';
 import { highlight } from './highlight.js';
 import { store, PASS } from './store.js';
+import { blockKeys, isPractice, practiceLabel } from './keys.js';
 import { mountWidget, WIDGETS } from '../widgets/registry.js';
 
 const CALLOUT = {
@@ -33,7 +34,7 @@ export function codeBlock(code, lang = 'c', { caption, status, explain } = {}) {
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 
 /** One multiple-choice question. Wrong picks explain the misconception and let the learner try again. */
-function question(q, idx, onSolved) {
+export function question(q, idx, onSolved) {
   let tries = 0, solved = false;
   const fb = h('div', { class: 'fb', 'aria-live': 'polite' });
   const opts = h('div', { class: 'opts' }, shuffle(q.choices).map((c) => {
@@ -57,11 +58,11 @@ function question(q, idx, onSolved) {
 }
 
 /** Quiz: score is the fraction answered correctly on the first try. */
-export function quiz(questions, { onFinish, best, title = 'Check your understanding', sample } = {}) {
+export function quiz(questions, { onFinish, onAnswer, best, title = 'Check your understanding', sample } = {}) {
   const wrap = h('section', { class: 'quiz' });
   const run = () => {
     clear(wrap);
-    const qs = sample ? shuffle(questions).slice(0, sample) : questions;
+    const qs = typeof questions === 'function' ? questions() : sample ? shuffle(questions).slice(0, sample) : questions;
     let done = 0, first = 0;
     const status = h('div', { class: 'quiz-status', 'aria-live': 'polite' });
     const setStatus = () => {
@@ -75,7 +76,7 @@ export function quiz(questions, { onFinish, best, title = 'Check your understand
       onFinish?.(score);
     };
     append(wrap, [h('h3', {}, title), h('p', { class: 'muted' }, 'A wrong answer shows why it is wrong and lets you try again; only first attempts count toward mastery.'),
-      qs.map((q, i) => question(q, i, (firstTry) => { done++; if (firstTry) first++; setStatus(); })), status]);
+      qs.map((q, i) => question(q, i, (firstTry) => { done++; if (firstTry) first++; onAnswer?.(q, firstTry); setStatus(); })), status]);
     setStatus();
   };
   run();
@@ -175,9 +176,20 @@ export function renderBlock(b, ctx) {
 }
 
 export function renderBlocks(blocks, keyPrefix) {
+  const keys = blockKeys(keyPrefix, blocks);
   return (blocks || []).map((b, i) => {
-    const key = `${keyPrefix}:${i}`;
-    return renderBlock(b, { key, complete: () => store.markDone(key), isDone: () => store.isDone(key) });
+    const key = keys[i];
+    const el = renderBlock(b, { key, complete: () => store.markDone(key), isDone: () => store.isDone(key) });
+    el.dataset.key = key;
+    if (isPractice(b)) {
+      // a visible record of what has been done, so a learner returning to a lesson sees where they stopped
+      const badge = h('div', { class: 'practice-state' });
+      const draw = () => { const d = store.isDone(key); badge.className = 'practice-state' + (d ? ' done' : ''); badge.textContent = (d ? 'Done: ' : 'To do: ') + practiceLabel(b).toLowerCase(); };
+      draw();
+      const unsub = store.subscribe(() => (el.isConnected ? draw() : unsub()));
+      el.prepend(badge);
+    }
+    return el;
   });
 }
 

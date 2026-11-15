@@ -10,8 +10,8 @@ export default [
     blocks: [
       `## The problem
 
-      You connect an LED straight between a 3.3 V pin and ground. It flashes brightly once and never lights again. The same LED
-      with a small resistor in series runs for years. Nothing about the LED changed. What changed is how much **current** was
+      You connect an LED straight between a board's 3.3 V supply pin and ground. It flashes brightly once and never lights
+      again. The same LED with a small resistor in series runs for years. Nothing about the LED changed. What changed is how much **current** was
       allowed to flow, and to see why you need four quantities and the relationship between them.`,
 
       `## Four quantities
@@ -110,7 +110,7 @@ export default [
 
       { t: 'exercise', prompt: `With 0.5 Ω of total cable resistance and a 500 mA peak, how many volts are lost in the cable? The port supplies exactly 5.00 V.`,
         hints: [`The cable is a resistor in series with the board. The same current flows through both.`, `V = I × R, with I in amps.`],
-        solution: `V lost = 0.5 A × 0.5 Ω = **0.25 V**. The board sees 4.75 V during the peak, and 5.00 V when idle. The regulator on the board must still work from 4.75 V. A cheaper cable with 1 Ω of loop resistance would leave 4.5 V, which is below what many 3.3 V linear regulators with a 1 V-plus dropout need. This is one of the most common reasons a board "resets when Wi-Fi starts": the fault is in the cable, not in the code.`,
+        solution: `V lost = 0.5 A × 0.5 Ω = **0.25 V**. The board sees 4.75 V during the peak, and 5.00 V when idle. The regulator on the board must still work from 4.75 V. A cheaper cable with 1 Ω of loop resistance would leave 4.5 V. A linear regulator needs its input to stay above its output by some headroom (its "dropout", covered in the power lesson); for older 3.3 V parts that headroom is a volt or more, so 4.5 V is at or below their limit. This is one of the most common reasons a board "resets when Wi-Fi starts": the fault is in the cable, not in the code.`,
         answer: { type: 'number', value: 0.25, tol: 0.01, unit: 'V' } },
 
       { t: 'refs', items: [
@@ -211,13 +211,13 @@ export default [
         ],
         reveal: `Lower leg: 10 kΩ ∥ 10 kΩ = 5 kΩ. Vout = 3.3 × 5 / (10 + 5) = 1.10 V. Rule of thumb: a divider holds its ratio only if the load resistance is at least ten times, better a hundred times, the divider's lower resistor. This is exactly what happened in the opening problem.` },
 
-      { t: 'widget', name: 'voltage-divider', props: { vin: 3.3, r1: 10000, r2: 10000, challenge: 'loaded' }, caption: 'Make the divider hold its output when the load is connected.' },
+      { t: 'widget', name: 'voltage-divider', props: { challenge: 'loaded' }, caption: 'The same effect with different numbers: a 10 kΩ / 10 kΩ divider from 5 V, loaded by 4.7 kΩ. Before you move a slider, calculate the loaded output yourself (R2 ∥ load first). Then make the divider hold 2.5 V with the load connected.' },
 
       `## Worked example: two sources, two loops
 
       This circuit cannot be reduced with series and parallel rules alone, because it has two sources. It is also a realistic
-      one: a 5 V output connected through a 1 kΩ series resistor to a node that already has a 1 kΩ pull-up to 3.3 V, with a
-      10 kΩ load to ground.`,
+      one: a 5 V output connected through a 1 kΩ series resistor to a node that already has a 1 kΩ resistor up to a 3.3 V
+      rail (a "pull-up"; a later lesson covers why it is there), with a 10 kΩ load to ground.`,
 
       { t: 'figure', svg: figTwoLoop, caption: 'Two sources feed node A through R1 and R3. Current directions are assumed; the arithmetic will tell us if an assumption was wrong.' },
 
@@ -623,7 +623,7 @@ export default [
     quiz: [
       { q: 'A calculation for an LED series resistor gives 136 Ω as the minimum. From the E12 series you should fit:', kind: 'circuit', choices: [
         { t: '150 Ω', ok: true, why: 'For a current limit, round up: the next preferred value above the minimum keeps the current below the target.' },
-        { t: '120 Ω', why: 'This is nearer in ohms, but a value below the minimum lets more current flow than the design allows.' },
+        { t: '120 Ω', why: 'This is the next preferred value down. A value below the minimum lets more current flow than the design allows.' },
         { t: '136 Ω exactly, ordered specially', why: 'With a 5 % tolerance a nominal 136 Ω part could be lower than the minimum anyway. Preferred values exist to avoid this.' },
       ] },
       { q: 'A ceramic capacitor is marked 473. Its value is:', kind: 'concept', choices: [
@@ -742,8 +742,12 @@ export default [
       `## LEDs and why they need a resistor
 
       An LED is a diode that emits light. Like any diode, once its forward voltage is reached, a small increase in voltage
-      produces a very large increase in current. There is no stable operating point if you simply apply a voltage. Something
-      else must set the current, and the simplest something is a series resistor.
+      produces a very large increase in current: around the operating point, one or two tenths of a volt more can multiply
+      the current several times over (the I–V curve in the LED's datasheet shows how steep). Compare a resistor, where 10 %
+      more voltage gives exactly 10 % more current. A supply that is "about right" for a resistor is therefore either too low
+      to light an LED or high enough to overdrive it, and the boundary moves with temperature and from part to part. There is
+      no stable operating point if you simply apply a voltage. Something else must set the current, and the simplest
+      something is a series resistor.
 
       Apply KVL round the loop: supply = resistor drop + LED drop. So the resistor has (V supply − Vf) across it, and by Ohm's
       law
@@ -765,7 +769,7 @@ export default [
       { t: 'predict', q: `A red LED (Vf about 2.0 V) is connected directly between a 3.3 V GPIO and ground, with no resistor. It lights. What is limiting the current?`,
         reveal: `Only things you did not design: the internal resistance of the GPIO's output transistor (a few tens of ohms), the LED's own small series resistance, and the wiring. The pin's output voltage sags under the overload until the loop balances, often at several tens of milliamps. That may be above the pin's rated current and the LED's. It can appear to work for a long time while both parts are degraded. On a supply with more headroom, such as 5 V or a direct regulator output, the same mistake destroys the LED at once. "It lights" is not evidence that a circuit is correct.` },
 
-      { t: 'widget', name: 'led-resistor', props: { vsupply: 3.3, vf: 2.0, challenge: 'gpio-3v3-red' }, caption: 'Choose a resistor that lights the LED clearly while staying within the pin limit.' },
+      { t: 'widget', name: 'led-resistor', props: { challenge: 'gpio-3v3-red' }, caption: 'Choose a resistor that lights the LED clearly while staying within the pin limit. The task takes this LED\'s Vf as 1.8 V (the worked example used 2.0 V) and assumes a pin limit of 8 mA as a stand-in: the real limit for your chip is in its datasheet. Calculate first, then check.' },
 
       { t: 'widget', name: 'circuit-debug', props: { scenario: 'no-current-limit' }, caption: 'Find the fault with the virtual multimeter. Measure before you guess.' },
 
@@ -947,7 +951,7 @@ export default [
       `### The other two resistors
 
       **Gate pull-down (10 kΩ to 100 kΩ, gate to ground).** While the microcontroller is in reset, booting, or being
-      programmed, its pins are high-impedance inputs. A MOSFET gate connected to nothing holds whatever stray charge reaches
+      programmed, most of its pins are high-impedance inputs (the datasheet lists each pin's state at reset). A MOSFET gate connected to nothing holds whatever stray charge reaches
       it. The motor may run, or the MOSFET may sit half-on and overheat. The pull-down guarantees "off" until the firmware
       takes control. Do not rely on the internal pull-down of the MCU pin: it is not active before the firmware configures it.
 

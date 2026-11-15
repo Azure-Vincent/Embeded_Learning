@@ -24,8 +24,8 @@ const uartFrameSvg = `<svg viewBox="0 0 640 150" role="img" aria-label="UART fra
 // I2C: start, a few clocked bits, stop
 const i2cSvg = `<svg viewBox="0 0 640 170" role="img" aria-label="I2C start condition, data bits and stop condition">
   ${txt(30, 49, 'SDA')}${txt(30, 119, 'SCL')}
-  <path d="M60 35 L110 35 L110 65 L170 65 L170 35 L250 35 L250 65 L330 65 L410 65 L410 35 L470 35 L470 65 L530 65 L530 35 L600 35" fill="none" stroke="var(--sig2)" stroke-width="2.5"/>
-  <path d="M60 105 L140 105 L140 135 L190 135 L190 105 L230 105 L230 135 L270 135 L270 105 L310 105 L310 135 L350 135 L350 105 L390 105 L390 135 L430 135 L430 105 L450 105 L450 135 L490 135 L490 105 L600 105" fill="none" stroke="var(--sig1)" stroke-width="2.5"/>
+  <path d="M60 35 L110 35 L110 65 L170 65 L170 35 L250 35 L250 65 L530 65 L530 35 L600 35" fill="none" stroke="var(--sig2)" stroke-width="2.5"/>
+  <path d="M60 105 L140 105 L140 135 L190 135 L190 105 L230 105 L230 135 L270 135 L270 105 L310 105 L310 135 L350 135 L350 105 L390 105 L390 135 L490 135 L490 105 L600 105" fill="none" stroke="var(--sig1)" stroke-width="2.5"/>
   <rect x="96" y="22" width="52" height="124" fill="none" stroke="var(--sig3)" stroke-dasharray="4 3"/>
   <rect x="504" y="22" width="52" height="124" fill="none" stroke="var(--sig3)" stroke-dasharray="4 3"/>
   ${txt(122, 162, 'START')}${txt(530, 162, 'STOP')}
@@ -207,7 +207,7 @@ A UART sends one byte at a time, wrapped in a **frame**:`,
 
 The format is written as data bits, parity, stop bits: **8N1** means 8 data bits, no parity, 1 stop bit. It is the default almost everywhere. 8E1 (even parity) appears in industrial equipment such as Modbus RTU; 7E1 in old text terminals.
 
-In 8N1, ten bits on the wire carry eight bits of data. That 25 % overhead is the price of having no clock wire.
+In 8N1, ten bits on the wire carry eight bits of data: two extra bits for every eight (25 % on top of the data, or 20 % of the line time). That is the price of having no clock wire.
 
 ## How the receiver finds each bit
 The receiver does not know when a byte will arrive, so its hardware samples the RX pin much faster than the bit rate — typically **16 times per bit** (×16 oversampling).
@@ -273,8 +273,9 @@ A UART defines the **logical** frame. Several electrical standards carry it. The
 
 ## On an ESP32
 ESP-IDF's UART driver configures the format, installs interrupt-driven ring buffers and routes the signals to pins of your choice:`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'A second UART on an ESP32 with ESP-IDF (written against the UART driver documentation; not run on a board here)',
-        code: String.raw`#include "driver/uart.h"
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'A second UART on an ESP32 with ESP-IDF (every call, type and constant checked against the ESP-IDF v6.1 headers; not compiled as a whole and not run on a board)',
+        code: String.raw`#include "freertos/FreeRTOS.h"
+#include "driver/uart.h"
 
 #define LINK_UART  UART_NUM_1
 #define LINK_TX    25
@@ -290,9 +291,9 @@ void link_init(void)
         .flow_ctrl  = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
-    uart_driver_install(LINK_UART, 1024, 1024, 0, NULL, 0);
-    uart_param_config(LINK_UART, &cfg);
-    uart_set_pin(LINK_UART, LINK_TX, LINK_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+    ESP_ERROR_CHECK(uart_driver_install(LINK_UART, 1024, 1024, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_param_config(LINK_UART, &cfg));
+    ESP_ERROR_CHECK(uart_set_pin(LINK_UART, LINK_TX, LINK_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
 }
 
 void link_demo(void)
@@ -304,10 +305,11 @@ void link_demo(void)
     (void)n;
 }`,
         explain: [
-          { lines: '9-16', md: 'This struct is 8N1 at 115200 spelled out. The driver turns the baud rate into a clock divider for the UART peripheral; \`source_clk\` selects which clock is divided.' },
-          { lines: '17', md: 'Allocates receive and transmit ring buffers of 1024 bytes each and installs the interrupt handler that moves bytes between them and the hardware FIFO. Without the driver the hardware FIFO would overflow as soon as your task was busy.' },
-          { lines: '19', md: 'The ESP32 can route a UART signal to almost any GPIO through its GPIO matrix. RTS and CTS are left unconnected here. Check \`docs/FACTS.md\` and your module\'s pin table before choosing pins: some are strapping pins or wired to the flash chip.' },
-          { lines: '26', md: '\`uart_read_bytes\` blocks the calling task for up to the timeout. A timeout here is information, not just a failure: silence for longer than expected is how higher-level protocols detect the end of a message or a dead peer.' },
+          { lines: '10-17', md: 'This struct is 8N1 at 115200 spelled out. The driver turns the baud rate into a clock divider for the UART peripheral; \`source_clk\` selects which clock is divided.' },
+          { lines: '18', md: 'Allocates receive and transmit ring buffers of 1024 bytes each and installs the interrupt handler that moves bytes between them and the hardware FIFO. Without the driver the hardware FIFO would overflow as soon as your task was busy.' },
+          { lines: '20', md: 'The ESP32 can route a UART signal to almost any GPIO through its GPIO matrix. RTS and CTS are left unconnected here. Check \`docs/FACTS.md\` and your module\'s pin table before choosing pins: some are strapping pins or wired to the flash chip.' },
+          { lines: '1', md: '\`pdMS_TO_TICKS\` comes from the FreeRTOS header. The driver\'s timeouts are in RTOS **ticks**, 10 ms each with the default \`CONFIG_FREERTOS_HZ=100\`, so a timeout shorter than one tick rounds down to 0 and the call returns at once.' },
+          { lines: '27', md: '\`uart_read_bytes\` blocks the calling task for up to the timeout. A timeout here is information, not just a failure: silence for longer than expected is how higher-level protocols detect the end of a message or a dead peer.' },
         ] },
       `UART0 is normally the console and the port the ROM bootloader uses for flashing, which is why this example uses UART1.
 
@@ -499,7 +501,7 @@ A longer frame is less tolerant: 8E2 has 12 bits, so the last stop-bit sample is
         ],
         reveal: 'At a 6 % mismatch the sample aimed at 9.5 bit times lands near 10.07 or 8.93 — in the wrong bit. Slightly smaller mismatches corrupt only frames where the neighbouring bit differs. That is the signature of a marginal baud error: mostly correct text with occasional wrong characters whose **high bits** are affected, plus framing errors.' },
       { t: 'exercise', prompt: 'An MCU clocks its UART from 8 MHz with ×16 oversampling and an integer divider. You ask for 115200 baud. What is the baud-rate error, in percent, with the best integer divider? Give the magnitude.',
-        hints: ['Ideal divider = 8 000 000 / (16 × 115 200).', 'That is 4.34, so the nearest integer is 4.', 'Actual baud = 8 000 000 / (16 × 4) = 125 000. Compare with 115 200.'],
+        hints: ['The hardware can only divide by a whole number. What divider would give exactly 115200, and what happens to the rate when you round it?', 'Ideal divider = 8 000 000 / (16 × 115 200) = 4.34, so the nearest integer is 4.', 'Actual baud = 8 000 000 / (16 × 4) = 125 000. Error = (actual − wanted) / wanted.'],
         solution: 'Divider 4.34 → 4. Actual rate 125 000 baud. Error = (125 000 − 115 200) / 115 200 = **+8.5 %**: far outside the budget, the link cannot work. Options: a different clock, a UART with a fractional divider or ×8 oversampling, or a rate the clock can make exactly, such as 125 000 or 250 000 baud if the other end allows it.',
         answer: { type: 'number', value: 8.51, tol: 0.2, unit: '%' } },
       { t: 'exercise', prompt: 'How long, in microseconds, is one bit at 57600 baud?',
@@ -643,7 +645,7 @@ Suppose the two bytes read back are 0x19 and 0x80.
 - 408 × 0.0625 °C = **25.5 °C**.
 
 Three decisions hide in those lines: byte order, alignment and scale. None is defined by I2C. All come from the datasheet's register description, and getting one wrong gives a plausible-looking wrong temperature.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'The same read with ESP-IDF\'s I2C controller driver (written against the driver documentation; not run on a board here)',
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'The same read with ESP-IDF\'s I2C controller driver (every call, type and field checked against the ESP-IDF v6.1 headers; not compiled as a whole and not run on a board)',
         code: String.raw`#include "driver/i2c_master.h"
 
 static i2c_master_dev_handle_t tmp;
@@ -679,7 +681,7 @@ esp_err_t tmp_read(int16_t *sixteenths)
     return ESP_OK;
 }`,
         explain: [
-          { lines: '7-13', md: 'Selects the I2C peripheral and its pins. The driver configures both pins as open-drain. External pull-up resistors are assumed; the internal ones are too weak to rely on at anything but short, slow buses.' },
+          { lines: '7-13', md: 'Selects the I2C peripheral and its pins. The driver configures both pins as open-drain. External pull-up resistors are assumed; the driver can switch on the internal ones (\`.flags.enable_internal_pullup\`), but they are too weak to rely on at anything but short, slow buses. \`glitch_ignore_cnt\` is the width, in peripheral clock cycles, of spikes the input filter removes.' },
           { lines: '17-21', md: 'The address is given in 7-bit form; the driver shifts it and appends the R/W bit. \`scl_speed_hz\` sets the SCL frequency for this device.' },
           { lines: '30', md: 'One call produces the whole sequence in the diagram above: START, address+W, pointer byte, repeated START, address+R, two data bytes with ACK then NACK, STOP. The last argument is a timeout in milliseconds.' },
           { lines: '31', md: 'An error here usually means the address byte was not acknowledged. Treat that as a normal run-time condition: sensors get unplugged.' },
@@ -711,15 +713,15 @@ A 3.3 V Fast-mode bus with an estimated 100 pF of capacitance:
 - R_p(min) = 2.9 V / 3 mA = 967 Ω
 - R_p(max) = 300 ns / (0.8473 × 100 pF) = 3.54 kΩ
 
-Any value in between satisfies the specification; 2.2 kΩ is a comfortable standard value. The familiar 4.7 kΩ would be too large here: fine at 100 kbit/s (limit 11.8 kΩ at 100 pF), marginal at 400 kbit/s. And at 400 pF, the Fast-mode upper limit is 885 Ω — below the lower limit. No resistor works: that bus needs less capacitance, a lower speed, or a bus buffer.
+Any value in between satisfies the specification; 2.2 kΩ is a comfortable standard value. The familiar 4.7 kΩ is fine on this bus at 100 kbit/s (limit 1000 ns / (0.8473 × 100 pF) = 11.8 kΩ) but out of specification at 400 kbit/s: it gives a rise time of 0.8473 × 4.7 kΩ × 100 pF ≈ 400 ns against a 300 ns limit. Such a bus often still works on the bench, which is exactly why the mistake survives until a cable or a second device is added. And at 400 pF, the Fast-mode upper limit is 885 Ω — below the lower limit. No resistor works: that bus needs less capacitance, a lower speed, or a bus buffer.
 
 There is exactly **one** pull-up per line for the whole bus. Breakout boards often each carry their own; plug in four and you have four resistors in parallel, which may fall below the lower limit.`,
       { t: 'exercise', prompt: 'A 3.3 V I2C bus must run in Fast-mode (400 kbit/s, t_r ≤ 300 ns). You estimate the bus capacitance at 200 pF. What is the **largest** pull-up resistance that meets the rise-time limit, in ohms?',
-        hints: ['Use R_p(max) = t_r / (0.8473 × C_b).', 'Keep the units straight: 300 ns = 300 × 10⁻⁹ s, 200 pF = 200 × 10⁻¹² F.', '300e-9 / (0.8473 × 200e-12) = 300e-9 / 169.5e-12.'],
+        hints: ['Which of the two limits does a *large* resistor threaten: the current a device must sink, or the time the line takes to rise?', 'It is the rise time: R_p(max) = t_r / (0.8473 × C_b). Keep the units straight: 300 ns = 300 × 10⁻⁹ s, 200 pF = 200 × 10⁻¹² F.', '300e-9 / (0.8473 × 200e-12) = 300e-9 / 169.5e-12.'],
         solution: 'R_p(max) = 300 ns / (0.8473 × 200 pF) ≈ **1770 Ω**. With R_p(min) ≈ 967 Ω at 3.3 V, the usable window is roughly 1.0 kΩ to 1.7 kΩ; 1.5 kΩ is a standard value inside it. Doubling the capacitance halved the upper limit: this is why long I2C cables do not work at speed.',
         answer: { type: 'number', value: 1770, tol: 30, unit: 'Ω' } },
       { t: 'exercise', prompt: 'On a 5 V Standard-mode bus, what is the **smallest** allowed pull-up resistance, in ohms? (Devices sink 3 mA at V_OL = 0.4 V.)',
-        hints: ['The resistor has V_DD − V_OL across it when a device pulls low.', '(5.0 − 0.4) V / 0.003 A.'],
+        hints: ['A *small* resistor lets more current flow into the device that is pulling low. What limits that current?', 'The resistor has V_DD − V_OL across it when a device pulls low, and the device is only specified to sink 3 mA.', '(5.0 − 0.4) V / 0.003 A.'],
         solution: 'R_p(min) = 4.6 V / 3 mA ≈ **1533 Ω**. Anything smaller would force a device to sink more than the 3 mA it is specified for, and its low level could rise above the valid threshold.',
         answer: { type: 'number', value: 1533, tol: 20, unit: 'Ω' } },
       { t: 'widget', name: 'protocol-debug', props: { scenario: 'no-pullups' }, caption: 'A bus where every address is NACKed. Look at the shape of the edges, not just the decoded bytes.' },
@@ -735,12 +737,13 @@ The specification also defines **10-bit addressing**: a first byte of the form 1
 ## When the bus hangs
 A peripheral drives SDA during a read. If the controller is reset in the middle of that byte, the peripheral is left waiting for more clocks, possibly holding SDA low. The restarted controller sees SDA low, cannot generate a START (which needs SDA to *fall*), and reports the bus as busy forever.
 
-The recovery procedure from the specification: the controller sends up to **nine clock pulses** on SCL (as a GPIO if necessary) while leaving SDA released. The stuck device shifts out its remaining bits, eventually releases SDA at an acknowledge position, and the controller can then issue a STOP. If a device has a reset pin, using it is the more certain fix. Firmware that talks to I2C devices should run this recovery at start-up, because a watchdog reset in mid-transfer is exactly when you need it.
+The recovery procedure from the specification: the controller sends up to **nine clock pulses** on SCL (as a GPIO if necessary) while leaving SDA released. The stuck device shifts out its remaining bits, eventually releases SDA at an acknowledge position, and the controller can then issue a STOP. If a device has a reset pin, using it is the more certain fix. Firmware that talks to I2C devices should run this recovery at start-up, because a watchdog reset in mid-transfer is exactly when you need it. ESP-IDF's controller driver provides it as \`i2c_master_bus_reset(bus)\`.
 
 ## Clock stretching and multiple controllers, briefly
 - A target may hold SCL low to make the controller wait (**clock stretching**, from the previous lesson). Controllers must tolerate it, and should enforce a timeout so one faulty device cannot freeze the bus for ever.
 - More than one controller may share the bus. If two start at the same time, **arbitration** on SDA picks a winner without corrupting the message. The arbitration lesson shows how.`,
       { t: 'widget', name: 'logic-analyzer', props: { capture: 'i2c-read' }, caption: 'Decode this capture by hand: mark START, read the address byte, identify each ACK and who sent it, then check yourself with the decoder.' },
+      { t: 'widget', name: 'i2c-visualizer', props: { device: 'decode' }, caption: 'No decoder this time. Read the address, the direction and the data byte straight off SDA at the SCL high periods, and check your answer. Use "New capture" until you can do it without counting on your fingers.' },
       { t: 'callout', kind: 'decision', title: 'Why use I2C here and not SPI?',
         md: 'I2C wins when there are several slow devices and few pins: sensors, clocks, small EEPROMs, power-management chips. Two wires serve all of them and the ACK tells you whether a device is present. It loses when you need speed (the pull-up edge limits it to roughly 1 Mbit/s in ordinary modes), long wires (capacitance), or strict timing. For a display, an SD card or a fast ADC, use SPI.' },
       `## A harder case

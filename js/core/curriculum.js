@@ -12,6 +12,7 @@ import security from '../content/security.js';
 import ectf from '../content/ectf.js';
 import capstones from '../content/capstones.js';
 import { store, PASS } from './store.js';
+import { blockKeys, isPractice, questionId } from './keys.js';
 
 export const sections = [foundations, electronics, mcu, esp32, embeddedC, protocols, rtos, debugging, firmware, security, ectf, capstones];
 export const TRACKS = { foundations: 'Foundations', hardware: 'Hardware', programming: 'Programming', security: 'Security', competition: 'Competition' };
@@ -59,15 +60,12 @@ export function skillLevel(skill) {
   if (mastered.length) return 1;
   return 0;
 }
-/** Keys of interactive items in a lesson: exercises, predictions with choices, widgets that declare a challenge. */
-export function practiceKeys(lesson) {
-  const keys = [];
-  (lesson.blocks || []).forEach((b, i) => {
-    if (typeof b !== 'object') return;
-    if (b.t === 'exercise' || (b.t === 'widget' && (b.name === 'c-lab' || b.challenge || b.props?.challenge || b.props?.scenario || b.props?.device))) keys.push(`${lesson.id}:${i}`);
-  });
-  return keys;
+/** Keys of the interactive items in a lesson that count as practice (exercises, C exercises, tool challenges). */
+export function practiceItems(lesson) {
+  const keys = blockKeys(lesson.id, lesson.blocks);
+  return (lesson.blocks || []).map((b, i) => ({ b, key: keys[i] })).filter((x) => isPractice(x.b));
 }
+export const practiceKeys = (lesson) => practiceItems(lesson).map((x) => x.key);
 export const practiceComplete = (lesson) => practiceKeys(lesson).every((k) => store.isDone(k));
 
 export function trackProficiency() {
@@ -92,6 +90,49 @@ export function nextUp() {
   }
   return null;
 }
-export const glossary = () => sections.flatMap((x) => (x.glossary || []).map((g) => ({ ...g, section: x.id }))).sort((a, b) => a.term.localeCompare(b.term));
+/** Glossary merged across sections: one entry per term, keeping the fullest definition and listing where it is taught. */
+export function glossary() {
+  const by = new Map();
+  for (const sec of sections) for (const g of sec.glossary || []) {
+    const k = g.term.trim().toLowerCase();
+    const e = by.get(k);
+    if (!e) by.set(k, { ...g, sections: [sec] });
+    else { if (!e.sections.includes(sec)) e.sections.push(sec); if ((g.def || '').length > (e.def || '').length) e.def = g.def; }
+  }
+  return [...by.values()].sort((a, b) => a.term.localeCompare(b.term));
+}
+export function glossaryLookup(term) {
+  const k = term.trim().toLowerCase(), all = glossary();
+  return all.find((g) => g.term.toLowerCase() === k) || all.find((g) => g.term.toLowerCase().replace(/s$/, '') === k.replace(/s$/, '')) || all.find((g) => g.term.toLowerCase().startsWith(k) || k.startsWith(g.term.toLowerCase()));
+}
+
+// ---- Spaced review ---------------------------------------------------------
+/** Put every question of a mastered lesson into the review deck (idempotent). */
+export function enrollLesson(sec, lesson) {
+  let added = 0;
+  for (const q of lesson.quiz || []) if (store.enroll(questionId(lesson.id, q), lesson.id, sec.id)) added++;
+  if (added) store.commit();
+}
+/** Review cards whose question still exists: [{ qid, q, lesson, sec, box, due }]. */
+export function reviewDeck() {
+  const out = [];
+  for (const sec of sections) for (const l of sec.lessons || []) for (const q of l.quiz || []) {
+    const qid = questionId(l.id, q), r = store.s.review[qid];
+    if (r) out.push({ qid, q, lesson: l, sec, box: r.box, due: r.due });
+  }
+  return out;
+}
+export const reviewDue = (now = Date.now()) => reviewDeck().filter((c) => c.due <= now);
+
+/** Checkpoint questions: at least one from every lesson, then filled to a target size. */
+export function checkpointQuestions(sec) {
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const lessons = (sec.lessons || []).filter((l) => l.quiz?.length);
+  const chosen = new Set(lessons.map((l) => pick(l.quiz)));
+  const rest = lessons.flatMap((l) => l.quiz).filter((q) => !chosen.has(q)).sort(() => Math.random() - 0.5);
+  const target = Math.min(lessons.flatMap((l) => l.quiz).length, Math.max(12, lessons.length + 6));
+  while (chosen.size < target && rest.length) chosen.add(rest.pop());
+  return [...chosen].sort(() => Math.random() - 0.5);
+}
 export const troubleshooting = () => sections.flatMap((x) => (x.troubleshooting || []).map((g) => ({ ...g, section: x.id, sectionTitle: x.title })));
 export const references = () => sections.flatMap((x) => (x.refs || []).map((g) => ({ ...g, section: x.title })));

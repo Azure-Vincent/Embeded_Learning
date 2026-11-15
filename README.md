@@ -17,6 +17,22 @@ Then open <http://localhost:8080>. Any static file server works; opening `index.
 does not, because browsers refuse to load ES modules from `file://`. The cryptography tools need `localhost`
 or https (WebCrypto is unavailable on plain http from another host).
 
+### Standalone executables
+
+`dist/` holds single-file launchers that contain the whole course. They need no installation:
+
+| Platform | File | Start it |
+|---|---|---|
+| Windows (64-bit Intel/AMD) | `dist/bench-windows-x86_64.exe` | double-click it |
+| Linux (64-bit Intel/AMD) | `dist/bench-linux-x86_64` | `chmod +x bench-linux-x86_64 && ./bench-linux-x86_64` |
+
+The launcher serves the course on `http://localhost:47800/` (this computer only) and opens your default browser.
+Close its window, or press Ctrl+C, to stop. Progress is saved in the browser for that address, so keep using the
+same port; `--port N` changes it and `--no-browser` suppresses opening the browser. The executables are not
+code-signed, so Windows SmartScreen may ask for confirmation the first time ("More info" → "Run anyway").
+
+To rebuild them, including ARM64 variants, install Go 1.22 or newer and run `./desktop/build.sh`.
+
 ## What is in it
 
 | Area | Where | Notes |

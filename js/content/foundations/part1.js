@@ -147,13 +147,35 @@ were specified for.`,
     ], reveal: `The limit is written relative to VDD because of how the pin is built: a protection diode runs from the pin to the supply rail. Raise the pin more than a diode drop above VDD and that diode conducts, pushing current into the supply rail through a structure that was never meant to carry it continuously. The part may work for a while and fail later, which is the worst kind of fault to debug. You will design the fix, a voltage divider or level shifter, in the Electronics section.` },
 
     { t: 'exercise', prompt: `Still using the fictional excerpt. You want eight LEDs lit at the same time, each from its own output pin, each at the 8 mA for which VOH is specified. What total current do the I/O pins supply, in mA? Then decide whether it respects the *total* limit in Table 5.`, hints: [
-      `The LEDs are on separate pins, so the currents add.`,
-      `Compare your total against the row for all I/O pins together, not the per-pin row.`,
+      `Where does the current for each LED come from, and through which pins of the chip does all of it finally enter and leave?`,
+      `The LEDs are on separate output pins, so each pin carries one LED's current, but the currents add inside the chip. Two rows of Table 5 apply: one per pin, one for all pins together.`,
+      `Total = number of pins × current per pin. Compare the per-pin figure with the IIO row and the total with the SIIO row.`,
     ], answer: { type: 'number', value: 64, tol: 0.5, unit: 'mA', why: '64 mA is under the 200 mA total, so both the per-pin and total limits are respected.' }, solution: `8 pins × 8 mA = **64 mA**. The per-pin figure (8 mA) is inside the specified condition, and the total (64 mA) is far below the 200 mA absolute maximum for all pins together.
 
-The total limit exists because all the pin currents flow through the same supply and ground pins and bond wires of the chip. A design can respect every per-pin limit and still exceed the total, for example 30 LEDs at 8 mA each (240 mA). Always check both rows.` },
+The total limit exists because all the pin currents flow through the same supply and ground pins and bond wires of the chip. A design can respect every per-pin limit and still exceed the total, for example 30 LEDs at 8 mA each (240 mA). Always check both rows.
+
+One caution about what this check proves. Table 5 is still a stress table, so "below 200 mA" means "not in the damage region", and 64 mA is comfortably clear of it. A design that needed 190 mA would pass the same arithmetic and would be a bad design: look for a recommended or characterised total in the operating-conditions and DC tables, and if the datasheet gives none, keep a wide margin.` },
 
     { t: 'callout', kind: 'mistake', title: 'Designing to "typical"', md: `Datasheet tables have Min, Typ and Max columns. *Typical* describes an average part at room temperature and is not guaranteed. If your circuit only works when a parameter is at its typical value, some of the parts you buy will not work. Design so the circuit works at the guaranteed Min and Max.` },
+
+    `## Finding these numbers in a real datasheet
+
+A real microcontroller datasheet runs to dozens of pages. You do not read it front to back; you go to it with a question. A routine that works on almost every part:
+
+1. **Check you have the right document.** The title page names the exact part number and a revision or date. A *datasheet* gives limits and pinout; a *reference manual* (or "technical reference manual") explains registers and peripherals. Electrical limits are in the datasheet.
+2. **Use the table of contents or the PDF search**, not scrolling. Search for \`Absolute Maximum\`, then \`Recommended Operating\`, then \`DC Characteristics\` (some vendors say "Electrical Characteristics" or "Static characteristics").
+3. **Read a table row from left to right:** symbol, parameter, **conditions**, Min, Typ, Max, unit. The conditions column is part of the number. "VOH min = VDD − 0.4 V" means nothing until you add "at IOH = 8 mA".
+4. **Read the table's header line and every footnote.** The header often fixes the supply voltage and temperature at which the whole table applies. Footnotes carry the exceptions: pins with a lower limit, a total that applies per group of pins, values "guaranteed by design, not tested".
+5. **Check the unit and its prefix** before you copy a number: mA against µA, and V against mV, are a factor of a thousand.
+6. **Write down where you found it:** document name, revision, table or section number. Next month you, or a reviewer, will want to check it.
+
+If you cannot find a limit you need, that absence is information: you may not assume a value. Design with a wide margin and say so in your notes.
+
+### See a pin limit at work
+
+The tool below is a model of the worked example: an LED and a series resistor on an output pin. Set **Pin current limit** to the 8 mA of the fictional Table 9, then move the resistor and watch the current readout against that limit. Find the smallest standard resistor that keeps the pin inside it, then tick **Leave the resistor out** to see what the opening problem's "it worked in the tutorial" hides. The resistor arithmetic behind the readout is the subject of the Electronics section; here, concentrate on which number you are comparing with which limit.`,
+
+    { t: 'widget', name: 'led-resistor', props: { vsupply: 3.3, vf: 2.0 }, caption: 'A model, not a measurement: the LED is a fixed voltage drop and the pin an ideal source. The 8 mA figure is this lesson\'s fictional part, not any real chip\'s limit.' },
 
     `## Harder application: a real datasheet
 
@@ -650,11 +672,26 @@ Before reading on, write down: (1) Is the cable broken? Which lines prove your a
       `Read the two lines after "now attached to ttyUSB0". Another program is named.`,
     ], answer: { type: 'text', accept: ['brltty', 'the brltty (service|daemon|package)', 'brltty (service|daemon|package)'], placeholder: 'program name' }, solution: `**brltty.**
 
-1. The cable is fine. Lines 2 to 5 show full enumeration and the \`ch341\` driver attaching to \`ttyUSB0\`. A charge-only cable would produce no lines at all.
+1. The cable is fine. Lines 1 to 5 show full enumeration and the \`ch341\` driver attaching to \`ttyUSB0\`. A charge-only cable would produce no lines at all.
 2. brltty reconfigured the device ("\`'brltty' sets config #1\`"), which made the kernel detach the serial driver ("now disconnected from ttyUSB0").
 3. Fix: \`sudo apt remove brltty\` (if no Braille display is in use), then unplug and replug. Verify by watching \`dmesg -w\`: the "now attached to ttyUSB0" line should be the last one, and \`ls -l /dev/ttyUSB0\` should show the node still present ten seconds later.
 
 Notice what made this quick: the log was read line by line, and each line eliminated a hypothesis.` },
+
+    `## When the node is fine and the terminal is still empty
+
+Everything in this lesson checks the left half of the chain in the figure: enumeration, driver, device node, permissions. Suppose all of that passes and nothing arrives. The fault is now to the right of the bridge chip, and Linux cannot tell you more. One test separates the two halves cleanly.
+
+**The loopback test.** On a separate USB-to-UART adapter, disconnect the target and join the adapter's own TX pin to its own RX pin with one jumper wire. Open the port in a terminal program and type. Every character you type leaves on TX and comes straight back on RX, so it appears on the screen.
+
+- Characters echo: the terminal program, the device node, your permissions, the driver, the cable and the adapter all work. The fault is in the wiring to the target or in the target.
+- Nothing echoes: the fault is on the computer's side, and the checks from this lesson apply.
+
+(A dev board with a built-in bridge has no exposed loop you can close this way without care; use the test on standalone adapters.)
+
+The simulated bench below starts where this lesson stops: the port opens, and the terminal is empty. Gather evidence, including the loopback test, before you choose a diagnosis. Decoding the waveforms it shows is taught in the Protocols section; for now read them only as "edges present" or "no edges".`,
+
+    { t: 'widget', name: 'protocol-debug', props: { scenario: 'tx-rx-swapped' }, caption: 'Simulation of a bench fault. Each check you run is one observation; note which hypotheses it removes before you run the next.' },
 
     { t: 'refs', items: [
       { title: 'Espressif: Establish serial connection with ESP32 (ESP-IDF docs source)', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/get-started/establish-serial-connection.rst', note: 'Includes the dialout group step for Linux.' },

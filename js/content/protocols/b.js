@@ -86,7 +86,16 @@ If the diagram shows SCLK low while CS falls and data stable across the rising e
         solution: 'CPOL = 1 (idles high). The first edge is falling, where data changes; the second edge is rising, where it is sampled → CPHA = 1. **Mode 3.**',
         answer: { type: 'number', value: 3, tol: 0 } },
       { t: 'widget', name: 'logic-analyzer', props: { capture: 'spi-mode3' }, caption: 'The same kind of transaction from a mode 3 device. Check the clock\'s idle level first, then decide which edges to read on.' },
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Reading a 3-byte ID with ESP-IDF\'s SPI controller driver (written against the driver documentation; not run on a board here)',
+      { t: 'callout', kind: 'mistake', title: 'CPHA is not "rising or falling"',
+        md: `The tempting shortcut is "CPHA 0 means sample on the rising edge". It is true only when the clock idles low. CPHA counts edges **from the idle level**: 0 = sample on the first edge away from idle, 1 = sample on the edge that returns to idle. Which direction that edge has depends on CPOL. To name the mode of a capture, always take three steps in this order:
+
+1. Clock level while CS is high → **CPOL**.
+2. Find the edge around which the data lines are steady → the **sampling edge** (the data changes on the other one).
+3. Is the sampling edge the first edge after idle, or the second? First → **CPHA 0**, second → **CPHA 1**.
+
+Mode = 2 × CPOL + CPHA. A falling sampling edge is mode 1 on an idle-low clock and mode 2 on an idle-high clock.` },
+      { t: 'widget', name: 'spi-analyzer', props: { mode: 0, challenge: 'identify-mode' }, caption: 'Unlabelled captures in a random mode. Apply the three steps, answer, then take a new capture. Repeat until you have named all four modes correctly.' },
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Reading a 3-byte ID with ESP-IDF\'s SPI controller driver (every call, type and field checked against the ESP-IDF v6.1 headers; not compiled as a whole and not run on a board)',
         code: String.raw`#include "driver/spi_master.h"
 
 static spi_device_handle_t dev;
@@ -120,8 +129,8 @@ esp_err_t flash_read_id(uint8_t id[3])
         explain: [
           { lines: '13-18', md: 'Mode, speed and the CS pin belong to the **device**, not the bus, because different chips on the same three wires may need different settings. The driver reprograms the peripheral before each transaction.' },
           { lines: '24-26', md: 'One transaction of 32 clocks with CS held low throughout. `length` is in **bits**. The three zero bytes exist only to generate clocks for the reply.' },
-          { lines: '28', md: '`rx[0]` was clocked in while the command was going out; the peripheral had nothing to say yet, so it is discarded. Forgetting this offset is a common off-by-one.' },
           { lines: '27', md: 'A return of `ESP_OK` means the clocks were generated. It says nothing about whether a device answered. Validate the ID against the datasheet value.' },
+          { lines: '28', md: '`rx[0]` was clocked in while the command was going out; the peripheral had nothing to say yet, so it is discarded. Forgetting this offset is a common off-by-one.' },
         ] },
       `## More than one peripheral
 - **Separate chip selects**: SCLK, MOSI and MISO are shared; each peripheral gets its own CS line. Simple, any device can be addressed alone, and each can use its own mode and speed. Costs one pin per device.
@@ -197,7 +206,7 @@ If any node sends dominant, the bus is dominant, whatever the others do. That is
 
 Each end of the cable has a **120 Ω** resistor between CAN_H and CAN_L. The resistors match the cable's characteristic impedance, which stops edges reflecting from the ends, and they are what pulls the pair back together for a recessive bit. A quick check on an unpowered bus: a multimeter between CAN_H and CAN_L should read about **60 Ω** (two 120 Ω resistors in parallel). 120 Ω means one terminator is missing; 40 Ω means there is one too many.
 
-A microcontroller cannot drive this itself. Its CAN **controller** (the logic) has two ordinary logic pins, TX and RX, and you add a CAN **transceiver** chip that converts them to and from the differential pair. On Espressif chips the controller peripheral is called **TWAI** (two-wire automotive interface); it speaks classical CAN, and it too needs an external transceiver.`,
+A microcontroller cannot drive this itself. Its CAN **controller** (the logic) has two ordinary logic pins, TX and RX, and you add a CAN **transceiver** chip that converts them to and from the differential pair. On Espressif chips the controller peripheral is called **TWAI** (two-wire automotive interface). On the original ESP32, the ESP32-S3, C3 and C6 it speaks classical CAN only; it too needs an external transceiver.`,
       { t: 'ascii', caption: 'A CAN bus: a line with a terminator at each end and short stubs to each node',
         text:
 `        120 Ω                                                   120 Ω
@@ -258,11 +267,59 @@ To stop a faulty node from destroying every frame for ever, each controller keep
 ### Bit timing, in outline
 Each bit is divided into time quanta. You configure how many quanta lie before and after the **sample point**, typically placed around 75–87 % of the way through the bit so that the signal has had time to travel the length of the cable and settle. All nodes must be configured for the same bit rate, and the sample points should be similar. Because arbitration needs a bit to travel to the far end and back within one bit time, bus length limits the bit rate: 1 Mbit/s is usable to a few tens of metres, 125 kbit/s to several hundred.
 
-**CAN FD** (flexible data rate) keeps the arbitration scheme and adds two things: up to 64 data bytes per frame, and a switch to a higher bit rate for the data portion, after arbitration is over and only one node is transmitting. Classical-only controllers do not tolerate FD frames; check what each node supports, including whether your chip's TWAI controller supports FD (see its ESP-IDF documentation).`,
+**CAN FD** (flexible data rate) keeps the arbitration scheme and adds two things: up to 64 data bytes per frame, and a switch to a higher bit rate for the data portion, after arbitration is over and only one node is transmitting. Classical-only controllers do not tolerate FD frames (they see the FD-specific bits as errors and destroy the frame), so check what each node supports. In ESP-IDF v6.1 only a few newer chips declare an FD-capable TWAI controller (\`SOC_TWAI_FD_SUPPORTED\` is set for the ESP32-C5 and ESP32-H4, not for the ESP32, S3, C3 or C6).`,
       { t: 'exercise', prompt: 'A classical CAN data frame with 8 data bytes has 111 bits including the 3-bit gap that must follow it, before any stuff bits. At 500 kbit/s, how many microseconds does it occupy the bus (ignoring stuff bits)?',
-        hints: ['One bit at 500 kbit/s lasts 1 / 500 000 s.', 'That is 2 µs per bit.', '111 bits × 2 µs.'],
+        hints: ['How long does one bit last at this bit rate?', 'One bit at 500 kbit/s lasts 1 / 500 000 s = 2 µs.', '111 bits × 2 µs.'],
         solution: '111 × 2 µs = **222 µs**. Stuff bits can add up to roughly 20 % in the worst case. So a 500 kbit/s bus carries at most about 4000 full frames per second, and a low-priority message waits behind every higher-priority one: worst-case latency is a system design calculation, not a property of one node.',
         answer: { type: 'number', value: 222, tol: 2, unit: 'µs' } },
+      { t: 'exercise', prompt: `A probe on a transceiver's RX pin shows a frame starting on an idle bus. Written as logic levels (0 = dominant, 1 = recessive), one per bit time, the first thirteen bits are:
+
+\`0 0 1 1 1 1 1 0 0 0 1 0 1\`
+
+The first bit is SOF. What is the 11-bit identifier? Answer in hex (for example 0x123).`,
+        hints: ['Receivers do not see the identifier directly: the transmitter has inserted extra bits according to one rule. Where in this sequence does that rule fire?', 'After five identical bits in a row the next bit is a stuff bit of the opposite level and carries no data. Bits 3 to 7 here are five 1s, so the 0 after them must be removed. (SOF counts towards a run too, but here the run it starts is only two bits long.)', 'Drop SOF and the stuff bit. The remaining bits, most significant first, are 0 1 1 1 1 1 0 0 1 0 1. Group them 011 1110 0101.'],
+        solution: 'Remove SOF: `0 1 1 1 1 1 0 0 0 1 0 1`. The five consecutive 1s are followed by a stuff bit (the first 0 after them); delete it: `0 1 1 1 1 1 0 0 1 0 1`. Read most significant bit first: 011 1110 0101 = **0x3E5**. Reading the first eleven bits after SOF without de-stuffing gives 0x3E2, a different message — which is why you cannot decode CAN by counting bit positions, and why a decoder needs the exact bit rate to know how many bits a long run contains.',
+        answer: { type: 'text', accept: ['^\\s*(0x)?3e5\\s*$'], nudge: 'If you got 0x3E2 you kept the stuff bit: after five identical bits in a row, the next bit is not data. If you got something else, check that you dropped SOF and read most significant bit first.' } },
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Sending one classical CAN frame with ESP-IDF\'s TWAI node driver (every call, type and field checked against the ESP-IDF v6.1 headers esp_twai.h and esp_twai_onchip.h; not compiled as a whole and not run on a board)',
+        code: String.raw`#include "esp_twai.h"
+#include "esp_twai_onchip.h"
+
+static twai_node_handle_t node;
+
+void can_init(void)
+{
+    const twai_onchip_node_config_t cfg = {
+        .io_cfg = { .tx = 4, .rx = 5, .quanta_clk_out = -1, .bus_off_indicator = -1 },
+        .bit_timing = { .bitrate = 500000, .sp_permill = 800 },
+        .fail_retry_cnt = -1,               /* retransmit until acknowledged */
+        .tx_queue_depth = 4,
+    };
+    ESP_ERROR_CHECK(twai_new_node_onchip(&cfg, &node));
+    ESP_ERROR_CHECK(twai_node_enable(node));
+}
+
+esp_err_t can_send_speed(uint16_t rpm)
+{
+    static uint8_t data[2];                 /* must outlive the call: see below */
+    static twai_frame_t frame = {
+        .header = { .id = 0x123, .dlc = 2 },
+        .buffer = data,
+        .buffer_len = sizeof data,
+    };
+    data[0] = (uint8_t)(rpm >> 8);          /* big-endian on the wire */
+    data[1] = (uint8_t)rpm;
+    esp_err_t err = twai_node_transmit(node, &frame, 100);
+    if (err != ESP_OK) return err;          /* queue full, or the node is bus-off */
+    return twai_node_transmit_wait_all_done(node, 100);
+}`,
+        explain: [
+          { lines: '9', md: 'TX and RX are the logic-level pins that go to the **transceiver**, not to the bus. The pin numbers are examples; choose them from your board\'s pin table.' },
+          { lines: '10', md: 'Bit rate and sample point (800 per mille = 80 % of the bit). The driver works out the time quanta. Every node on the bus must use the same bit rate.' },
+          { lines: '11', md: 'With -1 the controller retries a frame for ever, as the CAN standard describes. This is the setting that produces the "one node on the bench" symptom below; `.flags.enable_self_test = 1` makes the controller not require an ACK, for a single-node first test.' },
+          { lines: '22', md: 'A base-format (11-bit) data frame: `ide` and `rtr` are left at 0. The identifier 0x123 is also the priority of this message in arbitration.' },
+          { lines: '20-21, 28', md: 'The driver does not copy the frame. It keeps the pointers and sends from an interrupt, so the frame and its data buffer must stay valid until the transmission has finished. That is why both are `static` here; a frame on the stack of a function that returns early would be read after it has gone.' },
+          { lines: '30', md: 'Blocks until the queue is empty, which means the frame was acknowledged by another node (or the time ran out). `ESP_ERR_TIMEOUT` here on a bench with a single node is the missing ACK, not a software bug.' },
+        ] },
       { t: 'callout', kind: 'mistake', title: 'One node on the bench',
         md: 'A single CAN node, correctly wired and terminated, appears broken: it transmits the same frame over and over and its error counter climbs. Nothing is wrong. Nobody is there to fill the ACK slot. Add a second node (a USB-CAN adapter in normal, not listen-only, mode counts), or use the controller\'s self-test or no-ACK mode for a first check. The opposite mistake is leaving an analyser in normal mode on someone else\'s bus, where it acknowledges frames that would otherwise have gone unacknowledged; use listen-only mode to observe.' },
       { t: 'callout', kind: 'security', title: 'CAN has no notion of who sent a frame',
@@ -404,9 +461,26 @@ ls -l /dev/serial/by-id/       # stable names that do not change with plug order
         ],
         reveal: 'Correct text. The same test on a board with a bridge chip gives garbage, because there the setting configures a real UART inside the bridge. This is a quick way to tell which kind of board you have, alongside the device name.' },
       { t: 'exercise', prompt: 'A full-speed bulk endpoint has a maximum packet size of 64 bytes. Suppose the host fits 19 such packets for this device into every 1 ms frame. What throughput is that in kilobytes per second (1 kB = 1000 bytes)?',
-        hints: ['Bytes per frame = packets per frame × bytes per packet.', '19 × 64 = 1216 bytes per millisecond.', 'Multiply by 1000 frames per second and divide by 1000 for kB.'],
+        hints: ['How many bytes cross the bus in one frame, and how many frames are there in a second?', 'Bytes per frame = packets per frame × bytes per packet = 19 × 64 = 1216 bytes per millisecond.', 'Multiply by 1000 frames per second and divide by 1000 for kB.'],
         solution: '19 × 64 = 1216 bytes per 1 ms frame = **1216 kB/s**, about 1.2 MB/s. That is the order of the ceiling for full-speed bulk transfers, and bulk has no guaranteed share: other devices on the same bus reduce it. Compare 11.5 kB/s for a 115200-baud UART — the reason native-USB boards flash so much faster.',
         answer: { type: 'number', value: 1216, tol: 5, unit: 'kB/s' } },
+      `### Reading a descriptor byte by byte
+\`lsusb -v\` decodes descriptors for you, but they are only a few bytes each and you should be able to read one raw, because that is what a protocol analyser or a firmware source file shows. Every descriptor starts with its own length and a type code (1 = device, 2 = configuration, 4 = interface, 5 = endpoint). Multi-byte fields are **little-endian**. An endpoint descriptor has seven bytes:
+
+| Offset | Field | Meaning |
+|---|---|---|
+| 0 | bLength | 7 |
+| 1 | bDescriptorType | 5 = endpoint |
+| 2 | bEndpointAddress | bit 7: 1 = IN, 0 = OUT; bits 3–0: endpoint number |
+| 3 | bmAttributes | bits 1–0: 0 = control, 1 = isochronous, 2 = bulk, 3 = interrupt |
+| 4–5 | wMaxPacketSize | bytes per packet, low byte first |
+| 6 | bInterval | polling interval for interrupt and isochronous endpoints (frames; 1 ms each at full speed) |
+
+Worked example: \`07 05 81 02 40 00 00\`. Length 7, type 5 (endpoint). Address 0x81 = 1000 0001: IN, endpoint 1. Attributes 0x02: bulk. Maximum packet 0x0040 = 64 bytes. This is the data-in pipe of a typical full-speed CDC-ACM serial port: "EP1 IN, bulk, 64 bytes".`,
+      { t: 'exercise', prompt: 'A full-speed device returns this endpoint descriptor: `07 05 02 03 08 00 0A`. Describe the endpoint in the form `EP<number> <IN or OUT> <transfer type>`, for example `EP1 IN bulk`.',
+        hints: ['Which byte holds the direction and the number, and which holds the transfer type? Use the table of offsets.', 'Byte 2 is 0x02 = 0000 0010: look at bit 7 for the direction and the low four bits for the number. Byte 3 is 0x03: look at its two lowest bits.', 'Bit 7 of 0x02 is 0, so the host sends to this endpoint. 0x03 in the attributes is the fourth transfer type in the list.'],
+        solution: '**EP2 OUT interrupt.** 0x02 has bit 7 clear (OUT, host-to-device) and endpoint number 2; attributes 0x03 = interrupt. The remaining bytes say 8 bytes per packet (0x0008, low byte first) and a polling interval of 0x0A = 10 frames = 10 ms. A small OUT interrupt endpoint like this is how a HID device receives output reports, for example a keyboard\'s LED states.',
+        answer: { type: 'text', accept: ['^\\s*(ep|endpoint)\\s*0?2[\\s,]+out[\\s,]+interrupt\\s*$'], nudge: 'Direction is bit 7 of the third byte (0x02 has it clear). The transfer type is the low two bits of the fourth byte: 0 control, 1 isochronous, 2 bulk, 3 interrupt.' } },
       { t: 'callout', kind: 'mistake', title: 'The charge-only cable',
         md: 'Many USB cables shipped with chargers and gadgets contain only the two power wires. The board powers up, its LED lights, and the computer sees nothing — no `dmesg` line at all. Before debugging drivers, try a cable you have personally used for data. Label the charge-only ones or throw them away.' },
       { t: 'callout', kind: 'security', title: 'A USB device is whatever its descriptors claim',

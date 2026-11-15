@@ -513,10 +513,13 @@ A bootloader that checks a CRC and prints "image verified" has integrity checkin
 
 The facts below are from the ESP-IDF v6.1 documentation sources. They differ between chips, so check the guide for the exact part you are using.
 
-- **Scheme.** Secure Boot V2's default scheme is **RSA-PSS with RSA-3072** keys. Some newer chips use or also offer ECDSA: ECDSA only on ESP32-C2 and ESP32-C61; RSA-3072 or ECDSA-256 on ESP32-C6, ESP32-H2 and ESP32-P4.
-- **Chain.** The ROM bootloader verifies the second-stage bootloader, and the second-stage bootloader verifies the application.
-- **Trust anchor.** The image carries a signature block containing the public key and the signature; the chip stores a digest of the public key in eFuse and the ROM compares against it.
-- **Chip revisions.** On the original ESP32, V2 is available from chip revision **v3.0** onwards. On ESP32-C3 it is available from v0.3 (ECO3). ESP32 v3.0 supports only one signature block.
+- **Scheme.** Secure Boot V2's default scheme is **RSA-PSS with RSA-3072** keys; that is what the original ESP32, the ESP32-S3 and the ESP32-C3 use. Some newer chips use or also offer ECDSA: ECDSA only on ESP32-C2 and ESP32-C61 (ECDSA-256); a choice of RSA-3072 or ECDSA-256 on ESP32-C6, ESP32-H2 and ESP32-P4; and the ESP32-C5 adds ECDSA-384 to that choice. A device uses one scheme only. The guide's own comparison: P-256 is about as strong as RSA-3072 with a shorter key, but its verification takes considerably longer.
+- **Chain.** The ROM bootloader verifies the second-stage bootloader, and the second-stage bootloader verifies the application. The same image format and verification method are used for both.
+- **Trust anchor.** A signature block appended to the image carries the public key and the signature; the chip stores the SHA-256 digest of the public key in eFuse.
+- **The three checks, in the guide's order.** (1) Hash the public key found in the signature block and compare it with the digest or digests in eFuse; no match, fail. (2) Compute the digest of the image and compare it with the image digest recorded in the signature block; no match, fail. (3) Verify the signature over that digest with the public key (RSA-PSS or ECDSA). Steps 1 and 3 are the generic steps 3 and 4 above.
+- **Chip revisions.** On the original ESP32, V2 is available from chip revision **v3.0** onwards, and the menuconfig option only appears when \`CONFIG_ESP32_REV_MIN\` is set to v3.0 or higher. On ESP32-C3 it is available from v0.3 (ECO3).
+- **Key slots and revocation.** ESP32 v3.0 stores **one** key digest (eFuse BLK2, with the \`ABS_DONE_1\` eFuse enabling the check), accepts one signature block per image and has no revocation. Chips such as the ESP32-S3 and ESP32-C3 can hold **up to three** digests in key blocks, accept up to three signature blocks, and have one revoke eFuse per digest. The guide says unused digest slots must be revoked before the device leaves the factory, otherwise someone who can write eFuses could add a key of their own.
+- **Order matters.** After Secure Boot is enabled, read-protecting further eFuse blocks is blocked by default (so that nobody can read-protect the public-key digest and break the check). Keys that must be read-protected, such as the flash-encryption key, have to be burned before or together with enabling Secure Boot.
 - **Secure Boot V1** is the older AES-based scheme for the original ESP32 before chip revision v3.0: a 256-bit AES secure-bootloader key in eFuse BLOCK2, the \`ABS_DONE_0\` eFuse to enable it permanently, and app images signed with an ECDSA key pair. For v3.0 and later, V2 is preferred.
 
 On the original ESP32 the second-stage bootloader sits at flash offset \`0x1000\`; on ESP32-S3, C3 and C6 it is at \`0x0\`. The partition table defaults to \`0x8000\`. Enabling signature verification makes the bootloader larger, and it must still fit before the partition table.`,
@@ -525,7 +528,7 @@ On the original ESP32 the second-stage bootloader sits at flash offset \`0x1000\
 
     { t: 'widget', name: 'boot-sequence', props: { platform: 'esp32' }, title: 'ESP32 boot sequence', caption: 'Step from reset to the application and note what is verified at each stage and by which code.' },
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Reporting the security state at start-up (ESP-IDF). Written against the ESP-IDF headers; not compiled or run on a board here. Check function names against your ESP-IDF version.',
+    { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Reporting the security state at start-up (ESP-IDF v6.1). Every call was checked against the v6.1 headers (esp_secure_boot.h and esp_flash_encrypt.h in the bootloader_support component, which the component must list in its REQUIRES); the block was not compiled as a whole or run on a board.',
       code: String.raw`#include "esp_log.h"
 #include "esp_secure_boot.h"
 #include "esp_flash_encrypt.h"
@@ -548,7 +551,8 @@ void log_security_state(void)
     }
 }`,
       explain: [
-        { lines: '10', md: 'Reads the eFuse state, not a Kconfig option. A build can have secure boot selected in menuconfig while the unit it is flashed to has never had the eFuse burned. The eFuse is the truth.' },
+        { lines: '10', md: 'Reads the secure-boot enable eFuse of the chip it runs on. A build can have secure boot selected in menuconfig while the unit it is flashed to has never had the eFuse burned; the eFuse is the truth. One catch on the original ESP32: the header picks the V1 or V2 eFuse according to which scheme the *build* selected, and returns false if the build selected neither, so run this check from the production configuration.' },
+        { lines: '13', md: 'Reads the flash-encryption counter eFuse (`FLASH_CRYPT_CNT` on the original ESP32, `SPI_BOOT_CRYPT_CNT` on newer chips; lesson 5). For a stricter production check the same headers provide `esp_secure_boot_cfg_verify_release_mode()` and `esp_flash_encryption_cfg_verify_release_mode()`, which compare the whole set of security eFuses with the release configuration and return false if any is missing.' },
         { lines: '18-20', md: 'A factory end-of-line test can look for this line on the console and fail the unit. That turns "we enabled it" into a per-unit measurement.' },
       ] },
 
@@ -582,7 +586,7 @@ Secure boot also has limits you should state plainly. It does not stop a bug in 
 
 You are reviewing your own product or one you have been asked to assess.
 
-- **Read the lifecycle state.** Every vendor provides a way to read the relevant OTP or configuration bits (on Espressif chips, the eFuse summary from the espefuse tool; on MSPM0, the NONMAIN boot configuration). The security state is whatever those bits say, not what the build configuration says.
+- **Read the lifecycle state.** Every vendor provides a way to read the relevant OTP or configuration bits (on Espressif chips, \`idf.py efuse-summary\` or \`espefuse summary\`, which only read; on MSPM0, the NONMAIN boot configuration). The security state is whatever those bits say, not what the build configuration says. On an original ESP32 you are looking for \`ABS_DONE_1\` set and a write-protected digest in BLK2.
 - **Read the boot log.** A second-stage bootloader normally reports whether it verified the application. Absence of any verification message is a finding to follow up.
 - **Inspect the image.** Is there a signature block? Does the build system have a signing step, and which key does it use? A build that signs with a key stored in the repository is a development configuration.
 - **Trace the anchor.** Find where the verifying code gets its public key or digest. If the address is in ordinary flash, the anchor is writable.`,
@@ -597,6 +601,41 @@ You are reviewing your own product or one you have been asked to assess.
 6. On failure, do not run the stage and do not fall back to anything unverified.
 7. Close the doors secure boot assumes are closed: debug port and ROM download mode (lesson 7).
 8. Provision in the factory with a script that reads back and compares before each irreversible step, and logs the result per serial number.`,
+
+    `## A verification you can run today, with no board
+
+The signing and verifying half of secure boot is ordinary host tooling, so you can watch a signature fail without burning anything. In an ESP-IDF v6.1 shell, in an empty directory:`,
+
+    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Sign, verify, tamper, verify again. Commands as given in the ESP-IDF v6.1 Secure Boot V2 guide; they were not run in this repository\'s environment. The key is a throwaway: never reuse it for a product.',
+      code: String.raw`# 1. A throwaway RSA-3072 signing key (Secure Boot V2 format)
+idf.py secure-generate-signing-key --version 2 --scheme rsa3072 test_key.pem
+
+# 2. Something to sign: any file will do for the experiment
+head -c 8192 /dev/urandom > image.bin
+
+# 3. Sign it. The tool pads the data and appends a signature block.
+idf.py secure-sign-data --keyfile test_key.pem --output image_signed.bin image.bin
+
+# 4. Verify, and look at what the signature block contains
+idf.py secure-verify-signature --keyfile test_key.pem image_signed.bin
+espsecure signature-info-v2 image_signed.bin
+
+# 5. Tamper: overwrite one byte in the middle of the signed data, verify again
+cp image_signed.bin tampered.bin
+printf 'ÿ' | dd of=tampered.bin bs=1 seek=100 conv=notrunc
+idf.py secure-verify-signature --keyfile test_key.pem tampered.bin
+
+# 6. Wrong key: a second key must not verify the first key's signature
+idf.py secure-generate-signing-key --version 2 --scheme rsa3072 other_key.pem
+idf.py secure-verify-signature --keyfile other_key.pem image_signed.bin`,
+      explain: [
+        { lines: '8', md: 'Compare the sizes of `image.bin` and `image_signed.bin`. The guide gives the signed format as the data padded to a 4 KB boundary followed by a 4 KB signature block, so you should see 8192 bytes become 12288.' },
+        { lines: '12', md: 'The second command prints the public-key digest for the block. That 32-byte value is what would be burned into eFuse: the device never stores the key itself, and never sees the private half at all.' },
+        { lines: '15-17', md: 'You should see step 4 report a valid signature and this step report a failure. If a one-byte change (there is a 1-in-256 chance the byte was already 0xFF; pick another offset) still verifies, you are not verifying what you think you are.' },
+        { lines: '20-21', md: 'This is step 1 of the ROM\'s check seen from the host: a different key is a different digest. On a device the comparison is against eFuse, so the image would be refused before its signature was even examined.' },
+      ] },
+
+    { t: 'callout', kind: 'hw', md: 'To rehearse the device side without spending a chip, the ESP-IDF security guide points to running the security features under QEMU, and the eFuse component has a virtual-eFuse option (`CONFIG_EFUSE_VIRTUAL`) that keeps "burned" values in RAM or flash instead of the real fuses. Both are for learning the flow. A unit with virtual eFuses is not protected, so that option must never reach a production build.' },
 
     { t: 'exercise',
       prompt: `Write the **verification test list** for secure boot on a product with ROM, a second-stage bootloader and an application. Give at least six tests. For each, state what you change and what you expect to observe. All tests run on development units you own.`,
@@ -782,7 +821,7 @@ Provisioning is the moment keys enter devices, and it is done by a contract manu
 Assume a key will leak or an algorithm will weaken during the product's life, and decide now what you would do.
 
 - **Rotation** is planned replacement. Session keys rotate every connection. Device identity certificates can be reissued over an authenticated channel. A storage key is hard to rotate because data must be re-encrypted, so keep its scope small.
-- **Revocation** makes a key permanently unacceptable. For firmware signing this needs hardware support planned from day one: several key-digest slots in OTP with a revoke bit per slot, so a signed update can retire a compromised key and move the fleet to the next. A device with a single digest slot and no revocation has exactly one signing key for life.
+- **Revocation** makes a key permanently unacceptable. For firmware signing this needs hardware support planned from day one: several key-digest slots in OTP with a revoke bit per slot, so a signed update can retire a compromised key and move the fleet to the next. A device with a single digest slot and no revocation has exactly one signing key for life. Both kinds exist in one product family: per the ESP-IDF Secure Boot V2 guide, the ESP32 at chip revision v3.0 holds one key digest with no revocation, while chips such as the ESP32-S3 and ESP32-C3 hold up to three with a revoke eFuse each, and their unused slots must be revoked before the device leaves the factory so that nobody can add a key later.
 - **Anti-rollback** (lesson 6) is part of revocation: after moving to a new key, old images signed by the old key must not be reinstallable.
 
 Write the procedure down before you need it: who decides, how the new key is authorised, how devices learn of it, and what happens to devices that are offline for a year.`,

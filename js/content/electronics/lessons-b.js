@@ -876,7 +876,7 @@ export default [
       { t: 'predict', q: `On a breadboard, a resistor is inserted with both of its leads in the same five-hole column, in holes a and c. An LED is in series with it, correctly placed. What happens when power is applied?`,
         reveal: `Both resistor leads sit on the same strip, so the strip shorts the resistor out: current takes the metal clip, not the resistor. The LED is effectively connected with no current limit and will be overdriven. The board looks right at a glance because all the parts are present. The way to catch this before power is to check each part against the rule "two leads, two different strips", and afterwards to measure the voltage across the resistor: 0 V across a resistor that should be carrying current means it is bypassed or no current is flowing.` },
 
-      { t: 'widget', name: 'breadboard', props: { challenge: 'led' }, caption: 'Build the LED circuit: supply, current-limiting resistor, LED, ground. The simulation shows current flow and flags shorts.' },
+      { t: 'widget', name: 'breadboard', props: { challenge: 'led' }, caption: 'Build the LED circuit: pin IO0 (the switched supply), current-limiting resistor, LED, ground. The virtual board is drawn a quarter-turn from the figure above: its five-hole strips are the numbered rows (a–e and f–j) and the rails run down the sides. The simulation shows current flow and flags shorts.' },
 
       { t: 'widget', name: 'breadboard', props: { challenge: 'divider' }, caption: 'Build a voltage divider that produces the requested output, and probe the midpoint.' },
 

@@ -100,7 +100,8 @@ frequency and ADC resolution are datasheet items: look them up, do not guess.`,
         prompt: `A product needs: a 5-year life on a coin cell, wake on a pin change within 1 ms, an I2C temperature sensor, and no radio. Which class of part do you choose (MPU, MCU, or radio SoC module), and what is the single strongest reason? Answer with the class.`,
         hints: [
           'Which requirement would be hardest to meet for a part that needs external DDR RAM?',
-          'Coin cell for five years means an average current of a few microamps. Which class can retain state while drawing that?',
+          'Turn "five years on a coin cell" into a number: capacity in mAh divided by hours of life gives the average current allowed.',
+          'A coin cell of about 200 mAh over 5 × 8760 h allows roughly 4.6 µA on average. Which class can retain state while drawing that?',
         ],
         answer: { type: 'text', accept: ['\\bmcu\\b', 'micro\\s*controller'], nudge: 'Think about sleep current and wake time.' },
         solution: `An **MCU**. The deciding requirement is average current: a coin cell of roughly 200 mAh over five years allows only about 4–5 µA average. Only an MCU can keep its RAM alive in a deep-sleep mode at that level and wake on a pin in well under a millisecond. An MPU cannot hold DDR RAM at microamps, and a radio module adds cost and leakage for a feature that is not required.` },
@@ -268,8 +269,9 @@ it back into PC at the end. RISC-V does the same thing with the \`ra\` register 
 An interrupt handler runs between instructions 2 and 3 and stores the value 1 to \`0x2000_0010\`. The handler
 preserves all registers. What value does memory hold after instruction 5?`,
         hints: [
-          'After instruction 2, r1 = 14 and that value lives only in the register.',
-          'Instruction 3 reads memory again. What does memory hold at that moment?',
+          'Which of the five instructions read memory, and which only use registers? A handler that writes memory can only affect the first kind.',
+          'Make a table with columns r1, r2 and memory, one row per instruction, and insert a row for the handler between instructions 2 and 3.',
+          'After instruction 2, r1 = 14 and that value lives only in the register, so the handler cannot touch it. Instruction 3 reads memory again: what does memory hold at that moment?',
         ],
         answer: { type: 'number', value: 15 },
         solution: `After 2: \`r1 = 14\`. The handler writes 1 to memory. Instruction 3 loads \`r2 = 1\`. Instruction 4: \`r1 = 15\`. Instruction 5 stores **15**. Without the interrupt the answer would be 21. The program used two different values of the "same" variable in one calculation.` },
@@ -365,10 +367,36 @@ Base \`0x4000_2000\`. So "start the timer in auto-reload mode" is: store \`0x3\`
 "Has it expired?" is: load from \`0x4000_200C\` and test bit 0. "Acknowledge the expiry" is: store \`0x1\` to
 \`0x4000_200C\`.
 
-On a real chip the path is the same, only longer. For the original ESP32, the technical reference manual lists the
-GPIO block at base \`0x3FF4_4000\`, with \`GPIO_OUT_REG\` at offset \`0x04\` and separate write-1-to-set and
-write-1-to-clear registers (\`GPIO_OUT_W1TS_REG\`, \`GPIO_OUT_W1TC_REG\`) directly after it. Confirm the offsets
-in the TRM's GPIO register summary before you use them: finding that table is the skill.`,
+### One access, followed all the way down
+
+Take the C statement \`TIM_CTRL |= 0x3;\` with the timer currently stopped (\`TIM_CTRL\` reads 0). Nothing in it
+mentions RAM or hardware; the *address* decides which one it is.
+
+\`\`\`
+step  CPU instruction         bus activity                      what happens
+────  ──────────────────────  ────────────────────────────────  ─────────────────────────────────────────
+ 1    r3 = 0x40002000         none                              the address is just a number in a register
+ 2    load  r2 <- [r3]        READ  addr 0x40002000             the address decoder sees 0x4000_2xxx and
+                                                                selects TIMER0 instead of a RAM cell;
+                                                                offset 0x00 selects TIM_CTRL, whose
+                                                                flip-flops drive 0x00000000 onto the bus
+ 3    r2 = r2 | 0x3           none                              r2 = 0x00000003, inside the CPU only
+ 4    store [r3] <- r2        WRITE addr 0x40002000, data 0x3   on the next clock edge the ENABLE and
+                                                                AUTO_RELOAD flip-flops become 1 and the
+                                                                counter starts to count
+\`\`\`
+
+Change only the number in step 1 to \`0x20000100\` and the same four instructions update a variable in SRAM. The CPU
+cannot tell the difference. That is the whole idea: **an address is a register**, and the peripheral, not the CPU,
+gives the access its meaning.
+
+On a real chip the path is the same, only longer. For the original ESP32, ESP-IDF v6.1's register headers
+(\`soc/reg_base.h\`, \`soc/gpio_reg.h\`) put the GPIO block at base \`0x3FF4_4000\`, with \`GPIO_OUT_REG\` at offset
+\`0x04\`, the write-1-to-set register \`GPIO_OUT_W1TS_REG\` at \`0x08\` and the write-1-to-clear register
+\`GPIO_OUT_W1TC_REG\` at \`0x0C\`. The opening problem therefore has a short answer: for a pin below 32,
+\`gpio_set_level(5, 1)\` ends in one store of \`0x0000_0020\` (bit 5) to address \`0x3FF4_4008\`. The pin must already
+be configured as a GPIO output; that is separate register work, covered in the GPIO lesson. Find the same three
+registers in the GPIO register summary of the technical reference manual: locating that table is the skill.`,
 
       { t: 'ascii', caption: 'From C expression to bus transaction',
         text: R`  C source                         What the CPU does                 What the peripheral sees
@@ -622,8 +650,9 @@ into 1. So:
   for your part; do not assume.
 
 Now the logger: one erase per second is 86,400 a day. A block rated for 10,000 cycles is past its guaranteed life in
-under three hours of that treatment; the field units lasted months only because real cells usually exceed the
-guaranteed minimum for a while.`,
+under three hours of that treatment. The rating is a guaranteed minimum, not the point of failure: cells usually go on
+working well beyond it, then fail gradually and unevenly, which is why the bench test passed and the field units died
+one by one.`,
 
       { t: 'ascii', caption: 'Program can only clear bits; only erase sets them',
         text: R`  erased page        1111 1111   (0xFF)
@@ -698,8 +727,9 @@ This append-and-rotate scheme is the core of every flash key-value store, includ
       { t: 'exercise',
         prompt: `A flash page currently holds the byte \`0xC3\` at some address. Without erasing, firmware programs \`0x5A\` to the same address. What byte is read back? Answer in hex.`,
         hints: [
-          'Program can only change a 1 to a 0.',
-          'The result is the bitwise AND of the old and new values: write both in binary.',
+          'Which direction can a program operation move a bit, and which direction needs an erase?',
+          'Go bit by bit: a bit ends up 1 only if it was 1 before and the new value also has a 1 there.',
+          'That rule is a bitwise AND of the old and new values. Write both in binary and AND them.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0x)?42h?\\s*$'], nudge: 'Write 0xC3 and 0x5A in binary and AND them.' },
         solution: `\`0xC3 = 1100 0011\`, \`0x5A = 0101 1010\`. AND → \`0100 0010 = 0x42\`. Neither the old value nor the new one.` },
@@ -738,6 +768,11 @@ for security-critical firmware revisions, not for every build. Real anti-rollbac
         { t: 'About 51 million', ok: true, why: '512 records per sector fill × 100,000 erases = 51.2 million.' },
         { t: '100,000', why: 'That assumes one erase per record; appending gives hundreds of records per erase.' },
         { t: '512', why: 'That is the number of records per fill of the sector, before the first erase is even needed.' },
+      ] },
+      { q: 'A bootloader keeps a "boot attempts" counter in one flash byte. The byte is erased to `0xFF` once, and after each failed boot the code programs it with a new value **without erasing**. Which sequence of values can be stored correctly this way?', kind: 'code', choices: [
+        { t: '`0xFF`, `0xFE`, `0xFC`, `0xF8`: each step clears one more bit', ok: true, why: 'Every step only turns 1s into 0s, which programming can do without an erase. Eight attempts fit in the byte.' },
+        { t: '`0x00`, `0x01`, `0x02`, `0x03`: an ordinary binary count', why: 'Going from 0x01 to 0x02 needs bit 1 to become 1 again. Work out old AND new for that step.' },
+        { t: '`0xFF`, `0xFE`, `0xFD`, `0xFC`: counting down', why: 'Check the step from 0xFE to 0xFD: bit 0 would have to go from 0 back to 1. What does the cell actually hold afterwards?' },
       ] },
       { q: 'What does "execute in place" mean?', kind: 'concept', choices: [
         { t: 'The CPU fetches instructions directly from non-volatile memory without first copying them to RAM', ok: true, why: 'This is the normal mode for internal MCU flash and saves RAM.' },

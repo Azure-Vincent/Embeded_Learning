@@ -412,7 +412,7 @@ Three bug reports:
 
 1. "The build succeeds, but the board dies after I added a 20 KB lookup table."
 2. "My global \`int threshold = 50;\` reads as garbage at start-up; \`static int count;\` is fine."
-3. "The same source runs on the MAX78000 but hard-faults at the first function call on the MSPM0."
+3. "The same source runs on the MAX78000 but hard-faults before \`main\` on the MSPM0, after I reused the MAX78000 linker script."
 
 None is a C bug. All three are answered by one file you have probably never opened: the linker script.`,
 
@@ -437,7 +437,7 @@ designer. The **memory map** is the table of what lives where.`,
       { t: 'widget', name: 'memory-map', props: { platform: 'max78000' }, title: 'MAX78000 address space',
         caption: 'Take the "where does this address live?" quiz until you can place an address by its top hex digits alone.' },
       { t: 'widget', name: 'memory-map', props: { platform: 'mspm0l2228' }, title: 'MSPM0L2228 address space',
-        caption: 'Note where SRAM starts. Code that assumes 0x2000_0000 is wrong on this chip.' },
+        caption: 'Note where SRAM starts: TI\'s linker file puts it at 0x2020_0000, not the 0x2000_0000 that many Cortex-M parts use. Do not carry a RAM address over from another chip.' },
 
       `### Sections
 
@@ -592,8 +592,11 @@ Now the three bug reports:
 2. The \`.data\` copy is not happening (custom startup code, wrong symbol names, or an image flashed without its
    \`.data\` load region). \`.bss\` variables look fine because the zeroing loop still runs, or because that RAM
    happened to hold zeros anyway.
-3. The image was linked with SRAM at \`0x2000_0000\`. On the MSPM0L2228 SRAM is at \`0x2020_0000\`; the initial stack
-   pointer points at nothing, and the first push faults.
+3. The image was linked with the MAX78000's RAM region: \`0x2000_0000\`, 128 KB, so the initial stack pointer is
+   \`0x2002_0000\`. TI's linker file for the MSPM0L2228 gives 32 KB of SRAM at \`0x2020_0000\`. A stack pointer
+   128 KB above any RAM base is outside a 32 KB memory wherever it is mapped, so the first push faults. (Whether
+   \`0x2000_0000\` itself decodes to anything on this chip is a question for its reference manual's memory map; the
+   address the vendor's linker file uses is the one to build for.)
 
 ### Reading a map file
 
@@ -686,7 +689,7 @@ compiler or linker catch for you, and which fail silently at run time?`,
         { t: 'The stack pointer is not initialised, so globals are read from the wrong place', why: 'A missing stack pointer would crash at the first function call rather than selectively affect initialised variables.' },
         { t: 'The variables are declared volatile', why: 'That qualifier affects how the compiler accesses them, not whether their initial values are loaded.' },
       ] },
-      { q: 'Firmware built for SRAM at `0x2000_0000` is flashed onto an MSPM0L2228. What happens at reset?', kind: 'arch', choices: [
+      { q: 'Firmware is linked with the MAX78000\'s RAM region (`0x2000_0000`, 128 KB) and flashed onto an MSPM0L2228, whose linker file gives 32 KB of SRAM at `0x2020_0000`. What happens at reset?', kind: 'arch', choices: [
         { t: 'The initial SP is not inside the chip\'s RAM, so the first push faults', ok: true, why: 'The stack starts at the top of the linked RAM region, 0x2002_0000, which is far outside a 32 KB memory wherever that memory is mapped.' },
         { t: 'It runs normally, because the chip relocates RAM references to its own base at load time', why: 'There is no automatic remapping; addresses in the image are used exactly as linked.' },
         { t: 'It runs until the program has used the first 32 KB of its RAM', why: 'The very first thing the core uses is the stack pointer, and that already points beyond 32 KB of RAM.' },
@@ -695,6 +698,11 @@ compiler or linker catch for you, and which fail silently at run time?`,
         { t: '.text + .rodata + .data', ok: true, why: 'Code, constants and the initial values of initialised variables are all stored in flash.' },
         { t: '.text + .rodata + .data + .bss', why: 'The zero-initialised section occupies RAM only; no bytes for it are placed in the image.' },
         { t: '.text only', why: 'Constants and initial values also need non-volatile storage.' },
+      ] },
+      { q: 'An image has `.text` plus `.rodata` of 20 KB, `.data` of 1 KB and `.bss` of 8 KB. `objcopy -O binary` turns it into the raw file that is programmed into flash. Roughly how large is that file?', kind: 'code', choices: [
+        { t: '21 KB', ok: true, why: 'Code, constants and the stored initial values of .data are bytes in the image. .bss is only an address range that startup code clears.' },
+        { t: '29 KB', why: 'That includes 8 KB of zeros for the zero-initialised section. Check whether that section has a load address at all.' },
+        { t: '20 KB', why: 'The initial values of the initialised variables have to be kept somewhere that survives power-off.' },
       ] },
       { q: 'Why is the vector table wrapped in `KEEP(...)` in a linker script?', kind: 'arch', choices: [
         { t: 'Nothing references it, so garbage collection would discard it', ok: true, why: 'Only the CPU hardware uses the table; the linker sees no symbol dependency on it.' },

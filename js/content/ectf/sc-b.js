@@ -233,7 +233,7 @@ If you prefer a separate packaging tool (Python with a maintained cryptography l
   quiz: [
     { q: 'Why is a CRC-32 unsuitable for S1?', kind: 'security', choices: [
       { t: 'It is too short: a CRC-64 would give enough bits to be secure.', why: 'Length is not the issue. Consider who is able to compute a valid check value for a modified image.' },
-      { t: 'No secret is involved, so anyone can compute a correct CRC.', ok: true, why: 'A CRC protects against accidental corruption. Authenticity needs something only the legitimate producer can create.' },
+      { t: 'It involves no secret, so anyone can compute a correct CRC for any image they like.', ok: true, why: 'A CRC protects against accidental corruption. Authenticity needs something only the legitimate producer can create.' },
       { t: 'It is too slow to compute over a 128 KiB image on a small microcontroller.', why: 'CRCs are among the cheapest checks available and are often hardware-accelerated.' },
     ] },
     { q: 'The reference design has a "force install" flag for factory use. What is the correct treatment in the redesign?', kind: 'arch', choices: [
@@ -242,7 +242,7 @@ If you prefer a separate packaging tool (Python with a maintained cryptography l
       { t: 'Remove it; the factory installs the first image by the normal path.', ok: true, why: 'A path that does not exist cannot be misused, and the first installation needs no exception to the version rule.' },
     ] },
     { q: 'An image is received into the inactive slot, verified, and then the boot record is updated. Power is lost while the record is being written. With two record copies, what should the next boot do?', kind: 'arch', choices: [
-      { t: 'Use the copy of the record that passes its check, and verify the slot it names.', ok: true, why: 'One copy is always intact. Whichever it is points at an image that then passes verification: the old one or the new one.' },
+      { t: 'Use whichever copy of the record passes its own integrity check, and verify the slot it names.', ok: true, why: 'One copy is always intact. Whichever it is points at an image that then passes verification: the old one or the new one.' },
       { t: 'Assume the update completed, since the image was already verified, and boot the new slot.', why: 'The record may not have been written. Acting on an assumption instead of on verified state is what the design is meant to avoid.' },
       { t: 'Erase both slots and wait for a new update, since the state is unknown.', why: 'That converts a harmless interruption into a device with no firmware, violating F4.' },
     ] },
@@ -470,7 +470,7 @@ On boards you own, the same files sit on top of the I2C driver. Keep the interru
   quiz: [
     { q: 'Why are source and destination placed in the associated data rather than left unauthenticated?', kind: 'security', choices: [
       { t: 'To hide from an observer of the bus which nodes are communicating.', why: 'Associated data is sent in clear; it is authenticated, not hidden.' },
-      { t: 'So a valid frame cannot be re-addressed or attributed to another sender.', ok: true, why: 'Changing either field invalidates the tag, which ties the frame to one sender, one receiver and one direction.' },
+      { t: 'So a valid frame cannot be re-addressed to another device or attributed to another sender.', ok: true, why: 'Changing either field invalidates the tag, which ties the frame to one sender, one receiver and one direction.' },
       { t: 'Because an AEAD refuses to encrypt unless some associated data is supplied.', why: 'Associated data is optional in an AEAD. It is used here for a specific protocol property.' },
     ] },
     { q: 'The nonce is built from (src, dst, counter) and the counter is held in RAM. Which additional mechanism makes nonce reuse impossible across a reset?', kind: 'arch', choices: [
@@ -489,7 +489,7 @@ On boards you own, the same files sit on top of the I2C driver. Keep the interru
       { t: 'It hides from a reader of the flash how many records the log holds.', why: 'The number of records remains visible from the storage layout.' },
     ] },
     { q: 'Which statement belongs in the residual-risk section of this design?', kind: 'concept', choices: [
-      { t: 'Anything on the bus can block it by holding the lines; this is not addressed.', ok: true, why: 'It is a real limitation of any shared bus and outside the stated requirements, so it is recorded rather than ignored.' },
+      { t: 'Anything attached to the bus can block it by holding the lines; the design does not address this.', ok: true, why: 'It is a real limitation of any shared bus and outside the stated requirements, so it is recorded rather than ignored.' },
       { t: 'AES may be broken at some point in the future by an attack that is not yet known.', why: 'This is true of any design and gives a reviewer no information specific to this system.' },
       { t: 'The tests might contain bugs that make a broken build look correct.', why: 'Test quality is addressed by reviewing the tests, not by listing it as accepted design risk.' },
     ] },
@@ -747,7 +747,7 @@ Work until every harness line prints PASS under the sanitizer build, then add th
   quiz: [
     { q: 'Why must a wrapping key not also be allowed to decrypt general data?', kind: 'security', choices: [
       { t: 'Each use wears a key out, and a wrapping key must last longer than a data key.', why: 'Keys do not wear out; usage limits exist for cryptographic reasons, and this restriction has a different purpose.' },
-      { t: 'Decrypting an exported blob with it would return the wrapped key in clear.', ok: true, why: 'Two individually harmless operations combine into plaintext export. Separating the attributes removes the combination.' },
+      { t: 'Decrypting an exported blob with it would return the wrapped key in clear to the caller.', ok: true, why: 'Two individually harmless operations combine into plaintext export. Separating the attributes removes the combination.' },
       { t: 'Decryption with a wrapping key is slower, which would break the two-second limit.', why: 'Speed is the same for any key of the same type.' },
     ] },
     { q: 'The host is allowed to supply the nonce for `encrypt`. A logged-in user wants to learn about another user\'s plaintext encrypted under the same key. What does the design give them?', kind: 'security', choices: [
@@ -767,7 +767,7 @@ Work until every harness line prints PASS under the sanitizer build, then add th
     ] },
     { q: 'Your security argument for S1 says "keys are protected by the microcontroller\'s key-store peripheral". What is missing?', kind: 'concept', choices: [
       { t: 'Nothing: storage in a dedicated hardware peripheral settles the question.', why: 'A peripheral\'s name is not a specification. What it guarantees, and under which configuration, must come from the manufacturer\'s documentation.' },
-      { t: 'The documented property relied on and the configuration that enables it.', ok: true, why: 'An argument rests on stated, sourced assumptions. Without them a reviewer cannot check the claim.' },
+      { t: 'The documented property relied on, the configuration that enables it, and what if it is false.', ok: true, why: 'An argument rests on stated, sourced assumptions. Without them a reviewer cannot check the claim.' },
       { t: 'A larger key size, since hardware storage is only as strong as the key in it.', why: 'Key size does not address whether stored key material can be read out.' },
     ] },
   ],

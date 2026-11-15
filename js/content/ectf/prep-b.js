@@ -196,7 +196,7 @@ Write down the path a secret takes from the secrets step to the flash image, as 
     ] },
     { q: 'In a security argument, what belongs under "residual risk"?', kind: 'concept', choices: [
       { t: 'Nothing: a design that meets its requirements has no residual risk left to state.', why: 'Every design rests on assumptions. Claiming none tells a reviewer that the limits were not examined.' },
-      { t: 'What the mechanism does not cover, and assumptions that may fail.', ok: true, why: 'Stating limits makes the argument credible and tells the team where further work would go.' },
+      { t: 'What the mechanism does not cover, and the assumptions that might turn out not to hold.', ok: true, why: 'Stating limits makes the argument credible and tells the team where further work would go.' },
       { t: 'The tests that currently fail, with a plan for fixing each after hand-over.', why: 'Failing tests are defects to fix before hand-over, not accepted risk.' },
     ] },
     { q: 'A secrets generator uses Python\'s `random` module to produce keys. What should a reviewer conclude?', kind: 'security', choices: [
@@ -365,7 +365,7 @@ No handler is wrong. The weakness is in a build-time script, and its class is a 
     ] },
     { q: 'A handler copies `msg.len` bytes into a 64-byte buffer after checking `if (msg.len + 4 > 68) return;` where `len` is a `uint8_t` promoted to `int`. A colleague proposes storing the sum in a `uint8_t` first. What changes?', kind: 'code', choices: [
       { t: 'Nothing: the two checks accept and reject exactly the same lengths.', why: 'The types differ. Work out the value of 255 + 4 when the result must fit in eight bits.' },
-      { t: 'The sum can wrap to a small number, so a large length passes.', ok: true, why: '255 + 4 is 259, which stored in eight bits is 3. The check passes and 255 bytes are copied into 64. Arithmetic on a length before its bounds check must not be able to wrap.' },
+      { t: 'The sum can now wrap to a small number, so a large length passes the check.', ok: true, why: '255 + 4 is 259, which stored in eight bits is 3. The check passes and 255 bytes are copied into 64. Arithmetic on a length before its bounds check must not be able to wrap.' },
       { t: 'The check becomes stricter, because a narrower type rejects large sums.', why: 'A narrower type cannot represent large sums at all, so large inputs appear small rather than being rejected.' },
     ] },
     { q: 'Which observation indicates an access-control gap rather than an authentication problem?', kind: 'security', choices: [
@@ -380,7 +380,7 @@ No handler is wrong. The weakness is in a build-time script, and its class is a 
     ] },
     { q: 'An update path verifies a signature when an image is installed but not when it boots. Which adversary capability turns this into a failure of "only vendor images run"?', kind: 'arch', choices: [
       { t: 'The ability to observe the serial port while an update is being installed.', why: 'Observation alone changes nothing in flash; consider what must happen between install and boot.' },
-      { t: 'Any way to change flash after installation, such as an open debug port.', ok: true, why: 'The check guards one moment. If the image can be altered afterwards, nothing looks at it again before it runs.' },
+      { t: 'Any way to change flash after installation: a memory-safety defect, an open debug port.', ok: true, why: 'The check guards one moment. If the image can be altered afterwards, nothing looks at it again before it runs.' },
       { t: 'Knowledge of the public key that the device uses to verify images.', why: 'A public key is not secret and does not allow producing signatures.' },
     ] },
     { q: 'Which is the best evidence that a debug command is absent from the delivered firmware?', kind: 'security', choices: [
@@ -494,7 +494,7 @@ Then write down what the plan should have done differently, while you remember. 
   quiz: [
     { q: 'When should the security architecture be decided?', kind: 'arch', choices: [
       { t: 'After all functional features work, so that there is something concrete to secure.', why: 'By then storage layout, message formats and host tools are settled, and security mechanisms that need changes to them no longer fit.' },
-      { t: 'Early, while formats, storage layout and provisioning can still change.', ok: true, why: 'Freshness, per-device keys and update protection all impose structure on formats and storage, so they are architectural decisions.' },
+      { t: 'Early, while message formats, storage layout and provisioning can all still be changed.', ok: true, why: 'Freshness, per-device keys and update protection all impose structure on formats and storage, so they are architectural decisions.' },
       { t: 'During the final review, when weaknesses are known.', why: 'A review finds defects in a design; it is too late a point to choose the design itself.' },
     ] },
     { q: 'What is the purpose of a feature freeze before the final week?', kind: 'concept', choices: [
@@ -509,7 +509,7 @@ Then write down what the plan should have done differently, while you remember. 
     ] },
     { q: 'A platform detail for the coming year is listed in this course as unverified. What should you do before relying on it?', kind: 'concept', choices: [
       { t: 'Assume it matches the previous year, since the platform changes rarely.', why: 'The microcontroller, toolchain and build system have all changed between recent years.' },
-      { t: 'Confirm it in this year\'s official documentation and the datasheet.', ok: true, why: 'Primary sources for the current year are the only reliable basis for a design decision.' },
+      { t: 'Confirm it in this year\'s official documentation and the manufacturer\'s datasheet.', ok: true, why: 'Primary sources for the current year are the only reliable basis for a design decision.' },
       { t: 'Ask a search engine and rely on the first answer that names the year.', why: 'Summaries may be out of date or describe another year; they are leads to a primary source, not a substitute.' },
     ] },
     { q: 'Late in the schedule, one security requirement cannot be fully met. Which response is best?', kind: 'security', choices: [

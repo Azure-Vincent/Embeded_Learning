@@ -252,7 +252,7 @@ The harness in step 2 automates T-F3, T-F4, T-S1-1, T-S1-2, T-S2-1, T-S2-2, T-S4
   quiz: [
     { q: 'Why must the attempt counter be written before the PIN is compared?', kind: 'security', choices: [
       { t: 'A flash write completes faster when no comparison has been started yet.', why: 'Write speed does not depend on what the code does next; the order matters for a different reason.' },
-      { t: 'So that no power loss or reset leaves a guess evaluated but uncounted.', ok: true, why: 'Once the result of the comparison exists, an adversary who controls power can prevent anything after it. Charging first removes that window.' },
+      { t: 'So that no moment of power loss or reset leaves a guess evaluated but not counted.', ok: true, why: 'Once the result of the comparison exists, an adversary who controls power can prevent anything after it. Charging first removes that window.' },
       { t: 'So that an honest user who mistypes still gets one extra attempt afterwards.', why: 'It does the opposite: an honest user can lose an attempt to an unlucky power cut. That is the accepted cost.' },
     ] },
     { q: 'The design stores a salted hash of a 6-digit PIN. What should the security argument for S3 say?', kind: 'concept', choices: [
@@ -262,12 +262,12 @@ The harness in step 2 automates T-F3, T-F4, T-S1-1, T-S1-2, T-S2-1, T-S2-2, T-S4
     ] },
     { q: 'Which test verifies S5?', kind: 'security', choices: [
       { t: 'The four specified commands each give the response the specification states.', why: 'That verifies function. S5 is about everything else being absent.' },
-      { t: 'Unspecified commands are refused, and the image holds no diagnostic strings.', ok: true, why: 'It checks both behaviour and the delivered artefact for functions outside the specification.' },
+      { t: 'Unspecified commands are refused, and the image contains no diagnostic command strings.', ok: true, why: 'It checks both behaviour and the delivered artefact for functions outside the specification.' },
       { t: 'A search of the source code finds no function with the name dump or debug.', why: 'The source is not what is delivered, and a function can be renamed while remaining reachable.' },
     ] },
     { q: 'A 20-byte line arrives for a 16-byte input buffer. What is the fail-closed handling?', kind: 'code', choices: [
       { t: 'Store the first 16 bytes and process them as the command; ignore the rest.', why: 'Truncation turns one input into a different, attacker-influenced command, and the remaining bytes become the start of the next line.' },
-      { t: 'Discard the line up to the newline, answer error, change nothing.', ok: true, why: 'Over-long input is not a valid command, so nothing derived from it is executed and nothing is written beyond the buffer.' },
+      { t: 'Discard the whole line up to the newline, send the generic error, change no state.', ok: true, why: 'Over-long input is not a valid command, so nothing derived from it is executed and nothing is written beyond the buffer.' },
       { t: 'Enlarge the buffer to 32 bytes so that a 20-byte line fits.', why: 'Any fixed size has a longer input. The missing element is the comparison between input length and buffer size.' },
     ] },
     { q: 'What does the C lab test with simulated power cuts *not* demonstrate?', kind: 'concept', choices: [
@@ -505,7 +505,7 @@ T-S5-1 needs a test build in which the nonce can be forced, because two readers 
     ] },
     { q: 'Which attack does a correct challenge–response protocol *not* prevent?', kind: 'concept', choices: [
       { t: 'Replaying, the next day, an exchange that was recorded at the same reader.', why: 'The next day\'s challenge carries a new nonce, so the old response does not verify.' },
-      { t: 'Relaying a live exchange between a distant credential and the reader.', ok: true, why: 'A relay forwards fresh, genuine messages in real time. Preventing it needs a different mechanism, such as tight timing bounds, and is honestly listed as residual risk.' },
+      { t: 'Relaying a live exchange between a distant genuine credential and the reader.', ok: true, why: 'A relay forwards fresh, genuine messages in real time. Preventing it needs a different mechanism, such as tight timing bounds, and is honestly listed as residual risk.' },
       { t: 'Altering a single bit of the response while it is in transit to the reader.', why: 'Any change to the response changes the tag comparison result.' },
     ] },
     { q: 'Why does the reader erase the nonce even after a failed verification?', kind: 'code', choices: [

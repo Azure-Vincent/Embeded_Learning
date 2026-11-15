@@ -196,8 +196,8 @@ Afterwards, note which of the six questions took longest. That is the one to pra
 
 - **Cores** fix the instruction set your compiler must target, what the exception frame looks like, whether floating
   point is done in hardware, and how many interrupt priority levels you have to share out.
-- **The memory map** is the linker script. Every address in your image is derived from it. One wrong base (SRAM at
-  \`0x2000_0000\` on an MSPM0) and the first stack push faults.
+- **The memory map** is the linker script. Every address in your image is derived from it. One wrong region (a 128 KB RAM
+  at \`0x2000_0000\` copied from another chip onto an MSPM0L2228 with 32 KB at \`0x2020_0000\`) and the first stack push faults.
 - **Clock sources** determine every time-dependent number: baud divisors, timer periods, ADC sample times, flash
   timing. The default after reset tells you what the chip is doing before your clock setup runs.
 - **The boot path** tells you which code runs before yours, what it trusts, and where your image must be placed for

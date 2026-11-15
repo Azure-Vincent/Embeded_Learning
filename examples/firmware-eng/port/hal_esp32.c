@@ -1,8 +1,8 @@
 /* hal_esp32.c - HAL for an ESP32 running ESP-IDF.
  *
- * STATUS: every call, type and constant was checked against the ESP-IDF v6.1 headers
- * (driver/uart.h, driver/gpio.h, esp_timer.h, esp_err.h). It has NOT been run on a board.
- * Check each call again if you use a different ESP-IDF version.
+ * STATUS: compiled for the esp32 target with ESP-IDF v6.1 (together with main_esp32.c and
+ * the portable sources, as the `main` component of a project). It has NOT been run on a
+ * board. Check each call again if you use a different ESP-IDF version.
  *
  * Pin choices are for the original ESP32 and avoid strapping pins, the input-only pins
  * GPIO34-39 and the flash pins. Change them to suit your board.

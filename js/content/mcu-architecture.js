@@ -165,7 +165,7 @@ says so and tells you where to look. Nothing here was measured on physical hardw
       causes: 'Startup code is not copying `.data` from flash to RAM: symbol names do not match the linker script, a custom reset handler skips it, or the image was linked with the wrong RAM base.',
       fix: 'Compare the startup file\'s symbols with the linker script. In the map file, check that `.data` has a RAM address and a flash load address.' },
     { symptom: 'Firmware faults immediately after reset, before main', area: 'Linker',
-      causes: 'The image was linked for different flash or RAM addresses than the chip or bootloader uses (for example SRAM assumed at `0x2000_0000` on an MSPM0L2228, or an application linked at the start of flash but loaded after a bootloader).',
+      causes: 'The image was linked for different flash or RAM addresses than the chip or bootloader uses (for example another chip\'s RAM base and size reused on an MSPM0L2228, whose linker file puts SRAM at `0x2020_0000`, or an application linked at the start of flash but loaded after a bootloader).',
       fix: 'Decode the first two words of the image: the stack pointer must lie in real RAM and the reset vector inside the region the image is loaded to.' },
     { symptom: 'Application works after a bootloader jump until its first interrupt', area: 'Boot',
       causes: 'The vector table base still points at the bootloader\'s table, or the bootloader left its own interrupts enabled.',

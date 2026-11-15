@@ -105,7 +105,9 @@ int main(void)
     printf("%lu\n", (unsigned long)sample_count);
     return 0;
 }` },
-    `\`\`\`
+    `Compiled with \`gcc -std=c11 -O1 -c sect.c\`:
+
+\`\`\`
 $ size sect.o
    text	   data	    bss	    dec	    hex	filename
     169	      4	   1028	   1201	    4b1	sect.o
@@ -119,7 +121,7 @@ $ nm -S sect.o
 0000000000000400 0000000000000004 B sample_count
 \`\`\`
 
-Reading \`size\`: note that \`size\`'s "text" column counts \`.text\` **plus** \`.rodata\` (everything that goes to flash and is read-only); "data" is the 4 bytes of \`calibration\`; "bss" is 1024 + 4. On a microcontroller:
+Reading \`size\`: note that \`size\`'s "text" column counts \`.text\` **plus** \`.rodata\` (everything that goes to flash and is read-only; on this PC build it also includes the unwind tables in \`.eh_frame\`, which a typical MCU build does not have); "data" is the 4 bytes of \`calibration\`; "bss" is 1024 + 4. On a microcontroller:
 
 - **Flash used** = text + data (code, constants, and the initial values of \`.data\`).
 - **RAM used** = data + bss, plus stack and heap, which \`size\` does not show.
@@ -176,7 +178,7 @@ This one listing is the module's architecture, verified by a tool:
 
 - Five \`T\` symbols: exactly the public functions declared in \`app.h\`.
 - \`reply\` is \`t\` and the four state variables are \`b\`: \`static\`, private to this file.
-- The \`U\` list is everything the module depends on: the HAL, the three services, three C library functions. There is no \`U\` for anything in a layer above.
+- The \`U\` list is everything the module depends on: the HAL, the three services, three C library functions, and \`__stack_chk_fail\`, which the compiler itself added for this host's default stack protector. There is no \`U\` for anything in a layer above.
 - \`handle_line\` and \`pin_matches\` do not appear at all: they were \`static\` and the optimiser inlined them into \`app_poll\`.
 
 The **linker's job** is to match every \`U\` with exactly one definition, place all sections at final addresses, and patch the holes (*relocations*) in the code with those addresses.`,
@@ -594,7 +596,7 @@ int _write(int fd, const char *buf, int len)
         { lines: '5', md: 'The name and signature are fixed by newlib. Once this symbol exists in your link, `printf` output appears on the UART. picolibc uses a different mechanism (a `FILE` object with a put-character function), so check the library you actually link.' },
         { lines: '8-11', md: 'Each character goes through the blocking UART write. A `printf` of 80 characters at 115200 baud therefore stalls the caller for about 7 ms: fine for bring-up, a problem inside a control loop or an ISR.' },
       ] },
-    `SDKs do this for you. ESP-IDF routes \`stdout\` to its console UART (or USB Serial/JTAG) before \`app_main\` runs. The MSDK's board support code initialises the console UART (UART0 at 115200 on the MAX78000FTHR, per the \`FTHR_RevA\` board files). When you start from an empty project with a bare toolchain, it is your job.
+    `SDKs do this for you. ESP-IDF routes \`stdout\` to its console UART (or USB Serial/JTAG) before \`app_main\` runs; note that ESP-IDF v6.1 links **picolibc** by default, not newlib (the \`LIBC_PICOLIBC\` choice in its Kconfig), so a \`_write\` you add to an IDF project is not what its \`printf\` calls. The MSDK's board support code initialises the console UART (UART0 at 115200 on the MAX78000FTHR, per the \`FTHR_RevA\` board files). When you start from an empty project with a bare toolchain, it is your job.
 
 ### 3. The startup file
 
@@ -640,17 +642,34 @@ MEMORY
 SECTIONS
 {
     .text : { KEEP(*(.isr_vector)) *(.text*) *(.rodata*) } > FLASH
-    .data : { _sdata = .; *(.data*) _edata = .; } > SRAM AT > FLASH     /* runs in RAM, stored in flash */
+    .data : { _sdata = .; *(.data*) . = ALIGN(4); _edata = .; } > SRAM AT > FLASH   /* runs in RAM, stored in flash */
     _sidata = LOADADDR(.data);
-    .bss  : { _sbss = .; *(.bss*) *(COMMON) _ebss = .; } > SRAM
+    .bss  : { _sbss = .; *(.bss*) *(COMMON) . = ALIGN(4); _ebss = .; } > SRAM
 }
 \`\`\`
 
-(A simplified sketch, not the MSDK's actual file.) Things to recognise:
+(A simplified sketch, not the MSDK's actual file. Its syntax and the addresses below were checked by linking a small test object with it using GNU ld 2.42 on the host; it was not used to build a target image.) Things to recognise:
 
-- \`MEMORY\` is the chip's address map. Get an origin wrong and the image is built for addresses that do not exist. The numbers differ per chip: the MSPM0L2228's SRAM starts at \`0x20200000\`, not \`0x20000000\`.
+- \`MEMORY\` is the chip's address map. Get an origin wrong and the image is built for addresses that do not exist. The numbers differ per chip: TI's linker file for the MSPM0L2228 (and the 2026 eCTF design) places SRAM at \`0x20200000\`. That chip maps the same 32 KB at three addresses with different error checking, and \`0x20000000\` is one of the other two (docs/FACTS), so always take the origin from the vendor's file for your part instead of assuming it.
 - \`> SRAM AT > FLASH\`: the section's **run address** (VMA) is in RAM, its **load address** (LMA) is in flash. That one line is the reason for the copy loop in the startup file.
-- \`KEEP(*(.isr_vector))\`: keep the vector table even though no code references it, and put it first.
+- \`. = ALIGN(4)\` before \`_edata\` and \`_ebss\` rounds each end up to a word boundary, because the startup loops above copy and clear whole 32-bit words. Without it a section whose size is not a multiple of 4 would have the loop write up to three bytes past its end.
+- \`KEEP(*(.isr_vector))\`: put the vector table first, and keep it even when the link uses \`--gc-sections\` to discard unreferenced sections. Nothing in the C code refers to the table (only the CPU reads it, at reset), so the garbage collector would otherwise throw it away.
+
+**The two addresses, step by step.** In the test link, \`objdump -h\` and \`nm\` showed:
+
+\`\`\`
+Name     Size      VMA         LMA
+.text    00000098  10000000    10000000     runs where it is stored
+.data    00000008  20000000    10000098     runs in RAM, stored in flash right after .text
+.bss     00000004  20000008    (none)       NOBITS: nothing stored at all
+_sdata = 0x20000000   _edata = 0x20000008   _sidata = 0x10000098
+\`\`\`
+
+1. The compiler generated code that reads \`calibration\` at \`0x20000000\`. That is its VMA: the only address the *code* ever uses.
+2. The programmer writes the image to flash. The 8 bytes of initial values land at \`0x10000098\`: the LMA. RAM is not touched by programming, and would not keep the values without power anyway.
+3. At every reset the startup loop copies \`_edata − _sdata\` = 8 bytes from \`_sidata\` (flash) to \`_sdata\` (RAM). Only now does a read of \`0x20000000\` return 1234.
+
+For \`.text\` and \`.rodata\` the two addresses are equal, which is why nobody notices that there are two until \`.data\` goes wrong.
 - When an image must coexist with a bootloader, the team's \`FLASH\` region does not start at the beginning of flash. In the 2024 and 2025 eCTF designs the MITRE bootloader occupied \`0x10000000\`–\`0x1000E000\` and team firmware started at \`0x1000E000\`; in 2026 the team region starts at \`0x00006000\` (docs/FACTS, from each year's \`firmware.ld\`).
 
 TI's own linker uses **linker command files** (\`.cmd\`) with a different syntax for the same ideas; the MSPM0 SDK ships them per device and compiler.`,
@@ -661,7 +680,7 @@ TI's own linker uses **linker command files** (\`.cmd\`) with a different syntax
         { t: '115200, because the compiler initialises it', why: 'The compiler only records the initial value in the object file. Getting it into RAM at run time is the job of the startup code, using a copy that the linker script must place in flash.' },
         { t: '0, because all RAM is cleared at reset', why: 'Hardware does not clear RAM at reset. Only `.bss` is zeroed, and that too is done by the startup code.' },
       ],
-      reveal: 'The symptom is distinctive: `const` data and code are fine, zero-initialised variables are fine, but every variable with a non-zero initialiser is wrong. If you see that pattern during bring-up, read the linker script and the startup file before anything else.' },
+      reveal: 'Without `AT > FLASH` the load address of `.data` equals its run address: the linker records "these bytes belong at 0x20000000". A flash programmer cannot put them there, and `_sidata` now equals `_sdata`, so the startup loop copies RAM onto itself. The symptom is distinctive: `const` data and code are fine, zero-initialised variables are fine, but every variable with a non-zero initialiser is wrong. A second tell-tale appears at build time: `objcopy -O binary` fills the gap between the flash and RAM addresses, so the `.bin` balloons (in the test link behind this lesson\'s sketch, from 160 bytes to 256 MB). If you see either during bring-up, read the linker script and the startup file before anything else.' },
 
     `## How SDK build systems wrap all this
 
@@ -682,15 +701,25 @@ Two practical points:
 
 - **Find the actual compiler commands.** Every one of these can print them (\`idf.py -v build\`, \`make V=1\` or \`make VERBOSE=1\` depending on the makefiles). When a build misbehaves, the command line with its \`-mcpu\`, \`-I\`, \`-D\` and \`-T\` flags is the ground truth.
 - **Your portable modules do not care.** \`ringbuf.c\`, \`line_rx.c\` and \`lock.c\` from this section are added to an IDF component's source list or an MSDK Makefile's source variable unchanged. Only the HAL file is per target.`,
-    { t: 'code', lang: 'cmake', status: 'reviewed', caption: 'An ESP-IDF component CMakeLists.txt pulling in the portable modules. Written against the ESP-IDF build-system documentation; not built here.',
-      code: C`# main/CMakeLists.txt
+    { t: 'code', lang: 'cmake', status: 'idf-built', caption: 'The two CMake files of an ESP-IDF project that pulls in the portable modules. With this section\'s port files (port/main_esp32.c, port/hal_esp32.c) this project was built for the esp32 target with ESP-IDF v6.1 in this repository\'s environment. Not run on a board.',
+      code: C`# CMakeLists.txt  (project root)
+cmake_minimum_required(VERSION 3.22)
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(doorlock)
+
+# main/CMakeLists.txt
 idf_component_register(
     SRCS         "main_esp32.c" "hal_esp32.c"
                  "../shared/src/app.c" "../shared/src/ringbuf.c"
                  "../shared/src/line_rx.c" "../shared/src/lock.c"
     INCLUDE_DIRS "../shared/include"
+    PRIV_REQUIRES esp_driver_uart esp_driver_gpio esp_timer
 )`,
-      explain: [{ lines: '2-7', md: 'One function call declares the component\'s sources and include paths. IDF\'s CMake code adds the cross-compiler, flags, startup code, linker scripts and FreeRTOS.' }] },
+      explain: [
+        { lines: '2-4', md: 'The three lines every IDF project needs, in this order. `project.cmake` is IDF\'s build system: including it is what brings in the cross-compiler, the flags, the startup code, the generated linker scripts and FreeRTOS. `project()` names the output (`build/doorlock.elf`, `.bin`, `.map`).' },
+        { lines: '7-11', md: 'One function call declares a component: its sources (paths are relative to the component directory and may point outside it) and the include directories its sources need.' },
+        { lines: '12', md: '`PRIV_REQUIRES` lists the components whose headers these sources include: `driver/uart.h` lives in `esp_driver_uart`, `driver/gpio.h` in `esp_driver_gpio`, `esp_timer.h` in `esp_timer`. Private, because no header of *this* component exposes them. The component named `main` is special: by default it automatically requires every other component, so this line could be omitted there, but any other component needs it, and so does `main` when the project sets the `MINIMAL_BUILD` property to trim the build.' },
+      ] },
 
     `## Reproducible builds
 
@@ -742,13 +771,13 @@ ARG SDK_TAG=v0000_00
 RUN git clone --depth 1 --branch ${"$"}{SDK_TAG} https://github.com/analogdevicesinc/msdk.git /opt/msdk
 ENV MAXIM_PATH=/opt/msdk
 
-# 3. The build is one command, with the source mounted read-only and outputs in a volume.
+# 3. The build is one command, run on the source tree mounted at /src.
 WORKDIR /src
 CMD ["make", "-C", "/src", "release"]`,
       explain: [
         { lines: '1', md: 'A tag such as `ubuntu:24.04` moves when the image is patched. Pin `ubuntu@sha256:…` if you need bit-exact results months apart.' },
         { lines: '9-10', md: 'The SDK version is an explicit, reviewable argument.' },
-        { lines: '14-15', md: 'Anyone with Docker runs the same compiler on the same SDK: `docker build -t fw . && docker run --rm -v $(pwd):/src fw`.' },
+        { lines: '14-15', md: 'Anyone with Docker runs the same compiler on the same SDK: `docker build -t fw . && docker run --rm -v "$(pwd)":/src fw`. The outputs appear in the mounted tree. (The 2025 eCTF design goes one step further and mounts a separate output directory, so the source tree can be mounted read-only.)' },
       ] },
     { t: 'callout', kind: 'mistake', title: 'Committing build outputs, not the recipe', md: `Checking a working \`.bin\` into the repository "so everyone has one that works", while the instructions for producing it live in one person's shell history. Six weeks later a one-line change is needed and nobody can rebuild. The repository must contain the **recipe**: Dockerfile or equivalent, pinned versions, and one documented command. Verify it by building from a fresh clone on a different machine before every milestone.` },
     { t: 'callout', kind: 'security', md: `Reproducibility interacts with secrets. If a build bakes a per-device key into the image, images legitimately differ between devices, and the key-generation step must be separate, explicit and kept out of the public repository (the eCTF reference designs generate secrets with dedicated scripts before the firmware build). Reproducible means: same source **and same secrets** give the same image.` },

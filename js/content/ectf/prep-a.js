@@ -129,7 +129,7 @@ Resolve it the way an engineer would: decide which operation each number applies
   quiz: [
     { q: 'Which of these is a testable security requirement?', kind: 'concept', choices: [
       { t: 'The firmware shall follow current security best practice on every interface an adversary can reach.', why: 'No input or observation could show this to be false, so it cannot be tested or argued.' },
-      { t: 'The reader shall refuse an unlock message whose counter is not greater than the last one accepted.', ok: true, why: 'It names the subject, the condition and the outcome, and it has an obvious negative test.' },
+      { t: 'The reader shall refuse an unlock message whose counter is not greater than the last accepted counter.', ok: true, why: 'It names the subject, the condition and the outcome, and it has an obvious negative test.' },
       { t: 'The team shall protect every message with AES-256, using full-length keys from a hardware generator.', why: 'This prescribes a mechanism, not a property. A design can use AES-256 and still accept forged or repeated messages.' },
     ] },
     { q: 'A specification gives a maximum message length of 64 bytes. How many tests does that one number need at minimum?', kind: 'concept', choices: [
@@ -297,7 +297,7 @@ It runs between the two, and data crosses it in the *reverse* direction from the
     ] },
     { q: 'Which change reduces attack surface?', kind: 'arch', choices: [
       { t: 'Encrypting the output of the debug console with a per-device key.', why: 'The console and all its commands are still reachable; there is now additional code as well.' },
-      { t: 'Removing a diagnostic command the specification does not require.', ok: true, why: 'Code that is not in the image cannot be reached or be wrong.' },
+      { t: 'Removing from the image a diagnostic command the specification does not require.', ok: true, why: 'Code that is not in the image cannot be reached or be wrong.' },
       { t: 'Renaming the diagnostic command to a long string that is hard to guess.', why: 'The command string is in the firmware image, where anyone with the image can read it.' },
     ] },
     { q: 'A flash write that stores the new failed-attempt count returns an error. What is the fail-closed behaviour?', kind: 'security', choices: [

@@ -18,7 +18,7 @@ GCC 13.3 on x86-64 Linux.
 | `port/hal_fake.c`, `port/hal_fake.h` | HAL for unit tests: scripted input, recorded output, settable clock |
 | `port/hal_posix.c`, `port/main_posix.c` | HAL and main loop for running as a PC program |
 | `port/hal_benchmcu.c` | HAL for Bench-MCU, the course's simulated MCU (compile-checked on the host) |
-| `port/hal_esp32.c`, `port/main_esp32.c` | HAL and entry point for ESP-IDF. **Reviewed only: not compiled or run here** |
+| `port/hal_esp32.c`, `port/main_esp32.c` | HAL and entry point for ESP-IDF. Compiled for the `esp32` target with ESP-IDF v6.1 (see the lab's part 5 for the project layout). **Not run on a board** |
 | `tests/` | Unit tests and the tiny `test.h` harness |
 | `bugs/line_rx_oob.c` | A deliberately buggy line receiver for the sanitizer demonstration |
 | `bugs/stack_hog.c` | Functions with large, recursive and dynamic stack frames for `-fstack-usage` |

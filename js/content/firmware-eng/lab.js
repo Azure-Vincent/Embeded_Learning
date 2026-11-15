@@ -28,7 +28,7 @@ const lab = {
     `You will work with the door-lock controller that the lessons of this section took apart. It accepts text commands on a UART (\`PIN 4921\`, \`LOCK\`, \`STATUS\`, \`VERSION\`), drives a latch output and a lockout LED, relocks after 5 s and refuses all PINs for 30 s after three consecutive wrong ones.
 
 The point of the lab is not the lock. It is the **shape** of the code: everything that decides behaviour is hardware-independent and tested on your PC; the only target-specific file is a HAL of five functions. You will first prove the logic on the host, then move it to two targets without editing it.`,
-    { t: 'callout', kind: 'sim', md: 'Parts 1–3 run real code on your own computer. Part 4 runs in the course\'s C interpreter on **Bench-MCU**, a fictional MCU: its registers match no real chip. Part 5 is the only part that involves hardware, and the code for it has been reviewed against the ESP-IDF API but **not compiled or run** by the authors.' },
+    { t: 'callout', kind: 'sim', md: 'Parts 1–3 run real code on your own computer. Part 4 runs in the course\'s C interpreter on **Bench-MCU**, a fictional MCU: its registers match no real chip. Part 5 is the only part that involves hardware. Its code was compiled for the `esp32` target with ESP-IDF v6.1 but has **not been run on a board** by the authors.' },
     { t: 'callout', kind: 'security', md: 'The demo PIN is a constant in the source and therefore readable in the firmware image by anyone who can dump it. That is deliberate here, so the lab can focus on structure, and it is one of the first things the security section teaches you to find and then to fix.' },
   ],
   diagram: [
@@ -139,7 +139,7 @@ Restore \`>=\` and confirm \`make test\` passes again. Then run \`make bug-demo\
 
 The test bench feeds command lines into UART0's receiver and checks what is transmitted, the pin directions, the state of \`GPIO_OUT\`, and the relock timeout: the latch must still be open 2500 timer periods after a correct PIN and must close once your \`hal_millis\` has counted 5000 ms. (The lab's board constant is 100 timer ticks per millisecond, not the 1000 in \`port/hal_benchmcu.c\`, so that the simulator can cover five seconds.)`,
       blocks: [{ t: 'widget', name: 'c-lab', props: clPortBench }] },
-    { title: 'Part 5 (optional, hardware): bring it up on an ESP32', md: `This part needs a board. The files \`port/hal_esp32.c\` and \`port/main_esp32.c\` implement the HAL with the ESP-IDF UART and GPIO drivers. **They were written against the ESP-IDF documentation and have not been compiled or run by the authors**, so treat the first build as a review exercise: read every API call against the documentation of the IDF version you installed.
+    { title: 'Part 5 (optional, hardware): bring it up on an ESP32', md: `This part needs a board. The files \`port/hal_esp32.c\` and \`port/main_esp32.c\` implement the HAL with the ESP-IDF UART and GPIO drivers. **They were compiled for the \`esp32\` target with ESP-IDF v6.1 in this repository's environment, and have not been run on a board by the authors.** A clean build proves the API calls exist and type-check; it proves nothing about pins, levels or timing. If you use a different IDF version, treat the first build as a review exercise and read every API call against that version's documentation.
 
 1. Create an ESP-IDF project (\`idf.py create-project doorlock\`). Copy this example's \`include/\` and \`src/\` into a directory \`shared/\` inside it, and the two ESP32 port files into \`main/\`.
 2. Replace \`main/CMakeLists.txt\` with the component registration shown below.
@@ -155,7 +155,7 @@ idf_component_register(
                  "../shared/src/line_rx.c" "../shared/src/lock.c"
     INCLUDE_DIRS "../shared/include"
     PRIV_REQUIRES esp_driver_uart esp_driver_gpio esp_timer
-)`, lang: 'cmake', status: 'reviewed' },
+)`, lang: 'cmake', status: 'idf-built' },
   ],
   walkthrough: [
     `What the important lines do at the level of memory and hardware.`,
@@ -242,7 +242,7 @@ void hal_gpio_write(hal_pin_t pin, bool level)
     { symptom: 'Part 4: the simulator stops with "probably an infinite loop", or the latch closes far too early', cause: 'Time is wrong. If `hal_millis` never advances (timer not enabled, no auto-reload, EXPIRED never tested) the latch never relocks and the loop never ends. If it adds one on every call, or never clears EXPIRED, 5000 "milliseconds" pass in a fraction of the real time.', fix: 'In `hal_init` write `TIM_LOAD` and set ENABLE and AUTO_RELOAD in `TIM_CTRL`. In `hal_millis` count one millisecond only when `TIM_STATUS` bit 0 is set, and clear the flag by writing 1 to it.' },
     { symptom: 'Part 5: garbage characters on the terminal', cause: 'Baud rate or format mismatch, or the terminal is attached to the board\'s console port, which carries the bootloader and IDF log.', fix: 'Use the adapter\'s port at 115200 8N1. If still garbled, check that both sides share ground.' },
     { symptom: 'Part 5: nothing received and no reply', cause: 'TX and RX not crossed, or the chosen pins are in use on your board.', fix: 'Adapter TX goes to the ESP32 RX pin and vice versa. Check the board\'s schematic for the pins; the Protocols section\'s `protocol-debug` tool has this fault as a scenario.' },
-    { symptom: 'Part 5: build fails on an include or a `PRIV_REQUIRES` name', cause: 'Driver component names and header locations have changed between ESP-IDF major versions, and the port file was not compiled by the authors.', fix: 'Look up the UART, GPIO and esp_timer pages for your IDF version and adjust the includes and component names. This is the review the step asked for.' },
+    { symptom: 'Part 5: build fails on an include or a `PRIV_REQUIRES` name', cause: 'Driver component names and header locations have changed between ESP-IDF major versions (in older v5 releases the UART and GPIO drivers were part of a single `driver` component instead of `esp_driver_uart` and `esp_driver_gpio`). The port was built with v6.1 only.', fix: 'Look up the UART, GPIO and esp_timer pages for your IDF version and adjust the includes and component names. This is the review the step asked for.' },
   ],
   challenge: [
     `No solutions are given for these.

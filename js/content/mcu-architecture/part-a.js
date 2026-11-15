@@ -756,7 +756,7 @@ for security-critical firmware revisions, not for every build. Real anti-rollbac
       ] },
       { q: 'On an ESP32, an interrupt handler crashes only when it fires during a flash write. The handler is an ordinary C function. Most likely cause?', kind: 'arch', choices: [
         { t: 'Its code is in cache-mapped flash, which cannot be read during the write', ok: true, why: 'Code that must run during flash operations has to be placed in internal RAM.' },
-        { t: 'Flash writes disable all interrupts, so the handler was entered in an illegal state', why: 'If that were so there would be no crash; the problem is that it does run and its code cannot be fetched.' },
+        { t: 'Flash writes disable all interrupts, so the handler was entered in an illegal state', why: 'If interrupts were disabled the handler would not be entered at all and there would be nothing to crash. It is entered; ask what it needs in order to execute.' },
         { t: 'The handler uses too much stack, and flash writes leave less stack available', why: 'Stack use would not correlate specifically with flash writes.' },
       ] },
       { q: 'Which data belongs in eFuse/OTP rather than ordinary flash?', kind: 'security', choices: [

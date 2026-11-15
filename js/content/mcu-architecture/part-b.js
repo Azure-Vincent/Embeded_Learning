@@ -355,8 +355,8 @@ general lesson: a pin has a life before \`main()\`, and external parts see all o
     quiz: [
       { q: 'Why does writing a mask to a "set" register avoid the race that `OUT |= mask` has?', kind: 'arch', choices: [
         { t: 'It is one store with no preceding load, so no stale copy exists', ok: true, why: 'The hardware performs the OR inside the peripheral in the same clock cycle as the write.' },
-        { t: 'The set register disables interrupts for the duration of the write', why: 'No masking takes place; the benefit comes from removing the software read step.' },
-        { t: 'The compiler recognises the register and emits an atomic instruction for it', why: 'The compiler emits an ordinary store. Atomicity comes from how the register is implemented in hardware.' },
+        { t: 'The set register disables interrupts while it is written', why: 'No masking takes place; the benefit comes from removing the software read step.' },
+        { t: 'The compiler emits an atomic instruction for that register', why: 'The compiler emits an ordinary store. Atomicity comes from how the register is implemented in hardware.' },
       ] },
       { q: 'A pin is an input with no pull and nothing connected. Reading it returns:', kind: 'circuit', choices: [
         { t: 'An unpredictable level that can change with nearby signals', ok: true, why: 'A floating CMOS input has no defined voltage; it follows leakage and coupled noise.' },
@@ -371,7 +371,7 @@ general lesson: a pin has a life before \`main()\`, and external parts see all o
       { q: 'What does the Schmitt trigger on a digital input provide?', kind: 'circuit', choices: [
         { t: 'Separate rising and falling thresholds, so a slow edge gives one transition', ok: true, why: 'Hysteresis stops the input from chattering while the voltage passes through the threshold region.' },
         { t: 'Protection of the pin against voltages above the supply rail', why: 'Over-voltage is handled (to a limited extent) by clamp structures, not by the input buffer\'s thresholds.' },
-        { t: 'Removal of mechanical switch bounce, so buttons need no debouncing in software', why: 'Bounce is a real, full-swing series of edges lasting milliseconds; hysteresis of a few hundred millivolts does not hide it.' },
+        { t: 'Removal of mechanical switch bounce, so buttons need no debouncing', why: 'Bounce is a real, full-swing series of edges lasting milliseconds; hysteresis of a few hundred millivolts does not hide it.' },
       ] },
       { q: 'On the original ESP32, a design needs an output with an internal pull-up on GPIO35. What is the problem?', kind: 'circuit', choices: [
         { t: 'GPIO34–39 are input-only and have no internal pulls', ok: true, why: 'These pads lack output drivers and pull resistors; no register setting changes that.' },
@@ -544,7 +544,7 @@ and the energy spent listening, small.)`,
       ] },
       { q: 'Why can a UART link fail when one end heats up, although both ends are set to the same baud rate?', kind: 'circuit', choices: [
         { t: 'An RC oscillator drifts with temperature, so the bit times stop matching', ok: true, why: 'The configured divisor is the same, but the clock it divides has changed.' },
-        { t: 'Heat raises the resistance of the wire enough to attenuate the signal below threshold', why: 'Copper resistance changes by a fraction of an ohm over this range, far too little to affect logic levels.' },
+        { t: 'Heat raises the resistance of the wire enough to attenuate the signal', why: 'Copper resistance changes by a fraction of an ohm over this range, far too little to affect logic levels.' },
         { t: 'The divisor register loses its value at high temperature', why: 'Registers hold their contents across the whole operating range; it is the analogue oscillator that moves.' },
       ] },
       { q: 'What does a PLL do to the accuracy of its reference?', kind: 'concept', choices: [
@@ -560,7 +560,7 @@ and the energy spent listening, small.)`,
       { q: 'Firmware lowers the CPU clock from 80 MHz to 20 MHz to save power, and the UART output becomes garbage. Why?', kind: 'code', choices: [
         { t: 'The baud divisor was computed for the old clock and not recalculated', ok: true, why: 'Baud rate is clock divided by divisor; a quarter of the clock with the same divisor gives a quarter of the baud rate.' },
         { t: 'UARTs cannot run from a clock below 80 MHz', why: 'A UART needs only a clock comfortably above the baud rate; 20 MHz is ample for 115,200.' },
-        { t: 'The transmit pin loses its function select whenever the clock source changes', why: 'Pin multiplexing is independent of clock frequency.' },
+        { t: 'The transmit pin loses its function select when the clock changes', why: 'Pin multiplexing is independent of clock frequency.' },
       ] },
       { q: 'Which peripheral is most reasonably clocked from a separate low-power RC oscillator rather than the main system clock?', kind: 'arch', choices: [
         { t: 'The watchdog', ok: true, why: 'It must keep running if the main clock fails or the system clock is misconfigured, and in sleep modes.' },
@@ -742,7 +742,7 @@ bool uart_get(uint8_t *out)
       { t: 'predict',
         q: 'A timer handler does its work but does not clear the timer\'s EXPIRED flag. The timer is in auto-reload mode with a 1 s period. What does the system do after the first expiry?',
         choices: [
-          { t: 'The handler runs once per second as intended; flags clear themselves on handler exit', why: 'What clears a flag in a peripheral register? Check the access type the register table gives it.' },
+          { t: 'The handler runs once per second as intended; flags clear on exit', why: 'What clears a flag in a peripheral register? Check the access type the register table gives it.' },
           { t: 'The handler is re-entered immediately on every return; main code stalls', ok: true, why: 'The request line stays asserted, so the interrupt is pending again the moment the handler returns.' },
           { t: 'The handler runs once and never again', why: 'For it to never run again the request would have to go away; here it never goes away.' },
         ],
@@ -782,7 +782,7 @@ in its smallest form; the RTOS section generalises it.)`,
       ] },
       { q: 'On a Cortex-M, why can an interrupt handler be written as a plain C function?', kind: 'arch', choices: [
         { t: 'Hardware stacks exactly the registers a C function may overwrite', ok: true, why: 'r0–r3, r12, LR, PC and the status word are saved on entry and restored on return, matching the caller-saved set.' },
-        { t: 'The compiler detects handlers by their names and adds register-saving code', why: 'Names are only a link-time convention for filling the vector table; no extra code is generated for them.' },
+        { t: 'The compiler detects handlers by name and adds save code', why: 'Names are only a link-time convention for filling the vector table; no extra code is generated for them.' },
         { t: 'Handlers run on a separate CPU core', why: 'The same core runs them; it borrows the current context and puts it back afterwards.' },
       ] },
       { q: 'What must a RISC-V trap handler do that a Cortex-M handler does not?', kind: 'arch', choices: [
@@ -802,8 +802,8 @@ in its smallest form; the RTOS section generalises it.)`,
       ] },
       { q: 'What usually dominates worst-case interrupt latency in a real firmware project?', kind: 'concept', choices: [
         { t: 'The longest stretch of code that runs with interrupts masked', ok: true, why: 'Hardware entry is a fixed handful of cycles; software masking can be arbitrarily long.' },
-        { t: 'The time to fetch the vector from flash, which needs several wait states', why: 'That is one memory read, a tiny fixed cost.' },
-        { t: 'The size of the vector table, because the core searches it for the handler', why: 'The table is indexed directly; its size has no effect on lookup time.' },
+        { t: 'The time to fetch the vector from flash', why: 'That is one memory read, a tiny fixed cost.' },
+        { t: 'The size of the vector table, which the core must search', why: 'The table is indexed directly; its size has no effect on lookup time.' },
       ] },
     ],
   },
@@ -996,7 +996,7 @@ read the watchdog chapter of the reference manual before relying on it.`,
         choices: [
           { t: 'The watchdog resets the system within one timeout period', why: 'The watchdog only fires if feeding stops. What is still running while the main loop is stuck?' },
           { t: 'Nothing: the interrupt keeps feeding and the system stays hung', ok: true, why: 'Interrupts continue to run when main code is stuck in a loop, so the watchdog sees a healthy system.' },
-          { t: 'The timer interrupt stops because main code is blocked, so the watchdog expires', why: 'Interrupts preempt main code regardless of what it is doing; that is their purpose.' },
+          { t: 'The timer interrupt stops because main code is blocked', why: 'Interrupts preempt main code regardless of what it is doing; that is their purpose.' },
         ],
         reveal: 'A feed must be evidence that the thing you care about is making progress. A timer interrupt proves only that the timer works. This is the classic watchdog anti-pattern.' },
 
@@ -1044,7 +1044,7 @@ erase routine: that removes the protection during exactly the operation most lik
       { q: 'Why does input capture give a more accurate timestamp than reading the counter in a GPIO interrupt handler?', kind: 'arch', choices: [
         { t: 'Hardware latches the count at the edge, whatever the interrupt latency', ok: true, why: 'The software can read the capture register late; the number it reads is still the count at the edge.' },
         { t: 'Capture uses a faster clock than the counter, which adds resolution', why: 'Capture copies the same counter, at the same clock; no extra resolution is created.' },
-        { t: 'Capture interrupts always have the highest priority, so they are never delayed', why: 'Priority is configurable and is not what makes the timestamp exact.' },
+        { t: 'Capture interrupts always have the highest priority', why: 'Priority is configurable and is not what makes the timestamp exact.' },
       ] },
       { q: 'You raise a PWM frequency by a factor of 10 while keeping the same counter clock. What happens to duty-cycle resolution?', kind: 'concept', choices: [
         { t: 'It drops by a factor of 10: a period holds a tenth of the counts', ok: true, why: 'Resolution equals the number of counter ticks per period.' },
@@ -1053,7 +1053,7 @@ erase routine: that removes the protection during exactly the operation most lik
       ] },
       { q: 'Which watchdog feed location gives the most meaningful protection in a single-loop firmware?', kind: 'code', choices: [
         { t: 'Once, at the end of the main loop, after the pass\'s work is done', ok: true, why: 'The feed then proves that every part of the loop ran to completion.' },
-        { t: 'In the periodic tick interrupt, so that feeding never depends on loop timing', why: 'The tick keeps running when main code is stuck, so the hang would go undetected.' },
+        { t: 'In the periodic tick interrupt, so feeding is always on time', why: 'The tick keeps running when main code is stuck, so the hang would go undetected.' },
         { t: 'Before and after every function call, to be safe', why: 'Feeds scattered everywhere mean a loop stuck in almost any small region still feeds, hiding the hang.' },
       ] },
       { q: 'What extra fault does a *windowed* watchdog detect compared with a simple one?', kind: 'concept', choices: [

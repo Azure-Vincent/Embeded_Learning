@@ -164,7 +164,7 @@ A context switch costs time in three places: saving and restoring registers (a f
         ] },
       { q: 'How does RISC-V trap entry differ from Cortex-M exception entry?', kind: 'arch',
         choices: [
-          { t: 'Hardware records the return address and cause in CSRs; software saves the registers.', ok: true, why: 'There is no automatic stack frame, so the trap handler\'s first instructions store the registers it will disturb.' },
+          { t: 'The hardware saves the return address and cause in CSRs; software must save every general-purpose register.', ok: true, why: 'There is no automatic stack frame, so the trap handler\'s first instructions store the registers it will disturb.' },
           { t: 'RISC-V pushes all 31 general-purpose registers automatically, where Cortex-M pushes only eight.', why: 'It pushes none; the save is entirely the handler\'s job.' },
           { t: 'RISC-V cannot nest interrupts, so its handlers need no stack of their own.', why: 'Nesting is possible but must be arranged by software re-enabling interrupts after saving state.' },
         ] },
@@ -516,7 +516,7 @@ static void IRAM_ATTR dma_done_isr(void *arg)
       { q: 'Why is deferring work from an ISR to a high-priority task usually better than doing it in the ISR?', kind: 'arch',
         choices: [
           { t: 'The work may block and use normal APIs, and other interrupts are not held off meanwhile.', ok: true, why: 'The ISR shrinks to a few instructions, and the urgency of the rest is set by a task priority you control, so the scheduler decides how the work competes with other tasks.' },
-          { t: 'Code in a task executes faster than the same code in an ISR, because the CPU is in thread mode.', why: 'The CPU runs code at the same speed in both. The gain is in what the code is allowed to do and what it delays.' },
+          { t: 'Code in a task executes faster than the same code in an ISR.', why: 'The CPU runs code at the same speed in both. The gain is in what the code is allowed to do and what it delays.' },
           { t: 'An ISR cannot access global variables, so it cannot do the work itself.', why: 'They can, and that is exactly how data sharing hazards between ISRs and tasks arise.' },
         ] },
     ],
@@ -718,7 +718,7 @@ static void logger_task(void *arg)     /* lower priority than sampler */
         ] },
       { q: 'What distinguishes a counting semaphore from a binary one in an interrupt-signalling role?', kind: 'concept',
         choices: [
-          { t: 'It remembers how many gives happened, up to its maximum.', ok: true, why: 'Each give increments the count up to the maximum, and each take consumes one, so a burst of interrupts is not collapsed into a single wake-up.' },
+          { t: 'It remembers how many gives happened, so a burst of interrupts is not collapsed into one wake-up.', ok: true, why: 'Each give increments the count up to the maximum, and each take consumes one, so a burst of interrupts is not collapsed into a single wake-up.' },
           { t: 'It has a FromISR give function, while a binary semaphore can only be given from a task.', why: 'Both have FromISR give functions. The difference is in how many pending events they can hold.' },
           { t: 'It raises the handler task\'s priority while events are pending.', why: 'No semaphore changes anybody\'s priority. Priority inheritance exists only in mutexes, and it concerns the holder of a lock, not a handler of events.' },
         ] },
@@ -1010,7 +1010,7 @@ void control_step(void)
         ] },
       { q: 'Why does ESP-IDF\'s `taskENTER_CRITICAL` take a spinlock argument when upstream single-core FreeRTOS does not?', kind: 'arch',
         choices: [
-          { t: 'Masking interrupts stops only the calling core; the spinlock keeps the other core out.', ok: true, why: 'On one core, "nothing can interrupt me" implies exclusivity. On two cores it does not.' },
+          { t: 'Masking interrupts stops only the calling core; the spinlock keeps code on the other core out of the same section.', ok: true, why: 'On one core, "nothing can interrupt me" implies exclusivity. On two cores it does not.' },
           { t: 'To record which task owns the section, so that the kernel can apply priority inheritance to it.', why: 'Critical sections have no ownership or inheritance. That belongs to mutexes.' },
           { t: 'Because interrupts cannot be disabled on an ESP32, so a lock is used in their place.', why: 'They can be and are; the spinlock is in addition to masking interrupts on the calling core.' },
         ] },
@@ -1028,7 +1028,7 @@ void control_step(void)
         ] },
       { q: 'On a dual-core ESP32, a task calls `vTaskSuspendAll()` and then updates a struct that a task pinned to the other core also reads. Is the update protected?', kind: 'arch',
         choices: [
-          { t: 'No. Scheduling is suspended on the calling core only.', ok: true, why: 'In ESP-IDF FreeRTOS the suspension is per core: the task on the other core keeps running, so there is no exclusion against it.' },
+          { t: 'No. Scheduling is suspended on the calling core only; the other core carries on.', ok: true, why: 'In ESP-IDF FreeRTOS the suspension is per core: the task on the other core keeps running, so there is no exclusion against it.' },
           { t: 'Yes: all task switching stops on both cores until `xTaskResumeAll()`.', why: 'That is upstream single-core behaviour. The ESP-IDF dual-core kernel documents a per-core effect.' },
           { t: 'Yes, because it also masks interrupts on both cores.', why: 'Scheduler suspension leaves interrupts enabled, by design, on any port — and masking interrupts would not stop a task that is already running on the other core.' },
         ] },

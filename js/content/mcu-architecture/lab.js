@@ -247,7 +247,7 @@ provided; a good answer is one a sceptical reviewer cannot poke holes in.`,
     quiz: [
       { q: 'You need the base address of SRAM for a linker script. Which source is the most direct and least likely to be out of date for your exact part?', kind: 'arch', choices: [
         { t: 'The reference manual\'s memory map, cross-checked with the vendor linker script', ok: true, why: 'Two independent primary sources that agree are as good as documentation gets.' },
-        { t: 'A linker script from a different chip in the same family, since families share one map', why: 'Bases and sizes vary within families; the MSPM0 SRAM base differing from the common 0x2000_0000 is an example of why copying is risky.' },
+        { t: 'A linker script from another chip in the same family, which shares the map', why: 'Bases and sizes vary within families; the MSPM0 SRAM base differing from the common 0x2000_0000 is an example of why copying is risky.' },
         { t: 'The feature list on the first page of the datasheet', why: 'It gives sizes, not addresses.' },
       ] },
       { q: 'An SDK example configures the CPU clock to 32 MHz. What can you conclude about the chip\'s maximum CPU frequency?', kind: 'concept', choices: [
@@ -267,7 +267,7 @@ provided; a good answer is one a sceptical reviewer cannot poke holes in.`,
       ] },
       { q: 'Your sheet says "flash erase unit: 4 KB (ASSUMED)". What is the right next action before writing a storage driver?', kind: 'concept', choices: [
         { t: 'Find the value in the reference manual or flash datasheet and cite it', ok: true, why: 'Erase granularity shapes the whole storage design; an assumption here becomes data loss later.' },
-        { t: 'Proceed: 4 KB is the standard erase unit for every flash a microcontroller uses', why: 'Erase units in this course alone range from 1 KB to 8 KB.' },
+        { t: 'Proceed: 4 KB is the standard erase unit for all flash memories', why: 'Erase units in this course alone range from 1 KB to 8 KB.' },
         { t: 'Measure it by erasing and seeing how much changes', why: 'An experiment can confirm documentation, but designing from an undocumented observation risks missing conditions the manual would state.' },
       ] },
     ],

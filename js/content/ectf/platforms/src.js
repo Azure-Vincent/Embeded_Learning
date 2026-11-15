@@ -1,5 +1,6 @@
 // Source URLs for the platforms track. Every URL here is taken from docs/FACTS.md.
-// GitHub URLs were opened during research; anything in NOT_LOADED was not load-tested (host blocked).
+// GitHub URLs were opened in round 1; the MITRE rules, TI and Espressif URLs were opened in round 2 (2026-11-15).
+// Anything in NOT_LOADED was not load-tested, or the server refused the request.
 const MCA = 'https://github.com/mitre-cyber-academy';
 const E24 = `${MCA}/2024-ectf-insecure-example`;
 const E25 = `${MCA}/2025-ectf-insecure-example`;
@@ -8,6 +9,8 @@ const MSDK = 'https://github.com/analogdevicesinc/msdk';
 const TI = 'https://github.com/TexasInstruments/mspm0-sdk';
 const IDF = 'https://github.com/espressif/esp-idf/blob/v6.1';
 const OOCD = 'https://github.com/openocd-org/openocd';
+const RULES = 'https://rules.ectf.mitre.org';
+const ESPDOC = 'https://www.espressif.com/sites/default/files/documentation';
 
 export const S = {
   mcaOrg: `${MCA}`,
@@ -61,6 +64,37 @@ export const S = {
   y2026msg: `${E26}/blob/release/firmware/inc/host_messaging.h`,
   y2026dl: `${E26}/blob/release/firmware/inc/ti_msp_dl_config.h`,
   y2026uart: `${E26}/blob/release/firmware/inc/simple_uart.h`,
+  y2026dlc: `${E26}/blob/release/firmware/src/ti_msp_dl_config.c`,
+
+  // MITRE rules site (opened in round 2; hosts 2024-2026 only)
+  rules: `${RULES}/`,
+  r26board: `${RULES}/2026/getting_started/mspm0l2228.html`,
+  r26boot: `${RULES}/2026/system/bootloader.html`,
+  r26bootref: `${RULES}/2026/getting_started/boot_reference.html`,
+  r26openocd: `${RULES}/2026/getting_started/openocd.html`,
+  r26setup: `${RULES}/2026/getting_started/machine_setup.html`,
+  r26func: `${RULES}/2026/specs/functional_reqs.html`,
+  r26detail: `${RULES}/2026/specs/detailed_specs.html`,
+  r26sec: `${RULES}/2026/specs/security_reqs.html`,
+  r26flags: `${RULES}/2026/flags/attack_flags.html`,
+  r25board: `${RULES}/2025/getting_started/max78000_fthr.html`,
+  r25boot: `${RULES}/2025/system/bootloader.html`,
+  r25bootref: `${RULES}/2025/getting_started/boot_reference`,
+  r25daplink: `${RULES}/2025/getting_started/daplink.html`,
+  r25sbl: `${RULES}/2025/system/remove_SBL.html`,
+  r25openocd: `${RULES}/2025/getting_started/openocd.html`,
+  r25func: `${RULES}/2025/specs/functional_reqs.html`,
+  r25detail: `${RULES}/2025/specs/detailed_specs.html`,
+  r25sec: `${RULES}/2025/specs/security_reqs.html`,
+  r25flags: `${RULES}/2025/flags/attack_flags.html`,
+  r24arch: `${RULES}/2024/specs/system_architecture.html`,
+  r24breakout: `${RULES}/2024/getting_started/ectf_breakout.html`,
+  r24board: `${RULES}/2024/getting_started/max78000_fthr.html`,
+  r24boot: `${RULES}/2024/components/bootloader.html`,
+  r24func: `${RULES}/2024/specs/functional_reqs.html`,
+  r24detail: `${RULES}/2024/specs/detailed_specs.html`,
+  r24sec: `${RULES}/2024/specs/security_reqs.html`,
+  r24flags: `${RULES}/2024/flags/attack_flags.html`,
 
   msdk: MSDK,
   msdkReadme: `${MSDK}/blob/main/README.md`,
@@ -70,6 +104,11 @@ export const S = {
   maxLd: `${MSDK}/blob/main/Libraries/CMSIS/Device/Maxim/MAX78000/Source/GCC/max78000.ld`,
   maxBoardH: `${MSDK}/blob/main/Libraries/Boards/MAX78000/FTHR_RevA/Include/board.h`,
   maxBoardC: `${MSDK}/blob/main/Libraries/Boards/MAX78000/FTHR_RevA/Source/board.c`,
+  maxBoardMk: `${MSDK}/blob/main/Libraries/Boards/MAX78000/FTHR_RevA/board.mk`,
+  maxAes: `${MSDK}/blob/main/Libraries/PeriphDrivers/Include/MAX78000/aes.h`,
+  maxAdc: `${MSDK}/blob/main/Libraries/PeriphDrivers/Include/MAX78000/adc.h`,
+  maxGpio: `${MSDK}/blob/main/Libraries/PeriphDrivers/Include/MAX78000/gpio.h`,
+  maxUart: `${MSDK}/blob/main/Libraries/PeriphDrivers/Include/MAX78000/uart.h`,
   maxAiDocs: 'https://github.com/analogdevicesinc/MaximAI_Documentation',
   maxFthr: 'https://github.com/analogdevicesinc/MaximAI_Documentation/blob/main/MAX78000_Feather/README.md',
 
@@ -82,6 +121,14 @@ export const S = {
   tiCsc: `${TI}/blob/main/docs/english/middleware/boot_manager/doc_guide/_sources/doc_guide-srcs/customer_secure_users_guide.rst.txt`,
   tiTools: `${TI}/tree/main/docs/english/tools/doc_guide/_sources/doc_guide-srcs`,
   tiDebug: `${TI}/blob/main/docs/english/tools/doc_guide/_sources/doc_guide-srcs/debug_program.rst.txt`,
+  // TI primary documents (opened in round 2)
+  tiDs: 'https://www.ti.com/lit/ds/symlink/mspm0l2228.pdf',
+  tiTrm: 'https://www.ti.com/lit/pdf/slau847',
+  tiProduct: 'https://www.ti.com/product/MSPM0L2228',
+  tiLp: 'https://www.ti.com/tool/LP-MSPM0L2228',
+  tiSdk: 'https://www.ti.com/tool/MSPM0-SDK',
+  xds110: 'https://www.ti.com/lit/sprui94',
+  uniflash: 'https://www.ti.com/tool/UNIFLASH',
   oocd: OOCD,
   oocdMspm0: `${OOCD}/blob/master/src/flash/nor/mspm0.c`,
   oocdLp: `${OOCD}/blob/master/tcl/board/ti/mspm0-launchpad.cfg`,
@@ -104,25 +151,33 @@ export const S = {
   idfFe: `${IDF}/docs/en/security/flash-encryption.rst`,
   idfVuln: `${IDF}/docs/en/security/vulnerabilities.rst`,
   idfLinux: `${IDF}/docs/en/get-started/linux-setup.rst`,
+  idfAdcCal: `${IDF}/docs/en/api-reference/peripherals/adc/adc_calibration.rst`,
+  idfAdcOneshot: `${IDF}/docs/en/api-reference/peripherals/adc/adc_oneshot.rst`,
+  idfCaps32h: `${IDF}/components/soc/esp32/include/soc/soc_caps.h`,
+  idfGpioH: `${IDF}/components/esp_driver_gpio/include/driver/gpio.h`,
+  idfStart: `${IDF}/docs/en/get-started/start-project.rst`,
+  idfEim: `${IDF}/docs/en/get-started/eim-install-idf.rst`,
+  idfJtag: `${IDF}/docs/en/api-guides/jtag-debugging/index.rst`,
+  idfJtagUse: `${IDF}/docs/en/api-guides/jtag-debugging/using-debugger.rst`,
   esptool: 'https://github.com/espressif/esptool',
+  // Espressif primary documents (opened in round 2)
+  idfGuide: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/',
+  esp32ds: `${ESPDOC}/esp32_datasheet_en.pdf`,
+  esp32trm: `${ESPDOC}/esp32_technical_reference_manual_en.pdf`,
+  esp32s3ds: `${ESPDOC}/esp32-s3_datasheet_en.pdf`,
+  espWroom32e: `${ESPDOC}/esp32-wroom-32e_esp32-wroom-32ue_datasheet_en.pdf`,
+  espAdv15894: 'https://www.espressif.com/en/news/Espressif_Security_Advisory_Concerning_Fault_Injection_and_Secure_Boot',
+  espAdv17391: 'https://www.espressif.com/en/news/Security_Advisory_Concerning_Fault_Injection_and_eFuse_Protections',
+  espAdvisories: 'https://www.espressif.com/en/support/documents/advisories',
 };
 
-// Not load-tested during research (hosts were blocked). Treat as candidates and check before relying on them.
+// Still not load-tested after round 2 (host unreachable), or refused by the server. Treat as candidates.
 export const NOT_LOADED = {
-  rules: 'https://rules.ectf.mitre.org/',
-  ectf: 'https://ectf.mitre.org/',
-  rules2025boot: 'https://rules.ectf.mitre.org/2025/getting_started/boot_reference',
+  ectf: 'https://ectf.mitre.org/',                                          // server answered 403
   docs2024boot: 'https://ectfmitre.gitlab.io/ectf-website/2024/components/bootloader.html',
   msdkGuideSite: 'https://analogdevicesinc.github.io/msdk//USERGUIDE/',
-  max78000: 'https://www.analog.com/en/products/max78000.html',
-  tiProduct: 'https://www.ti.com/product/MSPM0L2228',
-  tiLp: 'https://www.ti.com/tool/LP-MSPM0L2228',
-  tiSdk: 'https://www.ti.com/tool/MSPM0-SDK',
-  xds110: 'https://www.ti.com/lit/sprui94',
-  uniflash: 'https://software-dl.ti.com/ccs/esd/uniflash/docs/uniflash.html',
-  idfGuide: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/',
-  esp32ds: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf',
-  esp32trm: 'https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf',
+  max78000: 'https://www.analog.com/en/products/max78000.html',             // server returned an empty reply
+  uniflashDocs: 'https://software-dl.ti.com/ccs/esd/uniflash/docs/uniflash.html',
   armDocs: 'https://developer.arm.com/documentation',
   openocdDocs: 'https://openocd.org/doc/',
 };

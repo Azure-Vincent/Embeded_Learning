@@ -19,7 +19,7 @@ Your door-lock firmware works on an ESP32. Two things happen in the same month:
 
 If the lock logic calls \`gpio_set_level()\` and \`esp_timer_get_time()\` directly, both problems are hard: porting means editing every file, and testing means a board, a serial cable and a calendar.
 
-If the logic only ever calls four functions *you* defined, both are easy. Porting means rewriting those four. Testing means implementing them on a PC, where "seven weeks" is one assignment to a variable.
+If the logic only ever calls five functions *you* defined, both are easy. Porting means rewriting those five. Testing means implementing them on a PC, where "seven weeks" is one assignment to a variable.
 
 That set of functions is a **hardware abstraction layer (HAL)**.`,
 
@@ -139,7 +139,7 @@ Avoid the third way, \`#ifdef TARGET_ESP32\` scattered through application code.
 | \`hal_fake.c\` | unit tests | scripted input, recorded output | a variable the test sets | host-tested (\`make test\`) |
 | \`hal_posix.c\` | a PC program | non-blocking stdin / stdout | \`clock_gettime\` | host-tested (\`make demo\`) |
 | \`hal_benchmcu.c\` | Bench-MCU | UART0 registers | TIMER0 expiry flag | compiled on the host (\`make port-check\`); runs in the C lab |
-| \`hal_esp32.c\` | ESP32, ESP-IDF | IDF UART driver | \`esp_timer_get_time\` | reviewed only: not compiled or run here |
+| \`hal_esp32.c\` | ESP32, ESP-IDF | IDF UART driver | \`esp_timer_get_time\` | compiled for the \`esp32\` target with ESP-IDF v6.1; not run on a board |
 
 Here is the heart of the fake, the one you will use most:`,
     { t: 'code', lang: 'c', status: 'host-tested', caption: 'examples/firmware-eng/port/hal_fake.c (excerpt): inputs are scripted, outputs recorded, time is a variable.',
@@ -204,6 +204,30 @@ void hal_gpio_write(hal_pin_t pin, bool level)
     { t: 'widget', name: 'c-lab', props: clFakeHal },
     { t: 'callout', kind: 'mistake', title: 'A fake that is kinder than the hardware', md: `If the fake UART never reports "no data", never drops a byte and transmits instantly, the application is only tested against a device that does not exist. A fake must honour the **contract** of the interface, including the awkward parts: "read may return false", "write may take time", "time wraps". The best fakes also let a test *inject* faults: make the next write fail, deliver bytes one at a time, jump the clock.` },
     { t: 'callout', kind: 'security', md: `A HAL is also a security boundary you can review. If the only way to drive the latch is \`hal_gpio_write(HAL_PIN_LATCH, …)\`, then a search for that one call shows every place the door can open (in the example: exactly one line in \`app.c\`). When any file can write any GPIO register, that question has no short answer.` },
+
+    { t: 'exercise', prompt: `**Design exercise: where does the boundary go, and how is it implemented?** A battery-powered soil sensor measures moisture, shows it on a small display and sends it by radio once a minute. Version 1 uses an analogue probe on an ADC pin; version 2 will use a digital probe on I2C. The firmware must be unit-tested on a PC.
+
+Three interfaces have been proposed for the measurement:
+
+- **A** \`uint16_t hal_adc_read(uint8_t channel);\` and the application converts counts to percent.
+- **B** \`bool hal_moisture_permille(uint16_t *out);\` returning false if no valid reading is available.
+- **C** \`#ifdef PROBE_ANALOG … #else … #endif\` around the measurement code in the application.
+
+Choose one, and choose link-time substitution or a function-pointer table to implement it. Justify both choices by saying what breaks, and when, with the options you rejected.`,
+      hints: [
+        'What does the *application* need to know: a voltage, or how wet the soil is? Which of the three keeps working unchanged when the probe changes?',
+        'Think about failure. An I2C probe can be unplugged or not acknowledge. Which signatures can report that, and what would the others return instead?',
+        'For the implementation: does one firmware image ever contain both probes at once? If not, what does a table of function pointers buy, and what does it cost in RAM, speed and attack surface?',
+      ],
+      solution: `**Interface B, by link-time substitution.**
+
+- **A** exports the mechanism. The calibration from ADC counts to moisture belongs to one particular probe, so it ends up in the application; version 2 has no ADC channel to read, and the application has to be rewritten exactly where it should have been stable. It also cannot say "no reading": a missing probe returns some number that looks like dry soil.
+- **C** works on the day it is written. But each build compiles only one branch, so the other rots unnoticed; a third probe touches every \`#ifdef\`; and the host test has to pick one branch, so the other is never tested.
+- **B** states the need in the application's units and can fail. Each port (analogue, I2C, and the fake for tests) hides its own conversion. The fake can return any value, or false, on demand, which is how the "probe unplugged" path gets tested.
+
+**Link-time substitution** because one image contains exactly one probe: calls are direct, a missing implementation is a link error, and there is no pointer table in memory to corrupt. A **function-pointer table** would be the right answer only if a single image had to support both probes at once and pick one at run time (for example by detecting which is fitted at boot); you would then pay an indirect call and a NULL check per use.
+
+What decides it is the question "what changes independently of what?" The probe changes; the meaning of "moisture" does not. The boundary goes between them.` },
 
     `## Harder application
 
@@ -435,6 +459,24 @@ You can see what a register read looks like on the wire here: start, address + w
     { t: 'widget', name: 'c-lab', props: clI2cSensor },
     { t: 'callout', kind: 'decision', title: 'Where does unit conversion belong?', md: `In the device driver. Raw counts are meaningful only together with the device's datasheet, and the driver is the one place that has read it. The application should see \`int32_t\` milli-degrees, not a 12-bit left-justified two's-complement value. Use integers scaled to the smallest unit you need (m°C, mV, µA); floating point costs code size and, on cores without an FPU such as the Cortex-M0+ in the MSPM0L2228 (built with \`-mfloat-abi=soft\` in the 2026 eCTF reference design), considerable time.` },
 
+    { t: 'exercise', prompt: `**Design exercise: blocking, interrupt-driven or DMA?** For each data path choose a driver style and justify it with a number. Assume a single-core MCU executing roughly 10 million instructions per second, on which taking any interrupt costs about 5 µs of CPU time in total (entry, a short handler, exit).
+
+1. Reading a 12-bit ADC whose conversion takes 2 µs, once every 100 ms, from the main loop.
+2. Receiving console commands on a UART at 115200 baud (8N1).
+3. Streaming audio samples to an SPI DAC at 2 Mbit/s, continuously.
+4. Reading a temperature sensor over I2C at 100 kbit/s: 4 bytes on the bus, once per second, in a superloop whose other duties need service every 1 ms.`,
+      hints: [
+        'For each path work out two numbers: how long one operation takes, and how many bytes (or events) per second arrive.',
+        'An interrupt per byte costs about 5 µs. Multiply by the byte rate: what fraction of each second would the CPU spend in the handler? When the wait is *shorter* than the interrupt overhead, what is the cheapest thing to do?',
+        'I2C at 100 kbit/s moves one byte (9 clock periods with its acknowledge bit) in 90 µs. How long does a 4-byte transaction take, and what is the superloop\'s budget?',
+      ],
+      solution: `1. **Blocking (polling), with a poll limit.** The wait is 2 µs: shorter than the 5 µs it would cost just to take an interrupt, and invisible next to a 100 ms period. An interrupt-driven driver would be slower *and* more complicated.
+2. **Interrupt-driven RX into a ring buffer.** 11 520 bytes/s × 5 µs ≈ 58 ms of handler time per second, about 6 % of the CPU in the worst case, and far less for typed commands. Polling from the main loop would lose bytes whenever a pass takes longer than one byte time (87 µs) times the hardware FIFO depth. DMA would work but buys little at this rate and makes "a line has arrived" harder to detect.
+3. **DMA.** 2 Mbit/s is 250 000 bytes/s. One interrupt per byte would need 250 000 × 5 µs = 1.25 s of CPU per second: impossible. DMA moves the bytes in hardware and interrupts once per half-buffer, a few hundred times a second.
+4. **Interrupt-driven (or a state machine stepped by the I2C interrupt), not blocking.** Four bytes plus addressing is about 0.4–0.5 ms of bus time: half the superloop's 1 ms budget if you block for it, and a hang if the sensor does not answer and there is no timeout. Started from the loop and completed by the interrupt, it costs the loop microseconds. Blocking with a timeout would be defensible only if the 1 ms duty were relaxed.
+
+The method, not the answers, is what transfers: **compare the wait with the cost of an interrupt, and the event rate with the CPU you can spare.**` },
+
     `## Harder application
 
 Design the driver for an SPI flash chip used to store firmware update images. Write only the header: function names, parameters, the status enum, and a comment on each function giving its blocking behaviour and reentrancy rule.
@@ -606,7 +648,7 @@ Move to an **RTOS** when: activities have very different deadlines (a 1 ms contr
 The modules in this section work in both: \`app_poll()\` is called from a superloop on Bench-MCU and from a FreeRTOS task on ESP32.` },
     { t: 'predict', q: 'A superloop has three poll functions taking 0.2 ms, 0.3 ms and (when it writes a log line to flash) up to 25 ms. UART bytes arrive at 115200 baud and are read by *polling* in the first function, with no RX interrupt and a UART that holds one received byte. What happens during a flash write?',
       choices: [
-        { t: 'About 280 bytes arrive during the 25 ms and all but one are lost to overrun', ok: true, why: '11 520 bytes/s × 0.025 s ≈ 288 bytes. With no interrupt and a one-byte receiver, each new byte overwrites the unread one.' },
+        { t: 'About 290 bytes arrive during the 25 ms and all but one are lost to overrun', ok: true, why: '11 520 bytes/s × 0.025 s = 288 bytes. With no interrupt and a one-byte receiver, each new byte overwrites the unread one.' },
         { t: 'Nothing is lost: the bytes wait until the loop comes round', why: 'There is nowhere for them to wait. Without an interrupt-fed FIFO the hardware keeps only the most recent byte.' },
         { t: 'The UART slows the sender down automatically', why: 'Only if hardware flow control (RTS/CTS) is wired and enabled, which was not stated. A plain three-wire UART has no back-pressure.' },
       ],

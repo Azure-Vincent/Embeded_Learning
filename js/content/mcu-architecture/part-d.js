@@ -232,12 +232,12 @@ signed 16-bit number is negative, then shifts: −2047. The intended value is \`
       ] },
       { q: 'Which statement about variable lifetime is correct?', kind: 'code', choices: [
         { t: 'A pointer to a local outlives the local: the next call reuses that memory', ok: true, why: 'The frame is released on return; the bytes remain until overwritten, which is why the bug can appear to work.' },
-        { t: 'A static local variable is re-created and re-initialised on every call of its function', why: 'It is placed in .data or .bss and exists for the whole program; only its name is local.' },
+        { t: 'A static local variable is re-created on every call of its function', why: 'It is placed in .data or .bss and exists for the whole program; only its name is local.' },
         { t: 'Heap blocks are freed automatically when the allocating function returns', why: 'Nothing ties a heap block to a function scope; it stays allocated until explicitly freed.' },
       ] },
       { q: 'Why do interrupt handlers matter when sizing the main stack on a Cortex-M?', kind: 'arch', choices: [
         { t: 'Their frames are pushed on top of whatever was running, so worst cases add', ok: true, why: 'The deepest call chain can be interrupted, and that interrupt can be preempted by a higher-priority one.' },
-        { t: 'Handlers allocate their locals from the heap, which shares RAM with the stack', why: 'Handlers are ordinary functions as far as storage goes; their locals are on a stack.' },
+        { t: 'Handlers allocate their locals from the heap, not from a stack', why: 'Handlers are ordinary functions as far as storage goes; their locals are on a stack.' },
         { t: 'They do not matter: each handler has its own separate stack by default', why: 'Exceptions on this architecture share one stack unless an OS arranges otherwise.' },
       ] },
       { q: 'A little-endian MCU receives the bytes `01 02 03 04` (in that order) into a buffer and copies them into a `uint32_t` with `memcpy`. What value does the variable hold?', kind: 'code', choices: [
@@ -502,7 +502,7 @@ the core up).`,
     quiz: [
       { q: 'Inside an interrupt handler on a Cortex-M, LR contains `0xFFFFFFFD`. What does that tell you?', kind: 'arch', choices: [
         { t: 'The interrupted code was in thread mode on PSP; the frame is there', ok: true, why: 'This EXC_RETURN value encodes "return to thread mode, restore from PSP", the usual case for an RTOS task.' },
-        { t: 'The handler was called from address 0xFFFFFFFD, near the top of memory', why: 'Values in this range are not code addresses; they are special codes recognised on return.' },
+        { t: 'The handler was called from the code address 0xFFFFFFFD', why: 'Values in this range are not code addresses; they are special codes recognised on return.' },
         { t: 'A fault occurred during stacking', why: 'Stacking faults are reported through fault exceptions and status bits, not through this value.' },
       ] },
       { q: 'Which registers does a Cortex-M push automatically on exception entry (without FPU context)?', kind: 'arch', choices: [
@@ -522,7 +522,7 @@ the core up).`,
       ] },
       { q: 'What does an MPU region configured as "no access" at the bottom of a task\'s stack achieve?', kind: 'security', choices: [
         { t: 'A stack overflow faults at once instead of corrupting memory', ok: true, why: 'The first push into the guard region violates the permission and raises an exception.' },
-        { t: 'It increases the usable size of the stack by the size of the region', why: 'It consumes a little of the stack space; it adds none.' },
+        { t: 'It increases the usable size of the stack by one region', why: 'It consumes a little of the stack space; it adds none.' },
         { t: 'It encrypts the stack contents', why: 'A protection unit checks permissions on accesses; it does not transform data.' },
       ] },
       { q: 'Why does an RTOS on Cortex-M run tasks on PSP and keep MSP for handlers?', kind: 'concept', choices: [
@@ -693,7 +693,7 @@ extensions it implements is a user-guide item; look it up before writing code fo
       { t: 'predict',
         q: 'A RISC-V trap handler written in C is declared as an ordinary function (no interrupt attribute, no assembly stub) and installed directly in `mtvec`. It increments a counter and returns. What happens?',
         choices: [
-          { t: 'It works: the hardware saves and restores the registers, as on Cortex-M', why: 'Check the four steps of trap entry again. Which general registers did the hardware save?' },
+          { t: 'It works: hardware saves and restores registers as on Cortex-M', why: 'Check the four steps of trap entry again. Which general registers did the hardware save?' },
           { t: 'The interrupted code resumes wrongly and interrupts stay disabled', ok: true, why: 'An ordinary function ends with ret (a jump to ra, which still belongs to the interrupted code), clobbers caller-saved registers, and never executes mret.' },
           { t: 'The CPU refuses to enter a handler without the attribute', why: 'The hardware jumps to whatever address the trap vector holds; it cannot inspect how the code was compiled.' },
         ],
@@ -752,7 +752,7 @@ interrupt handler.`,
     quiz: [
       { q: 'What does the architecture string RV32IMC tell you?', kind: 'arch', choices: [
         { t: '32-bit base integer set, multiply/divide, compressed encodings', ok: true, why: 'Each letter after the base names one standard extension.' },
-        { t: '32 general registers, an integrated memory controller and a cache', why: 'The letters are extension names, not hardware features such as memory controllers.' },
+        { t: '32 registers, an integrated memory controller and a cache', why: 'The letters are extension names, not hardware features such as memory controllers.' },
         { t: 'A 32-bit core with interrupts, MPU and cache', why: 'None of those are denoted by these letters; they describe instruction-set extensions only.' },
       ] },
       { q: 'On trap entry in machine mode, where does a RISC-V core save the interrupted PC?', kind: 'arch', choices: [
@@ -777,7 +777,7 @@ interrupt handler.`,
       ] },
       { q: 'What is special about the MAX78000\'s RISC-V core at power-up?', kind: 'arch', choices: [
         { t: 'It does not run until the Arm core sets it up and starts it', ok: true, why: 'The Cortex-M4 is the boot core; the second core is started by firmware.' },
-        { t: 'It boots first from the ROM and then releases the Arm core from reset', why: 'The order is the reverse; the vendor documentation describes the Arm core as the one that starts the other.' },
+        { t: 'It boots first and then releases the Arm core from reset', why: 'The order is the reverse; the vendor documentation describes the Arm core as the one that starts the other.' },
         { t: 'It runs the same binary as the Arm core in parallel', why: 'The two cores have different instruction sets and cannot execute the same machine code.' },
       ] },
     ],

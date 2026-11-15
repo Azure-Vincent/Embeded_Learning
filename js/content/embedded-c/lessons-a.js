@@ -1,5 +1,6 @@
 // Embedded C, part A: the language model, pointers, pointer arithmetic, bitwise operators.
 import { C, clab, code } from './util.js';
+import { insertLab } from './labs-extra.js';
 
 /* ------------------------------------------------------------------ lesson 1 */
 const cModel = {
@@ -924,7 +925,7 @@ void task(void)
 const ptrArith = {
   id: 'ec-pointer-arithmetic',
   title: 'Pointer arithmetic and arrays',
-  minutes: 55,
+  minutes: 65,
   summary: 'Adding to a pointer moves it by whole elements. Arrays are contiguous memory with no length attached, so every bound is your job.',
   skills: ['ec-pointer-arith', 'ec-bounds'],
   blocks: [
@@ -1362,6 +1363,7 @@ int main(void)
       ],
       explain: `The function returns an address inside the caller's buffer, and the caller turns it back into an offset by pointer subtraction. The third call proves the bound is honoured: the value is physically present at index 5, but the caller said only 5 bytes are valid. A receive routine that searched past the valid length would be parsing stale data from an earlier frame.`,
     }),
+    insertLab,
     { t: 'exercise',
       prompt: 'A function receives `uint8_t *rx` and `size_t len`, and must interpret the 4 bytes starting at offset `off` as a field. Write the condition that rejects every `off` for which the read would go out of bounds. Be careful: `off` and `len` are both `size_t`.',
       hints: [

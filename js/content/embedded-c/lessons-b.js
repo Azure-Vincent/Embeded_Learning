@@ -1,11 +1,12 @@
 // Embedded C, part B: registers, structs/unions/enums, volatile and const, static vs dynamic allocation.
 import { C, clab, code } from './util.js';
+import { fieldLab, walkLab, dispatchLab } from './labs-extra.js';
 
 /* ------------------------------------------------------------------ lesson 5 */
 const registers = {
   id: 'ec-registers',
   title: 'Bit masking and register manipulation',
-  minutes: 70,
+  minutes: 80,
   summary: 'Set, clear, toggle and test single bits, update multi-bit fields without disturbing their neighbours, and recognise registers where the usual idioms are wrong.',
   skills: ['ec-reg-bits', 'ec-reg-fields', 'ec-reg-w1c'],
   blocks: [
@@ -485,6 +486,7 @@ int main(void)
       ],
       explain: `\`(old & ~mask) | (value & mask)\` is the general "replace these bits" expression; a field update is the same thing with a shift. An alternative with no read is two stores: \`GPIO_CLR = mask & ~value; GPIO_SET = mask & value;\`. That version cannot lose an interrupt handler's change to another pin, but the pins pass through an intermediate state between the two writes. Which matters more depends on what is wired to the pins.`,
     }),
+    fieldLab,
     `## Three ways to name a register
 
 The same store instruction can be written three ways. Vendor code uses all of them, so you need to read each.
@@ -604,8 +606,8 @@ discards a byte, and a debugger's live register view can do the same. Not every 
 const structs = {
   id: 'ec-structs-unions-enums',
   title: 'Structs, unions and enums',
-  minutes: 60,
-  summary: 'How aggregate types are laid out in memory, how a struct is placed over a peripheral, and where reinterpreting bytes through a union stops being portable.',
+  minutes: 85,
+  summary: 'How aggregate types are laid out in memory, how a struct is placed over a peripheral, how a table of structs can hold functions to call, and where reinterpreting bytes through a union stops being portable.',
   skills: ['ec-struct-layout', 'ec-struct-overlay', 'ec-byte-order'],
   blocks: [
     `## The problem: twelve bytes where you counted seven
@@ -772,6 +774,7 @@ int main(void)
       ],
       explain: `\`UART0->CTRL\` is the 32-bit object at base + 8, exactly what the macro \`UART_CTRL\` in the predefined header names. The struct adds no code; it only lets the compiler compute the offsets. \`TX_READY\` drops for a short time after each write, so the polling loop is what makes consecutive characters arrive.`,
     }),
+    walkLab,
     `## Unions: several types at one address
 
 A \`union\` looks like a struct, but all its members start at offset 0 and share the same bytes. Its size is that of
@@ -1003,6 +1006,74 @@ int main(void)
       ],
       explain: `\`ST_FAULT\` follows \`ST_FIRING = 10\`, so it is 11. The struct has three padding bytes after \`tag\` and two at the end: offsets 0, 4, 8, size 12. In the union the bytes in memory are \`44 33 22 11\`; \`half[1]\` covers the two upper bytes, \`0x1122\`; overwriting \`bytes[1]\` replaces the \`33\`. A union is as large as its largest member, 4 bytes.`,
     }),
+    `## A field can hold a function: dispatch tables
+
+Functions have addresses too: the address of their first instruction in flash. A **function pointer** is a variable
+that holds one, and its type records the parameters and the return type so that a call through it is checked like any
+other call.
+
+| Declaration | Read as |
+|---|---|
+| \`int (*fn)(int);\` | \`fn\` is a pointer to a function taking \`int\` and returning \`int\` |
+| \`typedef void (*isr_t)(void);\` | \`isr_t\` is the type "pointer to a function with no parameters and no result" |
+| \`int *fn(int);\` | **not** a pointer: a function that returns \`int *\`. The parentheses around \`*fn\` matter |
+
+The name of a function used without \`()\` converts to its address, and a pointer is called with the ordinary call
+syntax: \`fn = add_one; fn(3);\`. You have already met two tables of function pointers without the name: the
+**interrupt vector table** is an array of handler addresses that the CPU indexes with the interrupt number, and
+\`irq_attach(IRQ_TIMER, timer_isr)\` on Bench-MCU stores one. Put a function pointer in a struct and you get the
+standard firmware pattern for commands, protocol message types, state handlers and driver interfaces: a
+**dispatch table**.`,
+    code(C`
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+
+typedef uint16_t (*convert_fn)(uint16_t raw);          /* one conversion routine */
+
+static uint16_t to_millivolts(uint16_t raw) { return (uint16_t)((uint32_t)raw * 3300u / 4095u); }
+static uint16_t to_percent(uint16_t raw)    { return (uint16_t)((uint32_t)raw * 100u / 4095u); }
+
+typedef struct {
+    uint8_t     channel;
+    const char *unit;
+    convert_fn  convert;                               /* which routine this channel uses */
+} channel_cfg_t;
+
+static const channel_cfg_t channels[] = {
+    { 0, "mV", to_millivolts },
+    { 3, "%",  to_percent    },
+    { 5, "?",  NULL          },                        /* not configured */
+};
+
+int main(void)
+{
+    for (size_t i = 0; i < sizeof(channels) / sizeof(channels[0]); i++) {
+        const channel_cfg_t *c = &channels[i];
+        if (c->convert == NULL) {
+            printf("ch%d: no conversion\n", c->channel);
+            continue;
+        }
+        printf("ch%d: %d %s\n", c->channel, c->convert(2048), c->unit);
+    }
+    printf("entry size %zu\n", sizeof(channel_cfg_t));
+    return 0;
+}
+`, 'host-tested', {
+      caption: 'Prints "ch0: 1650 mV", "ch3: 50 %", "ch5: no conversion", then "entry size 24" on the 64-bit host (two 8-byte pointers). On a 32-bit MCU an entry is 12 bytes.',
+      explain: [
+        { lines: '5', md: 'The typedef names the pointer type once. Without it the struct field would be written `uint16_t (*convert)(uint16_t raw);`.' },
+        { lines: '16-20', md: 'The table is `const`, so the linker places it in flash. Each row stores the address of a function. Adding a channel is adding a row.' },
+        { lines: '26-29', md: 'A null function pointer must be checked like any other pointer. Calling through it branches to address 0.' },
+        { lines: '30', md: '`c->convert(2048)` loads the address from the table entry and performs an indirect call (`blx` on Arm, `jalr` on RISC-V). The compiler cannot inline it, which is the price of the flexibility.' },
+      ] }),
+    { t: 'callout', kind: 'security', title: 'A function pointer in RAM is a target', md:
+`A function pointer decides where the CPU goes next. If it lives in writable memory next to a buffer, an out-of-bounds
+write can replace it and the next call through it runs code of the attacker's choosing. Keep dispatch tables \`const\`
+(flash), validate any index or key from outside *before* using it to select an entry, and never call through an entry
+without checking it for \`NULL\`. Calling through a pointer whose type does not match the function's real signature is
+undefined behaviour, even if a cast makes the compiler accept it.` },
+    dispatchLab,
     { t: 'exercise',
       prompt: 'You must describe a register block with `CTRL` at offset 0x00, `STATUS` at 0x04, nothing documented at 0x08 and 0x0C, and `DATA` at 0x10. Write the struct, and one line that makes the compiler verify the offset of `DATA`.',
       hints: [

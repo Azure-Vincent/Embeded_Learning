@@ -233,7 +233,7 @@ static void report(const char *label, const sensor_t *s)
 int main(void)
 {
     sensor_t bank[5] = {
-        { 10, true,  2150 },
+        { 10, true,  2150 },     /* exactly at the limit used below: not "above" it */
         { 11, false, 9900 },     /* disabled: its reading must be ignored */
         { 12, true,  2475 },
         { 13, true,  -300 },
@@ -246,9 +246,9 @@ int main(void)
     report("all below zero", hottest(cold, 2));
     report("empty table", hottest(bank, 0));
 
-    printf("disabled %d\n", (int)disable_above(bank, 5, 2400));
+    printf("disabled %d\n", (int)disable_above(bank, 5, 2150));
     report("hottest now", hottest(bank, 5));
-    printf("disabled %d\n", (int)disable_above(bank, 5, 2400));
+    printf("disabled %d\n", (int)disable_above(bank, 5, 2150));
     printf("enabled flags: %d%d%d%d%d\n", bank[0].enabled, bank[1].enabled, bank[2].enabled,
            bank[3].enabled, bank[4].enabled);
     return 0;

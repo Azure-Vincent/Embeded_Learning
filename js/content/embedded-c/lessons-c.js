@@ -1,5 +1,6 @@
 // Embedded C, part C: interrupt-safe programming, memory alignment, defensive C.
 import { C, clab, code } from './util.js';
+import { writerLab, copyLab } from './labs-extra.js';
 
 /* ------------------------------------------------------------------ lesson 9 */
 const isrSafe = {
@@ -699,7 +700,7 @@ test-then-set itself.) The RTOS section extends this to tasks, where waiting *is
 const alignment = {
   id: 'ec-alignment',
   title: 'Memory alignment',
-  minutes: 50,
+  minutes: 70,
   summary: 'Why types have alignment requirements, where padding comes from, what packed structs cost, and how to move data to and from a wire format without relying on any of it.',
   skills: ['ec-alignment-padding', 'ec-serialize'],
   blocks: [
@@ -732,9 +733,9 @@ ways:
 - **Refuse**: raise a fault. Armv6-M cores (Cortex-M0, M0+) do not support unaligned word or halfword access, and Armv7-M cores can be configured to trap it too. Some multi-register and exclusive-access instructions fault on any Cortex-M.
 - **Depends on the implementation**: the RISC-V specification lets an implementation either support misaligned access or raise an address-misaligned exception.
 
-So code with a misaligned access can work on your development board and fault on the product. In C, creating a
-misaligned pointer by a cast is already undefined behaviour, which also gives the optimiser licence to assume it never
-happens.
+So code with a misaligned access can work on your development board and fault on the product. In C, merely converting a
+pointer to a type for which it is not correctly aligned is already undefined behaviour (C11 §6.3.2.3 ¶7), before any
+dereference, which also gives the optimiser licence to assume it never happens.
 
 ### Padding in structs
 
@@ -805,7 +806,62 @@ access. The traps:
 "this address is suitably aligned" when nothing guarantees it. Even when the buffer happens to start at an aligned
 address, the field offset inside it may not be. This is the single most common cause of alignment faults when code is
 ported from a Cortex-M4 to a Cortex-M0+ or a RISC-V core.` },
-    `## The portable way: serialise byte by byte
+    `## The second reason the cast is wrong: strict aliasing
+
+Suppose the address *is* aligned. \`*(uint32_t *)&packet[4]\` is still not valid C, for a reason that has nothing to do
+with the CPU. The standard says an object may be accessed only through an lvalue of **its own type** (allowing for
+\`const\`/\`volatile\` and for the signed/unsigned twin), or through a **character type** (C11 §6.5 ¶7). This is the
+**effective type** rule, usually called **strict aliasing**. \`packet\` is an array of \`uint8_t\`; reading four of its
+elements as one \`uint32_t\` breaks the rule and is undefined behaviour.
+
+The rule exists so the optimiser may assume that pointers to *different* types never refer to the same memory. That
+lets it keep a value in a CPU register across a store through an unrelated pointer. When the assumption is false, the
+generated code is wrong:`,
+    code(C`
+#include <stdint.h>
+#include <stdio.h>
+
+/* The compiler may assume that w and h never point into the same object:
+   a uint32_t object is not allowed to be accessed through a uint16_t lvalue. */
+static __attribute__((noinline)) uint32_t store_both(uint32_t *w, uint16_t *h)
+{
+    *w = 1;
+    *h = 0;          /* "cannot" change *w, so ...                    */
+    return *w;       /* ... the compiler may return the constant 1    */
+}
+
+int main(void)
+{
+    uint32_t word = 0;
+    uint32_t r = store_both(&word, (uint16_t *)&word);   /* the cast breaks the rule */
+    printf("returned %u, word is now %u\n", (unsigned)r, (unsigned)word);
+    return 0;
+}
+`, 'host-tested', {
+      caption: 'Compiled with gcc 13.3 on the x86-64 host, with no warning at -Wall -Wextra. At -O0 it prints "returned 0, word is now 0". At -O2 it prints "returned 1, word is now 0": the function returns a value the variable does not hold. With -O2 -fno-strict-aliasing it prints "returned 0" again. The program has undefined behaviour, so neither output is "the right one"; other compilers and versions may differ.',
+      explain: [
+        { lines: '8-10', md: 'At \`-O2\` GCC does not reload \`*w\` after the store through \`h\`: the types differ, so by the rule the store cannot have touched it, and the function returns the constant 1.' },
+        { lines: '16', md: 'Both pointers refer to \`word\`. The cast silences the type checker; it does not make the access legal.' },
+      ] }),
+    `What is and is not allowed:
+
+| You want to… | Allowed? | Write |
+|---|---|---|
+| look at any object's bytes | **yes**: character types may alias anything | \`const uint8_t *b = (const uint8_t *)&obj;\` then \`b[i]\` |
+| read a \`uint32_t\` out of a byte buffer | **no** through \`(uint32_t *)\` | shifts, or \`memcpy(&v, p, sizeof v)\` |
+| reinterpret one value as another type | through a **union** object, in C | \`u.word = x; … u.bytes[0]\` |
+| overlay a struct on a receive buffer | **no** (aliasing, alignment and padding all at once) | parse field by field |
+
+The exception runs in one direction only: bytes may be used to inspect a \`uint32_t\`, but a \`uint32_t\` lvalue may not
+be used to read an array that was declared as bytes. (\`uint8_t\` is \`unsigned char\` on every mainstream compiler,
+which is why byte-wise code is safe.) Memory-mapped registers are a separate case: \`(volatile uint32_t *)0x40001000\`
+names hardware, not a declared C object, and is the accepted, implementation-specific way to reach it.
+
+Some projects build with \`-fno-strict-aliasing\`, which makes GCC and Clang stop using the assumption. That is a
+property of the build, not of the code: a library compiled elsewhere, or a different compiler, does not honour it.
+Code that uses \`memcpy\` or shifts is correct everywhere and compiles to the same instructions.
+
+## The portable way: serialise byte by byte
 
 Treat the wire format as a sequence of bytes defined by the protocol, and the C struct as a convenient in-memory form
 defined by the compiler. Convert between the two explicitly:`,
@@ -1064,6 +1120,7 @@ int main(void)
       ],
       explain: `The in-memory struct is 12 bytes with padding and little-endian fields; the wire form is 7 bytes, big-endian, no padding. The two functions are the only place that knows both. −2 is \`0xFFFE\` in 16-bit two's complement, so the last two bytes are \`FF FE\`. Converting the signed value to unsigned before shifting avoids shifting a negative number, and the cast back relies on GCC's documented conversion behaviour.`,
     }),
+    writerLab,
     { t: 'exercise',
       prompt: 'A `struct { uint8_t type; uint64_t serial; uint16_t crc; }` is compiled for 32-bit Arm (EABI), where `uint64_t` has alignment 8. Give the offset of each field and the total size.',
       hints: [
@@ -1085,7 +1142,7 @@ buffer truly must be word-aligned for hardware reasons (some DMA controllers req
 documentation), state it with \`_Alignas(4)\` or the compiler's \`aligned\` attribute so that the requirement is in the
 code and enforced by the toolchain.`,
     { t: 'refs', items: [
-      { title: 'C11 draft N1570 §6.2.8 (alignment of objects), §6.3.2.3 ¶7 (pointer conversion and alignment), §6.7.5 (_Alignas)', url: 'https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf' },
+      { title: 'C11 draft N1570 §6.2.8 (alignment of objects), §6.3.2.3 ¶7 (pointer conversion and alignment), §6.5 ¶6–7 (effective type and permitted aliasing), §6.7.5 (_Alignas)', url: 'https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf' },
       { title: 'GCC manual: common type attributes (packed, aligned)', url: 'https://gcc.gnu.org/onlinedocs/gcc/Common-Type-Attributes.html' },
       { title: 'GCC manual: warning options (-Waddress-of-packed-member, -Wcast-align, -Wpadded)', url: 'https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html' },
       { title: 'Arm: Armv6-M Architecture Reference Manual (alignment behaviour) ', url: 'https://developer.arm.com/documentation/ddi0419/latest/', note: 'section on alignment support: unaligned accesses generate a fault' },
@@ -1130,7 +1187,7 @@ code and enforced by the toolchain.`,
 const defensive = {
   id: 'ec-defensive-c',
   title: 'Defensive C',
-  minutes: 60,
+  minutes: 70,
   summary: 'Every copy has a bound, every length from outside is checked, every return value is looked at, and size arithmetic is done so that it cannot wrap.',
   skills: ['ec-bounded-copy', 'ec-validate-lengths'],
   blocks: [
@@ -1280,6 +1337,7 @@ int main(void)
       ],
       explain: `\`strncpy\` filled all eight bytes with \`ALEXANDR\` and, as specified, added no terminator. No write went out of bounds; the later *read* did, and it disclosed the neighbouring field. This is an information leak, not a crash. Truncating silently is a design decision too: a real system might prefer to reject a name that does not fit.`,
     }),
+    copyLab,
     `## Rule 2: lengths that arrive from outside are claims, not facts
 
 Any length, count, index or offset that comes from a packet, a file, a user or another device was chosen by someone

@@ -449,7 +449,7 @@ For each row write the measured number next to the expectation. Where they diffe
         ] },
       { q: 'During the deadlock, the task watchdog does not fire and the log task keeps printing. Why?', kind: 'concept',
         choices: [
-          { t: 'Deadlocked tasks are Blocked and use no CPU, so idle still runs.', ok: true, why: 'The default task watchdog detects a starved idle task, which is the opposite of what a deadlock produces.' },
+          { t: 'Deadlocked tasks are Blocked and use no CPU, so the idle task still runs normally.', ok: true, why: 'The default task watchdog detects a starved idle task, which is the opposite of what a deadlock produces.' },
           { t: 'The task watchdog is suspended for as long as any task holds a mutex.', why: 'Holding a mutex has no effect on any watchdog.' },
           { t: 'The kernel detects deadlocks and suppresses the watchdog.', why: 'FreeRTOS has no deadlock detection. That is why application-level supervision is needed.' },
         ] },

@@ -172,8 +172,8 @@ takes to fill the other half.)`,
       ] },
       { q: 'Why trigger an ADC from a timer rather than from a software loop when the samples feed a digital filter?', kind: 'concept', choices: [
         { t: 'Sample spacing becomes exact; software jitter would act as noise', ok: true, why: 'Jitter in the sampling instant becomes noise in the sampled signal.' },
-        { t: 'Software-triggered conversions produce results with fewer valid bits', why: 'The number of result bits is the same whichever way the conversion is started.' },
-        { t: 'A timer trigger makes each individual conversion complete faster', why: 'Conversion time is set by the ADC clock and sample time, not by what starts it.' },
+        { t: 'Software-triggered conversions have fewer valid bits', why: 'The number of result bits is the same whichever way the conversion is started.' },
+        { t: 'A timer trigger makes each conversion complete faster', why: 'Conversion time is set by the ADC clock and sample time, not by what starts it.' },
       ] },
       { q: 'On which of this course\'s cores must a driver flush or invalidate a data cache around DMA transfers?', kind: 'arch', choices: [
         { t: 'Neither: they have no data cache', ok: true, why: 'The hazard exists on cached cores such as the Cortex-M7 and application processors, so the habit matters when you move to those.' },
@@ -316,7 +316,7 @@ region when started from \`0x6000\`: the classic "application linked at the wron
       { t: 'predict',
         q: 'A bootloader at the start of flash jumps to an application at `0x0000_6000` by loading the application\'s reset handler address and branching to it. It does not change VTOR or the stack pointer. The application runs, then enables a timer interrupt. What happens on the first timer interrupt?',
         choices: [
-          { t: 'The application\'s timer handler runs, because the core uses the table of the running image', why: 'The CPU finds handlers through the vector table whose base it currently knows. Which table is that?' },
+          { t: 'The application\'s timer handler runs, because that image is now executing', why: 'The CPU finds handlers through the vector table whose base it currently knows. Which table is that?' },
           { t: 'The bootloader\'s handler for that interrupt number runs, or a fault occurs', ok: true, why: 'The core still indexes the bootloader\'s vector table, so the application\'s handlers are never looked up.' },
           { t: 'Nothing: interrupts cannot occur after a bootloader jump', why: 'Nothing about a branch disables interrupts; the request is taken as normal.' },
         ],
@@ -367,7 +367,7 @@ partitions, (c). If it lists partitions and then rejects the image, (d).)`,
     quiz: [
       { q: 'What are the first two things a Cortex-M core does when reset is released?', kind: 'arch', choices: [
         { t: 'Loads SP from the first word of the vector table and PC from the second', ok: true, why: 'Both loads are done by hardware before any instruction executes.' },
-        { t: 'Executes the instruction at address 0, which then sets up the stack pointer', why: 'That is how some other architectures start; on this one, address 0 of the table holds data, not an instruction.' },
+        { t: 'Executes the instruction at address 0, which sets up the stack', why: 'That is how some other architectures start; on this one, address 0 of the table holds data, not an instruction.' },
         { t: 'Copies initialised data from flash to RAM', why: 'That is done later by startup code, which is software in your image.' },
       ] },
       { q: 'On an original ESP32, the second-stage bootloader was flashed at offset `0x0`. What will happen?', kind: 'arch', choices: [
@@ -392,7 +392,7 @@ partitions, (c). If it lists partitions and then rejects the image, (d).)`,
       ] },
       { q: 'What must a bootloader do before jumping to an application whose vector table is not at the default location (on a core that has VTOR)?', kind: 'code', choices: [
         { t: 'Set VTOR to the application\'s table and load its initial stack pointer', ok: true, why: 'Otherwise exceptions keep using the bootloader\'s table, and the application starts on the bootloader\'s stack.' },
-        { t: 'Erase its own vector table so the core falls through to the application\'s', why: 'Erasing the bootloader would brick the device at the next reset, when the core reads that table again.' },
+        { t: 'Erase its own vector table so the application\'s is used instead', why: 'Erasing the bootloader would brick the device at the next reset, when the core reads that table again.' },
         { t: 'Copy the application to address 0', why: 'Applications are linked for their own address and execute in place; copying would break every absolute address in them.' },
       ] },
     ],
@@ -678,7 +678,7 @@ compiler or linker catch for you, and which fail silently at run time?`,
       ] },
       { q: 'What do LMA and VMA mean for the .data section?', kind: 'arch', choices: [
         { t: 'LMA: where the initial values are stored. VMA: where the variables live at run time', ok: true, why: 'Startup code copies from the first to the second before main.' },
-        { t: 'LMA is the address on the host PC during the build; VMA is the address on the target', why: 'Both are target addresses; the host is not involved in either.' },
+        { t: 'LMA is the address on the host PC; VMA is the address on the target', why: 'Both are target addresses; the host is not involved in either.' },
         { t: 'They are the start and end addresses of the section', why: 'Start and end are marked by separate boundary symbols; these two terms name two different placements of the same bytes.' },
       ] },
       { q: 'After custom startup code was introduced, initialised globals contain garbage while zero-initialised ones seem fine. What is the most likely defect?', kind: 'code', choices: [
@@ -698,7 +698,7 @@ compiler or linker catch for you, and which fail silently at run time?`,
       ] },
       { q: 'Why is the vector table wrapped in `KEEP(...)` in a linker script?', kind: 'arch', choices: [
         { t: 'Nothing references it, so garbage collection would discard it', ok: true, why: 'Only the CPU hardware uses the table; the linker sees no symbol dependency on it.' },
-        { t: 'To make it writable at run time, so that handlers can be installed later', why: 'KEEP affects whether a section is retained, not its memory permissions.' },
+        { t: 'To make it writable at run time for installing handlers', why: 'KEEP affects whether a section is retained, not its memory permissions.' },
         { t: 'To place it in RAM', why: 'Placement is decided by the region the output section is assigned to.' },
       ] },
     ],

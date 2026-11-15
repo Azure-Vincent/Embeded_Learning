@@ -291,7 +291,7 @@ int main(void) {
         ] },
       { q: 'In a time-triggered cooperative scheduler, why is the next due time computed as `next_due += period` rather than `next_due = now + period`?', kind: 'code',
         choices: [
-          { t: 'So that one late start does not push every later activation back.', ok: true, why: 'Anchoring to the previous due time means lateness is not accumulated, so the average rate stays exact. Anchoring to "now" adds each delay permanently.' },
+          { t: 'So that a late start does not push every later activation back; the average rate stays exact.', ok: true, why: 'Anchoring to the previous due time means lateness is not accumulated, so the average rate stays exact. Anchoring to "now" adds each delay permanently.' },
           { t: 'Because `now` is written by the timer ISR and cannot be read safely from the main loop.', why: 'On a 32-bit MCU an aligned 32-bit read is a single load. The reason is about drift, not about access.' },
           { t: 'It makes the job run sooner than its period when the system is idle.', why: 'The job still runs once per period. What changes is whether errors accumulate from one activation to the next.' },
         ] },
@@ -451,7 +451,7 @@ Your team ships a cooperative system that has worked for two years. A new hire a
         ] },
       { q: 'In a preemptive system, why can this lose counts when two tasks call it?', code: C`void record_event(void) { event_count++; }`, kind: 'code',
         choices: [
-          { t: 'The increment is a load, an add and a store, and a task switch can fall between them.', ok: true, why: 'Both tasks can load the same old value, and whichever stores second erases the first one\'s increment.' },
+          { t: 'The increment is a load, an add and a store; a switch between them lets one task overwrite the other\'s result.', ok: true, why: 'Both tasks can load the same old value, and whichever stores second erases the first one\'s increment.' },
           { t: 'Each task gets its own copy of the function and of `event_count`, so the two counts are never added together.', why: 'Function code lives once in flash and is shared. Each task has its own stack, not its own copy of the code or of global variables.' },
           { t: '`event_count` is not `volatile`, so each task only ever updates a copy cached in a register.', why: 'A global is written back to RAM by the end of the function with or without `volatile`. And `volatile` only forces real reads and writes; it does not join them into one indivisible step, so the interleaving problem remains.' },
         ] },
@@ -923,7 +923,7 @@ A task must send a heartbeat packet every 500 ms. The send normally takes 20 ms 
         ] },
       { q: 'After one overrun cycle of 130 ms in a 50 ms `vTaskDelayUntil` task, what happens next?', kind: 'code',
         choices: [
-          { t: 'The next two calls return at once and the task runs back-to-back to catch up.', ok: true, why: 'The stored wake time advances by one period per call; while it is still in the past the kernel does not block the task.' },
+          { t: 'The next two calls return immediately and the task runs back-to-back until its schedule catches up.', ok: true, why: 'The stored wake time advances by one period per call; while it is still in the past the kernel does not block the task.' },
           { t: 'The task sleeps a full 50 ms from the end of the overrun, and its schedule shifts by 80 ms.', why: 'That would be the behaviour of a relative delay. The absolute version keeps its original time grid.' },
           { t: 'The kernel deletes the task for missing its deadline.', why: 'FreeRTOS does not police deadlines. Detecting and handling overrun is the application\'s job.' },
         ] },

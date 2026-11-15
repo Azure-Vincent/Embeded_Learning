@@ -103,7 +103,7 @@ bool rb_get(ringbuf_t *rb, uint8_t *byte)
         { lines: '4', md: '`& rb->mask` is the wrap. With a power-of-two size, `mask = size - 1` and the AND is a single instruction. `% size` would be a division, which on a Cortex-M0+ (no divide instruction) is a library call of dozens of cycles, inside an interrupt.' },
         { lines: '5-8', md: 'The full check compares the *wrapped next* index with `tail`. The buffer refuses the byte and counts it. Counting matters: a drop you cannot see is a bug you cannot find.' },
         { lines: '9-10', md: 'Order matters. The store to `buf[head]` happens before the store to `rb->head`. The consumer learns about the byte only through `head`, so it can never read a slot that has not been filled.' },
-        { lines: '17', md: 'Empty check: one read of `head`. If the ISR adds a byte one instruction later, the consumer simply sees it on its next call.' },
+        { lines: '17-18', md: 'Empty check: one read of `tail` (the consumer\'s own index) and one read of `head`. If the ISR adds a byte one instruction later, the consumer simply sees it on its next call.' },
       ] },
 
     `### Overflow policy is a design decision
@@ -181,6 +181,24 @@ For command-rate data (a few lines per second) copy without guilt: clarity wins.
       ],
       answer: { type: 'number', value: 128, tol: 0 },
       solution: `960 bytes/s × 0.12 s = 115.2, so up to 116 bytes can be waiting. A 128-byte buffer holds 127: enough. A 64-byte buffer holds 63: it would drop about half of what arrives during an SD write. The burst length (492 bytes) does not set the size, because the consumer keeps draining during the burst; only the longest *absence* of the consumer does.` },
+
+    { t: 'exercise', prompt: `**Design exercise: choose, and say what breaks otherwise.** For each of the three systems below pick (a) the full/empty scheme (one empty slot, shared \`count\`, or free-running indices), (b) the overflow policy (drop newest, overwrite oldest, flow control) and (c) whether you write the buffer yourself or use an RTOS primitive. Give one sentence of justification per choice, naming what would go wrong with the alternative you rejected.
+
+1. A bare-metal Cortex-M0+ command console: bytes arrive in a UART RX interrupt and are parsed in the main loop.
+2. A crash-log "black box": the last 2 KiB of debug text must be available after a fault; older text is worthless. Log calls come from the main loop only, and the buffer is read only by the fault handler after everything else has stopped.
+3. A dual-core ESP32: a UART driver task on one core receives sensor frames that a processing task on the other core consumes.`,
+      hints: [
+        'For each system, first write down who writes and who reads, and whether they can run at the same instant or only interrupt one another.',
+        'Then ask what the data is worth: is the oldest byte or the newest byte the one you can afford to lose? A command line and a crash log give opposite answers.',
+        'Check each candidate against the one-writer-per-index rule. Which policy needs the producer to move `tail`? In which of the three systems is that harmless, and in which does the rule not protect you at all?',
+      ],
+      solution: `One defensible set of answers (yours may differ if the justification holds):
+
+1. **Console:** one empty slot, drop newest, hand-written SPSC. The ISR writes only \`head\` and the main loop only \`tail\`, so no interrupt masking is needed; a shared \`count\` would be written by both sides and need a critical section in the main loop, lengthening interrupt latency for no benefit. Dropping the newest bytes keeps the start of a line intact, and the damaged line is rejected by the parser; overwriting the oldest would destroy the beginning of the command being assembled. Count the drops.
+2. **Black box:** overwrite oldest. Only the newest text matters, which is exactly what drop-newest would throw away. The producer then has to advance \`tail\` as well as \`head\`, which breaks the one-writer rule, but here it does not matter: there is a single writer context, and the reader runs only after the writer has stopped. A plain write index plus a "wrapped" flag is enough; no lock-free argument is needed because there is no concurrency.
+3. **Dual core:** use the RTOS queue or stream buffer (FreeRTOS stream buffers are designed for one writer and one reader, and the ESP-IDF port's primitives are safe across cores), with flow control or a counted drop policy at the protocol level. The hand-written SPSC argument rests on "the producer can only *interrupt* the consumer", which is false when they run simultaneously on two cores; there the compiler and CPU may also reorder the store to the slot and the store to \`head\` unless you add memory barriers or atomics. A blocking receive also lets the consumer task sleep instead of polling.
+
+The pattern to keep: the data structure follows from **who runs concurrently with whom** and **which data is expendable**, not from habit.` },
 
     `## Harder application
 
@@ -358,7 +376,7 @@ FreeRTOS fills each task's stack with a fixed byte when the task is created, and
 UBaseType_t uxTaskGetStackHighWaterMark(TaskHandle_t task);   /* NULL = the calling task */
 \`\`\`
 
-returns the smallest amount of free stack that task has ever had. In the reference FreeRTOS kernel the unit is **words** (4 bytes on a 32-bit port). ESP-IDF's FreeRTOS specifies stack sizes in **bytes**; check the ESP-IDF FreeRTOS documentation for the unit its port returns before you do arithmetic on it.
+returns the smallest amount of free stack that task has ever had. In the reference FreeRTOS kernel the unit is **words** (4 bytes on a 32-bit port). ESP-IDF differs: its FreeRTOS takes task stack sizes in **bytes**, and its documentation (the *Minimizing RAM usage* guide, v6.1) states that \`uxTaskGetStackHighWaterMark\` also returns **bytes** there. Check which convention your port uses before you do arithmetic on the number.
 
 FreeRTOS can also check for overflow at each context switch (\`configCHECK_FOR_STACK_OVERFLOW\`, methods 1 and 2) and call a hook function you provide. It catches most overflows shortly after they happen, but not all, and by then memory may already be damaged: treat the hook as a reason to halt and report, not to continue.`,
     { t: 'code', lang: 'c', status: 'reviewed', caption: 'Logging stack headroom from a FreeRTOS task. Written against the FreeRTOS API; not run on a board here.',
@@ -368,7 +386,7 @@ FreeRTOS can also check for overflow at each context switch (\`configCHECK_FOR_S
     for (;;) {
         read_and_publish();
         UBaseType_t free_min = uxTaskGetStackHighWaterMark(NULL);
-        if (free_min < 64) {                       /* units: see your port's documentation */
+        if (free_min < 64) {                       /* words in the reference kernel, bytes in ESP-IDF */
             log_warn("sensor_task stack low: %u", (unsigned)free_min);
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -390,8 +408,8 @@ FreeRTOS can also check for overflow at each context switch (\`configCHECK_FOR_S
 | Defence | What it does | Available on |
 |---|---|---|
 | Put the stack at the **bottom** of RAM, growing towards the start of RAM | An overflow leaves RAM and faults immediately instead of corrupting data | Any chip: it is a linker-script choice |
-| MPU guard region below the stack | A write into the guard raises a MemManage fault | Cores with an MPU (the MAX78000's Cortex-M4 and the MSPM0L2228's Cortex-M0+ both report one, per their device headers) |
-| Stack limit registers (\`MSPLIM\`/\`PSPLIM\`) | Hardware fault when SP goes below the limit | Armv8-M cores; not Cortex-M0+/M4 |
+| MPU guard region below the stack | A write into the guard raises a MemManage fault (on a Cortex-M0+, which has no separate MemManage exception, a HardFault) | Cores with an MPU (the MAX78000's Cortex-M4 and the MSPM0L2228's Cortex-M0+ both report one, per their device headers) |
+| Stack limit registers (\`MSPLIM\`/\`PSPLIM\`) | Hardware fault when SP goes below the limit | Armv8-M cores such as the Cortex-M33 (on the Cortex-M23 only with the Security Extension); not the Armv6-M Cortex-M0+ or the Armv7-M Cortex-M4 |
 | \`-fstack-protector\` canaries | Detects a *buffer overrun inside a frame* on function return | Compiler feature; this is about overwritten frames, not about total depth |
 | Painting + periodic check | Detects after the fact | Anywhere |
 
@@ -414,7 +432,7 @@ A bare-metal firmware has a main loop whose deepest path is 380 bytes (from \`.s
         'While that handler runs, the timer interrupt pre-empts it: another 32 + 64.',
       ],
       answer: { type: 'number', value: 556, tol: 0, unit: 'bytes' },
-      solution: `380 (main) + 32 + 48 (UART, the larger of the two that share a priority) + 32 + 64 (timer pre-empting it) = **556 bytes**. The ADC handler cannot stack on top of the UART handler because they have the same priority. With a 25 % margin you would reserve about 700 bytes. Note what this says about a 256-byte stack: this design does not fit, and no amount of testing would have proven otherwise.` },
+      solution: `380 (main) + 32 + 48 (UART, the larger of the two that share a priority) + 32 + 64 (timer pre-empting it) = **556 bytes**. The ADC handler cannot stack on top of the UART handler because they have the same priority. With a 25 % margin you would reserve about 700 bytes. (A real Cortex-M may also insert 4 bytes of padding at each exception entry to keep the stack 8-byte aligned, so allow 8 bytes more for the two entries; the margin covers it.) Note what this says about a 256-byte stack: this design does not fit, and no amount of testing would have proven otherwise.` },
     { t: 'refs', items: [
       { title: 'GCC manual: -fstack-usage (Developer/instrumentation options)', url: 'https://gcc.gnu.org/onlinedocs/gcc/Developer-Options.html' },
       { title: 'FreeRTOS: uxTaskGetStackHighWaterMark', url: 'https://www.freertos.org/Documentation/02-Kernel/04-API-references/03-Task-utilities/04-uxTaskGetStackHighWaterMark' },
@@ -651,6 +669,33 @@ switch (state) { /* children */ }
 
 Beyond two levels, use a framework or generator rather than hand-nesting. For this course, know that the idea exists and recognise it when a codebase uses it.`,
     { t: 'callout', kind: 'mistake', title: 'Blocking inside a state', md: `Writing a state machine and then calling \`delay_ms(50)\` or a blocking \`uart_read_line()\` in one of its actions. The machine's whole value is that a step returns promptly; one blocking action reintroduces every problem you removed. If an action needs time, it is not an action: it is another state.` },
+
+    { t: 'callout', kind: 'decision', title: 'Why a state machine at all? The alternatives', md: `An explicit state machine is one of three ways to structure code that has to wait for things.
+
+| Structure | How "waiting" is written | What it costs | What breaks |
+|---|---|---|---|
+| **Blocking code in a superloop** | \`delay_ms()\`, \`while (!flag)\` | Nothing extra | Everything else stops during each wait; cannot meet a second deadline |
+| **Explicit state machine** | Being in a state; a step function that returns at once | You must name the states and decide every (state, event) pair by hand | Nothing structural, but long sequential protocols become many small states that are tedious to read |
+| **One RTOS task per activity, written in blocking style** | \`xQueueReceive(…, timeout)\`, \`vTaskDelay()\`: the scheduler runs other tasks meanwhile | A kernel, a stack per task (each needs a budget), and shared-data hazards between tasks | Races and deadlocks if tasks share state carelessly; the "state" is hidden in *where each task is blocked*, so it cannot be printed, tested as a table or reset from outside |
+
+Choose the state machine when the logic must be testable on a host and reviewable case by case (anything safety- or security-relevant: the lock, a bootloader's update protocol), and on bare metal generally. Choose blocking tasks when a long, mostly linear sequence (a network handshake, a file transfer) would shatter into dozens of states and an RTOS is present anyway. The two combine well: an RTOS task whose body is \`for (;;) { wait for an event; fsm_step(event); }\` gets the scheduler's convenience and keeps the decisions in a testable function.` },
+    { t: 'exercise', prompt: `**Design exercise: choose the structure and justify it.** For each case decide between (a) a \`switch\`-based state machine, (b) a table-driven state machine, (c) a blocking RTOS task, or (d) no state machine at all, and write one sentence saying what would go wrong with the most tempting alternative.
+
+1. A bootloader's update receiver on bare metal: wait for a header, receive N data blocks with a CRC each, verify a signature, then mark the image valid. A power cut or a malformed frame at any point must leave the device recoverable.
+2. A decoder for a 40-key remote-control protocol with 12 states, whose transitions are specified in a table in the vendor's protocol document.
+3. A function that converts a 12-bit ADC reading into millivolts.
+4. A Wi-Fi provisioning sequence on an ESP32 under FreeRTOS: connect, obtain an address, open a TLS connection, exchange four messages, each step with a timeout and a retry.`,
+      hints: [
+        'Ask first whether the code has to *remember* anything between calls. If its output depends only on its current input, what is there to put in a state variable?',
+        'Then ask who must be able to check the behaviour: a reviewer comparing it with a specification table, a host test driving every (state, event) pair, or only the author reading top to bottom?',
+        'For the cases that do need state: is there an RTOS, and does anything else have to keep running during the waits? A linear sequence with a scheduler underneath is the one place where blocking style costs little.',
+      ],
+      solution: `1. **Switch-based state machine.** Few states, each with different guards and actions (length checks, CRC, signature), and security-critical: every (state, event) pair, including "data block while waiting for a header", must be decided and tested on a host. Blocking code would have no answer to an unexpected frame in the middle of a wait, and on bare metal a blocked receiver cannot service the watchdog.
+2. **Table-driven.** The specification is already a table; a \`const\` array can be reviewed against it cell by cell (or generated from it), and it lives in flash. Twelve states times forty keys as nested \`switch\` statements is 480 places to make a typing error.
+3. **None.** A pure function of its input has no history, so it needs no state. Inventing a state machine here adds a variable that can be wrong.
+4. **A blocking task** (optionally with a small enum recording the current step for logging). The sequence is long and linear, the IDF network APIs are blocking by design, and FreeRTOS keeps the rest of the system running during the waits. As a hand-written non-blocking machine it would need a state for every await-and-retry step. The price is a dedicated stack for the task and care with any data it shares with others.
+
+If you chose differently, check your justification against the two questions that decided these: **who must be able to verify the behaviour**, and **what else has to run while this code waits**.` },
 
     `## Harder application
 

@@ -116,9 +116,9 @@ semaphores for the last one. You will meet all three ideas later in this section
     quiz: [
       { q: 'Which statement best separates a microcontroller from a microprocessor?', kind: 'concept', choices: [
         { t: 'A microcontroller has program memory, RAM and peripherals on the CPU\'s die', ok: true, why: 'Integration is the defining property: code runs from internal memory with almost no external parts.' },
-        { t: 'A microcontroller has a slower CPU: its clock is limited to a few tens of megahertz', why: 'Speed overlaps: some MCUs run at hundreds of MHz. The distinction is about what else is in the package.' },
+        { t: 'A microcontroller has a slower CPU, limited to a few tens of megahertz', why: 'Speed overlaps: some MCUs run at hundreds of MHz. The distinction is about what else is in the package.' },
         { t: 'A microcontroller is always 8-bit', why: 'All three course platforms are 32-bit MCUs. Word size does not define the category.' },
-        { t: 'A microprocessor cannot run without an operating system, whereas a microcontroller can', why: 'An MPU can run bare-metal code; it is simply awkward because code and RAM are external.' },
+        { t: 'A microprocessor cannot run without an operating system', why: 'An MPU can run bare-metal code; it is simply awkward because code and RAM are external.' },
       ] },
       { q: 'On an ESP32-WROOM module, where is the application code stored?', kind: 'arch', choices: [
         { t: 'In an SPI flash chip in the module, outside the ESP32 die', ok: true, why: 'The module adds the flash; the chip reaches it over SPI and maps it into its address space through a cache.' },
@@ -137,8 +137,8 @@ semaphores for the last one. You will meet all three ideas later in this section
       ] },
       { q: 'Why can an MCU respond to an input with more predictable timing than a Linux-class MPU?', kind: 'concept', choices: [
         { t: 'No virtual memory, little or no cache, and no general-purpose scheduler in the path', ok: true, why: 'Each of those layers adds variable delay; an MCU has few or none of them.' },
-        { t: 'MCUs are built with faster transistors, so every instruction finishes in a fixed, shorter time', why: 'They are usually built on older, slower processes. Predictability comes from simplicity, not raw speed.' },
-        { t: 'MCUs do not use interrupts, so nothing can ever delay the code that handles the input', why: 'MCUs rely heavily on interrupts; that is how they achieve fast response.' },
+        { t: 'MCUs are built with faster transistors, so instructions take a fixed time', why: 'They are usually built on older, slower processes. Predictability comes from simplicity, not raw speed.' },
+        { t: 'MCUs do not use interrupts, so nothing can delay the handling code', why: 'MCUs rely heavily on interrupts; that is how they achieve fast response.' },
       ] },
       { q: 'Which line from a feature list tells you the *board* must supply something essential?', kind: 'arch', choices: [
         { t: '"Supports up to 16 MB of external SPI flash"', ok: true, why: '"External" means program storage is not on the die, so the board or module must carry it.' },
@@ -307,8 +307,8 @@ RTOS section.)`,
       ] },
       { q: 'You single-step `status |= 0x10;` on a global and an interrupt that also modifies `status` fires after the load. What is the likely result?', kind: 'code', choices: [
         { t: 'The handler\'s change is overwritten when main stores its stale copy', ok: true, why: 'The store writes the old value OR 0x10, discarding whatever the handler wrote in between.' },
-        { t: 'Both changes are kept, because OR is commutative and the order does not matter', why: 'Commutativity would help only if both operations used the current value; one of them uses an old copy.' },
-        { t: 'The CPU detects the conflicting store and automatically re-runs the statement', why: 'There is no conflict detection on a plain load and store.' },
+        { t: 'Both changes are kept, because OR is commutative', why: 'Commutativity would help only if both operations used the current value; one of them uses an old copy.' },
+        { t: 'The CPU detects the conflict and retries the statement', why: 'There is no conflict detection on a plain load and store.' },
       ] },
     ],
   },
@@ -574,8 +574,8 @@ enables in separate registers.)`,
       ] },
       { q: 'Why must MMIO registers be accessed through a `volatile`-qualified type?', kind: 'concept', choices: [
         { t: 'So the compiler performs every access the source asks for, in order', ok: true, why: 'Without it the optimiser may remove or merge accesses it considers redundant.' },
-        { t: 'So that each read-modify-write of the register becomes a single atomic operation', why: 'The qualifier changes nothing about how many instructions are used; a read-modify-write is still three steps.' },
-        { t: 'So the linker places the object at the fixed address instead of in RAM', why: 'Placement is decided by the address in the cast (or the linker), not by this qualifier.' },
+        { t: 'So that each read-modify-write becomes one atomic operation', why: 'The qualifier changes nothing about how many instructions are used; a read-modify-write is still three steps.' },
+        { t: 'So the linker places the object at a fixed address', why: 'Placement is decided by the address in the cast (or the linker), not by this qualifier.' },
       ] },
       { q: 'An interrupt-flag register is W1C. Which statement clears only flag bit 3?', kind: 'code', choices: [
         { t: '`FLAGS = (1u << 3);`', ok: true, why: 'Zeros written to the other bits are ignored, so only bit 3 is cleared.' },
@@ -594,8 +594,8 @@ enables in separate registers.)`,
       ] },
       { q: 'Reading a UART receive data register twice in a row usually returns:', kind: 'arch', choices: [
         { t: 'Two different bytes (or a byte, then empty): the read pops the FIFO', ok: true, why: 'This is a read with a side effect: each read strobe advances the FIFO.' },
-        { t: 'The same byte twice, as with any memory location that nobody has written in between', why: 'That assumes the register is storage. Here the read strobe itself changes the hardware state.' },
-        { t: 'A bus fault on the second read, because the register is empty by then', why: 'Reading a valid register address never faults merely because it was read before.' },
+        { t: 'The same byte twice, as with any memory location', why: 'That assumes the register is storage. Here the read strobe itself changes the hardware state.' },
+        { t: 'A bus fault on the second read, since the register is empty', why: 'Reading a valid register address never faults merely because it was read before.' },
       ] },
     ],
   },
@@ -751,7 +751,7 @@ for security-critical firmware revisions, not for every build. Real anti-rollbac
       ] },
       { q: 'Why can a single byte in flash not simply be overwritten with a new value?', kind: 'concept', choices: [
         { t: 'Programming only turns 1s into 0s; getting 1s back needs a block erase', ok: true, why: 'The asymmetric physics of the cell forces erase-before-write at block granularity.' },
-        { t: 'Flash is read-only once the factory has programmed it; only RAM can be rewritten', why: 'That describes mask ROM. Flash is reprogrammed every time you download firmware.' },
+        { t: 'Flash is read-only once the factory has programmed it', why: 'That describes mask ROM. Flash is reprogrammed every time you download firmware.' },
         { t: 'The CPU has no store instruction that can target a flash address', why: 'The limitation is in the memory cells and controller sequence, not in the instruction set.' },
       ] },
       { q: 'On an ESP32, an interrupt handler crashes only when it fires during a flash write. The handler is an ordinary C function. Most likely cause?', kind: 'arch', choices: [
@@ -776,8 +776,8 @@ for security-critical firmware revisions, not for every build. Real anti-rollbac
       ] },
       { q: 'What does "execute in place" mean?', kind: 'concept', choices: [
         { t: 'The CPU fetches instructions straight from non-volatile memory', ok: true, why: 'This is the normal mode for internal MCU flash and saves RAM.' },
-        { t: 'The code is position-independent, so it runs correctly wherever it is loaded', why: 'Position independence is about how addresses are encoded, not about which memory holds the code.' },
-        { t: 'Interrupts are disabled while the code runs, so it cannot be moved', why: 'Interrupt masking is unrelated to where instructions are fetched from.' },
+        { t: 'The code is position-independent and can run from any address', why: 'Position independence is about how addresses are encoded, not about which memory holds the code.' },
+        { t: 'Interrupts are disabled while the code runs', why: 'Interrupt masking is unrelated to where instructions are fetched from.' },
       ] },
     ],
   },

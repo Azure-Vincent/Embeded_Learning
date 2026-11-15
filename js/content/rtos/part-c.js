@@ -200,7 +200,7 @@ void logger_write_block(const uint8_t *data, size_t len)   /* priority 2 */
         ] },
       { q: 'A task holding a mutex calls `vTaskDelay(pdMS_TO_TICKS(100))`. A higher-priority task then blocks on the mutex. What does inheritance achieve?', kind: 'code',
         choices: [
-          { t: 'Nothing useful: a raised priority does not shorten a delay.', ok: true, why: 'The waiter is blocked for the remainder of the 100 ms. Inheritance only helps a holder that is Ready and being preempted.' },
+          { t: 'Nothing useful: the holder is asleep, and a raised priority does not shorten a delay.', ok: true, why: 'The waiter is blocked for the remainder of the 100 ms. Inheritance only helps a holder that is Ready and being preempted.' },
           { t: 'The kernel cancels the rest of the delay so that the holder can finish and give.', why: 'The kernel never cuts a delay short because of a mutex. The holder asked to sleep and it sleeps.' },
           { t: 'The higher-priority task skips the mutex.', why: 'Exclusion is never bypassed. The waiter stays blocked until the give or its timeout.' },
         ] },
@@ -212,7 +212,7 @@ void logger_write_block(const uint8_t *data, size_t len)   /* priority 2 */
         ] },
       { q: 'What is the practical meaning of a mutex\'s "hold time" for schedulability?', kind: 'concept',
         choices: [
-          { t: 'It is blocking that a higher-priority user of the mutex can suffer.', ok: true, why: 'Under inheritance, a task can be blocked for the longest critical section of a lower-priority task on a mutex it uses. That blocking has to be added to its worst-case response time.' },
+          { t: 'It is blocking that a higher-priority user of the mutex can suffer on each activation.', ok: true, why: 'Under inheritance, a task can be blocked for the longest critical section of a lower-priority task on a mutex it uses. That blocking has to be added to its worst-case response time.' },
           { t: 'It is the time the kernel needs to create the mutex and add it to its lists.', why: 'Creation happens once at start-up and plays no part in run-time response.' },
           { t: 'It lengthens the holder\'s own response time and nobody else\'s.', why: 'The holder is the one task it does not delay. It matters to everyone else who wants the resource.' },
         ] },
@@ -394,7 +394,7 @@ void sensor_task_poll(void)              /* sensor task, priority 6 */
         ] },
       { q: 'A task takes mutex A, then tries mutex B with a 100 ms timeout. On timeout it logs an error and retries taking B, still holding A. What has been achieved?', kind: 'code',
         choices: [
-          { t: 'Nothing: A is never released, so it is now a logged deadlock.', ok: true, why: 'Recovery by timeout only works if the task backs off completely, releasing what it holds so the other task can finish.' },
+          { t: 'Nothing: the deadlock persists because A is never released; it is now a logged deadlock.', ok: true, why: 'Recovery by timeout only works if the task backs off completely, releasing what it holds so the other task can finish.' },
           { t: 'The deadlock is resolved by the first timeout, because the wait for B was abandoned.', why: 'The other task is still waiting for A. Nothing about the cycle changed when the timeout expired.' },
           { t: 'The kernel breaks the deadlock by releasing B from the other task.', why: 'FreeRTOS never revokes a mutex. Only the holder can give it.' },
         ] },
@@ -412,7 +412,7 @@ void sensor_task_poll(void)              /* sensor task, priority 6 */
         ] },
       { q: 'Why does "one owner task per resource, others send it messages" eliminate lock-order deadlocks?', kind: 'arch',
         choices: [
-          { t: 'No task ever holds one resource while waiting for another.', ok: true, why: 'Requesters hold nothing while they wait for a reply, and the owner works through requests one at a time.' },
+          { t: 'No task ever holds a resource while waiting for another, so hold-and-wait cannot occur.', ok: true, why: 'Requesters hold nothing while they wait for a reply, and the owner works through requests one at a time.' },
           { t: 'A queue hand-off is faster than a mutex, so the window for a deadlock closes.', why: 'Speed is not the reason, and a queue hand-off usually costs more than an uncontended mutex.' },
           { t: 'Owner tasks run at the highest priority, so nothing can interleave with them.', why: 'The owner can be at any priority. The property comes from the absence of nested holding, not from priority.' },
         ] },
@@ -593,7 +593,7 @@ On ESP-IDF the high-water mark is reported in bytes; on upstream FreeRTOS, in wo
     quiz: [
       { q: 'Three tasks have total utilisation 0.85 under rate-monotonic priorities. The Liu–Layland bound for n = 3 is 0.780. What can you conclude?', kind: 'concept',
         choices: [
-          { t: 'Nothing yet: the bound is sufficient, not necessary.', ok: true, why: 'Between the bound and 1.0 a task set may or may not be schedulable; the simple test cannot tell, so an exact response-time analysis is needed.' },
+          { t: 'Nothing yet: the bound is only sufficient, so an exact response-time analysis is needed.', ok: true, why: 'Between the bound and 1.0 a task set may or may not be schedulable; the simple test cannot tell, so an exact response-time analysis is needed.' },
           { t: 'At least one task will miss a deadline, because 0.85 is above the bound.', why: 'Failing a sufficient test does not prove failure. Sets with harmonic periods, for instance, are schedulable up to full utilisation.' },
           { t: 'The tasks meet all deadlines because 0.85 < 1.', why: 'Below 1 means only that enough CPU exists in total. Fixed priorities may still serve it in an order that makes someone late.' },
         ] },
@@ -611,7 +611,7 @@ On ESP-IDF the high-water mark is reported in bytes; on upstream FreeRTOS, in wo
         ] },
       { q: 'Why is a GPIO toggle preferred over a `printf` timestamp for measuring task timing?', kind: 'arch',
         choices: [
-          { t: 'It costs under a microsecond and cannot block.', ok: true, why: 'So it barely changes the timing being measured. Formatted output takes far longer, may take a lock, and can itself reorder the schedule.' },
+          { t: 'It costs well under a microsecond and never blocks, so it barely changes the timing being measured.', ok: true, why: 'So it barely changes the timing being measured. Formatted output takes far longer, may take a lock, and can itself reorder the schedule.' },
           { t: 'A GPIO write has a higher interrupt priority than the UART, so it is never delayed.', why: 'A register write is not an interrupt and has no priority. The point is how little processor time the instrumentation consumes.' },
           { t: 'Logic analysers cannot decode UART.', why: 'They decode UART perfectly well. The problem is the cost of producing the text inside the firmware.' },
         ] },
@@ -801,7 +801,7 @@ static void process_task(void *arg)
         ] },
       { q: 'In a pipeline ISR → queue → task, the queue is full when the ISR has a new item. What can the ISR do?', kind: 'code',
         choices: [
-          { t: 'Fail the send at once and apply a policy, such as counting the drop.', ok: true, why: 'An ISR cannot wait. `xQueueSendFromISR` returns an error on a full queue and the handler must decide what loss is acceptable: count the drop, overwrite, or coalesce.' },
+          { t: 'Fail the send immediately and apply a policy: count the drop, or overwrite/coalesce.', ok: true, why: 'An ISR cannot wait. `xQueueSendFromISR` returns an error on a full queue and the handler must decide what loss is acceptable: count the drop, overwrite, or coalesce.' },
           { t: 'Wait inside the handler until the task has made room in the queue.', why: 'Interrupt handlers cannot block; there is no task context to suspend.' },
           { t: 'Call `xQueueReset` to empty the queue, so that the newest item always fits.', why: 'That discards everything pending, including data the consumer was about to use, and is not a considered overflow policy.' },
         ] },

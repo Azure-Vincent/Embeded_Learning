@@ -730,6 +730,11 @@ int main(void)
         else if (c == 'b') ev = EV_BAD_PIN;
         else if (c == 't') ev = EV_TIMEOUT;
         else if (c == 'l') ev = EV_LOCK;
+        else if (c == '?') ev = (event_t)9;      /* an event number that does not exist */
+        else if (c == '#') {                     /* a corrupted state variable */
+            putchar(fsm_step((state_t)7, EV_LOCK) == (state_t)7 ? 'k' : '!');
+            continue;
+        }
         else continue;
         st = fsm_step(st, ev);
         putchar(names[st]);
@@ -752,7 +757,7 @@ Fill in \`next_state\` and write \`fsm_step\`.
 | UNLOCKED | stay | stay | LOCKED0 | LOCKED0 |
 | LOCKOUT | stay | stay | LOCKED0 | stay |
 
-\`fsm_step\` must return the current state unchanged if either index is out of range. Input letters: \`g\` good PIN, \`b\` bad PIN, \`t\` timeout, \`l\` lock.`,
+\`fsm_step\` must return the current state unchanged if either index is out of range. Input letters: \`g\` good PIN, \`b\` bad PIN, \`t\` timeout, \`l\` lock. The test bench also sends \`?\` (an event number outside the table) and \`#\` (it calls \`fsm_step\` with state 7 and prints \`k\` if 7 comes back).`,
   starter: tdHead + C`
 /* Row = current state, column = event. */
 static const uint8_t next_state[N_STATES][N_EVENTS] = {
@@ -793,6 +798,9 @@ state_t fsm_step(state_t st, event_t ev)
     { name: 'lockout ignores the right PIN until timeout', stdin: 'bbbgltg', stdout: '12XXX0U\n' },
     { name: 'timeout and explicit lock', stdin: 'gtbgl', stdout: 'U01U0\n' },
     { name: 'a good PIN clears the bad count', stdin: 'bbglbb', stdout: '12U012\n' },
+    { name: 'timeout and lock do not clear the bad count', stdin: 'btlbtlb', stdout: '111222X\n' },
+    { name: 'unlocked and lockout ignore PINs', stdin: 'ggbtbbbblt', stdout: 'UUU012XXX0\n' },
+    { name: 'out-of-range indices leave the state alone', stdin: 'b?#b', stdout: '11k2\n' },
   ],
   hints: [
     '"stay" means the cell holds the row\'s own state: in the LOCKED1 row, the TIMEOUT cell is `ST_LOCKED1`.',
@@ -860,6 +868,12 @@ int main(void)
     fake_log[fake_log_len] = '\0';
     printf("led calls: %s\n", fake_log);
     printf("count=%u\n", (unsigned)fake_log_len);
+
+    for (; t <= 20000u; t += 100u) {         /* keep going: more LED writes than the log can hold */
+        fake_now_ms = t;
+        blinker_poll(&b);
+    }
+    printf("after 20 s: count=%u now=%u\n", (unsigned)fake_log_len, (unsigned)fake_now_ms);
     return 0;
 }
 `;
@@ -872,7 +886,7 @@ Complete the **fake backend**:
 - \`fake_millis()\` returns \`fake_now_ms\`.
 - \`fake_hal\` must point at these two functions.
 
-The test bench then runs 2.6 simulated seconds and prints every LED write the application made.`,
+The test bench runs 2.6 simulated seconds and prints every LED write the application made. It then runs on to 20 s, which is more writes than the log can hold: the fake must stop recording at 31 entries and must not damage the variables next to the log.`,
   starter: fhHead + C`
 static void fake_led_write(int on)
 {
@@ -908,11 +922,12 @@ static uint32_t fake_millis(void)
 
 static const hal_t fake_hal = { fake_led_write, fake_millis };
 ` + fhMain,
-  tests: [{ name: 'LED writes over 2.6 simulated seconds', stdout: 'led calls: 010101\ncount=6\n' }],
+  tests: [{ name: 'LED writes over 2.6 simulated seconds', stdout: 'led calls: 010101\ncount=6\nafter 20 s: count=31 now=20000\n' }],
   hints: [
     'The fake does not *do* anything with the LED. It only remembers that it was asked.',
     'The initialiser order follows the struct: `{ fake_led_write, fake_millis }`.',
     'Expected log: one `0` from `blinker_init`, then a toggle at 500, 1000, 1500, 2000 and 2500 ms.',
+    'If the last line is wrong, your recorder wrote past `fake_log`. Index 31 is reserved for the terminator the test bench adds, so record only while `fake_log_len < sizeof fake_log - 1u`.',
   ],
   explain: `The test checked *behaviour over time* (five toggles, 500 ms apart, starting from off) in a few hundred simulated statements, with no timer peripheral and no waiting. On real hardware the same \`blinker_poll\` would be handed a table whose \`led_write\` writes \`GPIO_SET\`/\`GPIO_CLR\` and whose \`millis\` reads a tick counter. The application source would not change by one character.
 
@@ -931,10 +946,10 @@ int main(void)
     int i;
     UART_CTRL = 1u;                              /* ENABLE */
     for (i = 0; i < 3; i++) {
-        uint8_t c = 0;
+        uint8_t c = '?';
         drv_status_t st = uart_getc(&c, 500u);
         if (st == DRV_OK) printf("got %c\n", c);
-        else printf("timeout\n");
+        else printf("timeout, c=%c\n", c);       /* c must still be '?' */
     }
     return 0;
 }
@@ -969,8 +984,8 @@ drv_status_t uart_getc(uint8_t *out, uint32_t max_polls)
 }
 ` + toMain,
   tests: [
-    { name: 'two bytes, then silence', uartRx: 'AB', stdout: 'got A\ngot B\ntimeout\n' },
-    { name: 'nothing connected at all', uartRx: '', stdout: 'timeout\ntimeout\ntimeout\n' },
+    { name: 'two bytes, then silence', uartRx: 'AB', stdout: 'got A\ngot B\ntimeout, c=?\n' },
+    { name: 'nothing connected at all', uartRx: '', stdout: 'timeout, c=?\ntimeout, c=?\ntimeout, c=?\n' },
   ],
   hints: [
     'Every `while (!(STATUS & FLAG))` needs a second way out.',
@@ -992,32 +1007,19 @@ const txHead = C`#include <stdint.h>
 typedef enum { DRV_OK = 0, DRV_TIMEOUT = -1 } drv_status_t;
 `;
 const txMain = C`
-drv_status_t uart_puts(const char *s)
-{
-    while (*s != '\0') {
-        drv_status_t st = uart_putc((uint8_t)*s);
-        if (st != DRV_OK) return st;          /* stop at the first failure and say so */
-        s++;
-    }
-    return DRV_OK;
-}
-
-static char hex_digit(uint8_t v)
-{
-    return (char)(v < 10u ? '0' + v : 'A' + (v - 10u));
-}
-
+/* Test bench: six bytes handed to the driver back to back, as fast as the CPU can call it. */
 int main(void)
 {
-    uint8_t temp = 0x2A;
-    drv_status_t st;
+    int failed = 0;
 
     uart_init();
-    st = uart_puts("T=");
-    if (st == DRV_OK) st = uart_putc((uint8_t)hex_digit(temp >> 4));
-    if (st == DRV_OK) st = uart_putc((uint8_t)hex_digit(temp & 0x0Fu));
-    if (st == DRV_OK) st = uart_puts("\r\n");
-    printf("status=%d\n", (int)st);
+    failed += (uart_putc('T') != DRV_OK);
+    failed += (uart_putc('=') != DRV_OK);
+    failed += (uart_putc('2') != DRV_OK);
+    failed += (uart_putc('A') != DRV_OK);
+    failed += (uart_putc('\r') != DRV_OK);
+    failed += (uart_putc('\n') != DRV_OK);
+    printf("failed=%d\n", failed);
     return 0;
 }
 `;
@@ -1028,7 +1030,7 @@ export const clUartTx = {
 - \`uart_init()\` sets the \`ENABLE\` bit in \`UART_CTRL\` (bytes written while it is 0 are dropped).
 - \`uart_putc(byte)\` waits until \`TX_READY\` is set in \`UART_STATUS\`, then writes the byte to \`UART_DATA\` and returns \`DRV_OK\`. If \`TX_READY\` has not appeared after \`TX_POLL_LIMIT\` checks it returns \`DRV_TIMEOUT\` without writing.
 
-The starter "works" in the sense that it compiles and returns OK. Look at what actually comes out of the UART.`,
+The starter "works" in the sense that it compiles and returns OK. Run it and look at what actually comes out of the UART. Then add \`uart_init\` only and run again before you fix \`uart_putc\`: which characters arrive?`,
   starter: txHead + C`
 void uart_init(void)
 {
@@ -1058,7 +1060,7 @@ drv_status_t uart_putc(uint8_t byte)
     return DRV_OK;
 }
 ` + txMain,
-  tests: [{ name: 'every byte arrives, in order', uartTx: 'T=2A\r\n', stdout: 'status=0\n' }],
+  tests: [{ name: 'every byte arrives, in order', uartTx: 'T=2A\r\n', stdout: 'failed=0\n' }],
   hints: [
     'Set a bit without disturbing the others: `UART_CTRL |= UART_ENABLE;`',
     'After each write to `UART_DATA`, `TX_READY` goes low for a few ticks. A write during that time is lost.',
@@ -1126,6 +1128,12 @@ int main(void)
     rc = tsense_read_millic(&fake_bus, 0x49u, &mc);      /* no such device */
     printf("rc=%d mC=%d\n", rc, (int)mc);
 
+    mc = 777;
+    rc = tsense_read_millic(&fake_bus, TSENSE_ADDR, NULL);
+    printf("null out=%d\n", rc);
+    rc = tsense_read_millic(NULL, TSENSE_ADDR, &mc);
+    printf("null bus=%d mC=%d init=%d\n", rc, (int)mc, tsense_init(NULL, TSENSE_ADDR));
+
     fake_id = 0x55u;                                     /* a different chip at the same address */
     printf("init wrong id=%d\n", tsense_init(&fake_bus, TSENSE_ADDR));
     return 0;
@@ -1137,7 +1145,7 @@ export const clI2cSensor = {
 
 The temperature is a **12-bit two's-complement number, left-justified** in the 16 bits, most significant byte first. One count is 0.0625 °C, i.e. 62.5 m°C.
 
-- \`tsense_init(bus, addr)\`: read the ID register. Return \`TS_ERR_BUS\` if the bus call fails, \`TS_ERR_ID\` if the value is not \`TSENSE_ID_VALUE\`, else \`TS_OK\`.
+- \`tsense_init(bus, addr)\`: read the ID register. Return \`TS_ERR_ARG\` for a NULL \`bus\`, \`TS_ERR_BUS\` if the bus call fails, \`TS_ERR_ID\` if the value is not \`TSENSE_ID_VALUE\`, else \`TS_OK\`.
 - \`tsense_read_millic(bus, addr, out)\`: read the two temperature bytes and store the temperature in thousandths of a degree in \`*out\`. On any error return the code and **leave \`*out\` unchanged**. A NULL \`bus\` or \`out\` is \`TS_ERR_ARG\`.
 
 The driver must use only \`bus->write_read\`. It has no idea which pins or which I2C peripheral are underneath.`,
@@ -1184,7 +1192,7 @@ int tsense_read_millic(const i2c_bus_t *bus, uint8_t addr, int32_t *out)
     return TS_OK;
 }
 ` + i2Main,
-  tests: [{ name: 'identify, positive, negative, missing device, wrong chip', stdout: 'init=0\ninit wrong addr=-1\nrc=0 mC=25500\nrc=0 mC=-250\nrc=-1 mC=777\ninit wrong id=-2\n' }],
+  tests: [{ name: 'identify, positive, negative, missing device, wrong chip', stdout: 'init=0\ninit wrong addr=-1\nrc=0 mC=25500\nrc=0 mC=-250\nrc=-1 mC=777\nnull out=-3\nnull bus=-3 mC=777 init=-3\ninit wrong id=-2\n' }],
   hints: [
     'A register read is one transaction: send 1 byte (the register number), then read N bytes. That is exactly what `write_read` offers.',
     'Combine the bytes as `((uint16_t)rx[0] << 8) | rx[1]`, then cast to `int16_t` so that a set top bit becomes a negative number.',
@@ -1226,14 +1234,19 @@ int main(void)
     static const uint8_t magic[20] = { 'F','W','I','N', 2,0, 1,0, 4,0,0,0, 0,0,0,0, 1,2,3,4 };
     static const uint8_t longer[20] = { 'F','W','I','M', 2,0, 1,0, 5,0,0,0, 0,0,0,0, 1,2,3,4 };
     static const uint8_t huge[20] = { 'F','W','I','M', 2,0, 1,0, 0xF8,0xFF,0xFF,0xFF, 0,0,0,0, 1,2,3,4 };
+    static const uint8_t oldlong[20] = { 'F','W','I','M', 1,0, 9,0, 5,0,0,0, 0,0,0,0, 1,2,3,4 };   /* old AND too long */
+    static const uint8_t empty[16] = { 'F','W','I','M', 2,0, 0,0, 0,0,0,0, 0,0,0,0 };              /* length 0 */
 
     printf("good=%d\n", image_check(good, sizeof good, 2));
     printf("short=%d\n", image_check(good, 10u, 2));
+    printf("short, bad magic=%d\n", image_check(magic, 10u, 2));
     printf("magic=%d\n", image_check(magic, sizeof magic, 2));
     printf("rollback=%d\n", image_check(oldv, sizeof oldv, 2));
     printf("longer=%d\n", image_check(longer, sizeof longer, 2));
+    printf("old and longer=%d\n", image_check(oldlong, sizeof oldlong, 2));
     printf("huge=%d\n", image_check(huge, sizeof huge, 2));
-    printf("empty payload ok=%d\n", image_check(good, 16u, 2) == IMG_ERR_LENGTH ? 1 : 0);
+    printf("header only=%d\n", image_check(good, 16u, 2));      /* claims 4 payload bytes, none received */
+    printf("zero length=%d\n", image_check(empty, sizeof empty, 2));
     return 0;
 }
 `;
@@ -1269,7 +1282,7 @@ int image_check(const uint8_t *img, uint32_t avail, uint16_t min_major)
     return IMG_OK;
 }
 ` + ihMain,
-  tests: [{ name: 'good, short, bad magic, rollback, too long, wrapping length', stdout: 'good=0\nshort=-1\nmagic=-2\nrollback=-4\nlonger=-3\nhuge=-3\nempty payload ok=1\n' }],
+  tests: [{ name: 'good, short, bad magic, rollback, too long, wrapping length, check order', stdout: 'good=0\nshort=-1\nshort, bad magic=-1\nmagic=-2\nrollback=-4\nlonger=-3\nold and longer=-3\nhuge=-3\nheader only=-3\nzero length=0\n' }],
   hints: [
     'Declare a local `image_header_t h;` and `memcpy(&h, img, sizeof h);` after you know there are at least 16 bytes.',
     'The obvious length check is `sizeof h + h.length > avail`. Work out `16 + 0xFFFFFFF8` in 32-bit arithmetic.',
@@ -1297,7 +1310,11 @@ const saMain = C`
 int main(void)
 {
     console_t con = { 0 };
-    const char *input = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\nSTATUS\n";   /* 30 x 'A', then a normal line */
+    /* 30 x 'A'; then a line of 23 characters (the longest that fits), one of 24 (too long), and a normal one */
+    const char *input = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
+                        "12345678901234567890123\n"
+                        "123456789012345678901234\n"
+                        "STATUS\n";
     int lines = 0;
     int i;
 
@@ -1322,7 +1339,7 @@ space for an object of type 'char'
 
 Here the same code runs on Bench-MCU with a flag placed right after the buffer, so you can see what the stray write does. Run it: \`unlocked\` ends up non-zero although nothing in the program ever sets it.
 
-Fix \`line_feed\`. Requirements: at most \`LINE_CAP - 1\` characters are stored (the last byte of \`buf\` is for the terminator); a line that does not fit is dropped entirely, including its tail; the following line must still be received.`,
+Fix \`line_feed\`. Requirements: at most \`LINE_CAP - 1\` characters are stored (the last byte of \`buf\` is for the terminator); a line that does not fit is dropped entirely, including its tail; the following line must still be received. The test bench sends the 30-character line, then a 23-character line (must be kept), a 24-character line (must be dropped) and \`STATUS\`.`,
   starter: saHead + C`
 static bool discarding;
 
@@ -1365,7 +1382,7 @@ static bool line_feed(console_t *con, uint8_t c)
     return false;
 }
 ` + saMain,
-  tests: [{ name: 'over-long line dropped, neighbour intact, next line received', stdout: 'line: STATUS\nlines=1 unlocked=0\n' }],
+  tests: [{ name: 'over-long lines dropped, longest legal line kept, neighbour intact', stdout: 'line: 12345678901234567890123\nline: STATUS\nlines=2 unlocked=0\n' }],
   hints: [
     '`buf` has indices 0 to 23. With the check `len > LINE_CAP`, what is the largest `len` at which a byte is still stored?',
     'It stores at index 24, which is `unlocked`. The check has to stop storing while there is still one byte left for `\\0`: `len >= LINE_CAP - 1u`.',
@@ -1404,6 +1421,8 @@ int main(void)
     check("256", false, 0);                   /* one past the maximum          */
     check("300", false, 0);
     check("1000", false, 0);                  /* 1000 & 0xFF = 232: must not pass as 232 */
+    check("65580", false, 0);                 /* 65536 + 44: wraps a 16-bit accumulator to 44 */
+    check("4294967300", false, 0);            /* 2^32 + 4: wraps a 32-bit accumulator to 4 */
     check("", false, 0);                      /* empty string is not a number  */
     check("12a", false, 0);
     check("-1", false, 0);
@@ -1416,7 +1435,7 @@ export const clParseTests = {
   title: 'Let failing tests drive the fix',
   prompt: `\`parse_u8\` converts a decimal string such as \`"42"\` to a \`uint8_t\`. It is used to parse a brightness command. A user found that the command \`BRIGHT 300\` sets brightness 44.
 
-Twelve unit tests are already written in \`main\`. Run them and read which ones fail. Fix \`parse_u8\` until the last line reads \`12 passed, 0 failed\`.
+Fourteen unit tests are already written in \`main\`. Run them and read which ones fail. Fix \`parse_u8\` until the last line reads \`14 passed, 0 failed\`.
 
 Contract: return \`true\` and store the value only if the string is one or more decimal digits and the value is 0–255. Otherwise return \`false\` and do not write to \`*out\`.`,
   starter: puHead + C`
@@ -1447,11 +1466,11 @@ bool parse_u8(const char *s, uint8_t *out)
     return true;
 }
 ` + puMain,
-  tests: [{ name: 'all twelve unit tests pass', stdout: '12 passed, 0 failed\n' }],
+  tests: [{ name: 'all fourteen unit tests pass', stdout: '14 passed, 0 failed\n' }],
   hints: [
-    'Four tests fail, with two different causes. Start with `""`: how many times does the loop body run?',
+    'Six tests fail, with two different causes. Start with `""`: how many times does the loop body run?',
     '`300` becomes 44 because the running value is kept in a `uint8_t`: 300 mod 256 = 44. Accumulate in a wider type.',
-    'Compare against 255 after **every** digit, not once at the end. Otherwise a long enough string wraps the wider type too.',
+    'Compare against 255 after **every** digit, not once at the end. Otherwise a long enough string wraps the wider type too: that is what the last two failing tests are for.',
   ],
   explain: `The tests that failed were all at **boundaries**: the empty input, the first value past the maximum, a value far past it. The ones that passed were the "normal" inputs a developer tries by hand. That is the pattern to learn from: for each input, test the smallest, the largest, one beyond each, and the malformed.
 

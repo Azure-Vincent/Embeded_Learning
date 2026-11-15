@@ -36,7 +36,9 @@ moves it back. On Arm Cortex-M and by convention on RISC-V the stack is **full d
 addresses, and SP points at the last item pushed.
 
 Worst-case stack use is the deepest chain of calls, plus the frames of every interrupt that can nest on top of it at
-that moment. Interrupt handlers use the stack of whatever they interrupted (on Cortex-M, the main stack).`,
+that moment. In bare-metal firmware interrupt handlers use the same stack as the code they interrupt. (On Cortex-M
+the hardware pushes the saved registers onto whichever stack the interrupted code was using, and the handler itself
+always runs on the main stack; without an RTOS those are the same stack.)`,
 
       { t: 'ascii', caption: 'A common RAM layout: static data at the bottom, heap growing up, stack growing down from the top',
         text: R`  high addresses

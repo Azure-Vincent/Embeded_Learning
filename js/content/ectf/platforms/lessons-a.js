@@ -21,7 +21,7 @@ MITRE's Embedded Capture the Flag (eCTF) is a competition in which teams are giv
 
 Two things this course cannot give you, and says so:
 
-- The **exact rules, scoring and named security requirements** for a year. Those live on MITRE's rules site, which was not reachable when this course's fact sheet was compiled. Candidate URL (not load-tested): ${S.rules}.
+- The **authoritative wording** of a year's rules, scoring and security requirements. Those live on MITRE's rules site, [rules.ectf.mitre.org](${S.rules}), which hosts 2026 and — marked "archived past competition, for reference only" — 2024 and 2025. This track summarises what those pages say and links them; when a summary and the page differ, the page wins. No rules site was found for 2017–2023.
 - Anything official. The exercises and scenarios in this track are written for this course. They copy the *shape* of eCTF work, not its content.`,
 
     { t: 'callout', kind: 'warn', title: 'The repositories are not where you might guess', md: `MITRE's public reference designs for 2016–2025 are under [github.com/mitre-cyber-academy](${S.mcaOrg}). The 2026 reference design is under [github.com/ectfmitre](${S.y2026}). The account \`github.com/ectf\` is **not** MITRE's: it is an unrelated account with a single 2016 repository${src('account page', S.notEctf, 'MITRE org repository list', S.mcaRepos)}. Cloning the wrong repository is a cheap mistake to make and an expensive one to discover late.` },
@@ -39,15 +39,15 @@ Every row below comes from a file in that year's reference repository (README, M
 | 2021 | Secure Common Embedded Wireless Link (SCEWL): bus controller, CPU running user code, SSS, radio emulator | **Emulated** in the reference design: Stellaris \`lm3s6965\` under \`qemu-system-arm\` | Docker, QEMU, root Makefile | [2021](${S.y2021}) |
 | 2022 | Secure Avionics Flight Firmware Installation Routine (SAFFIRe): bootloader installing protected firmware and configuration | TI Tiva C \`TM4C123GH6PM\`; emulated (custom QEMU image) and physical modes — physical was "not supported in the initial code release" | Docker, custom QEMU, Code Composer Studio for the physical MCU, PySerial | [2022](${S.y2022}) |
 | 2023 | Protected Automotive Remote Entry Device (PARED): car and key-fob firmware | TI TM4C123G LaunchPad Evaluation Kit (\`TM4C123GH6PM\`) | Docker, Python 3.7+, Stellaris ICDI drivers, TI UniFlash; OpenOCD and the Arm GNU toolchain recommended | [2023](${S.y2023}) |
-| 2024 | "MISC" system (host-tool help text calls it "the medical device"): one Application Processor and Components on I2C | Analog Devices MAX78000, board selection \`BOARD=FTHR_RevA\` (the MSDK board support package for the MAX78000FTHR) | **Nix** shell + **Poetry**; MSDK tag \`v2023_06\`; MITRE eCTF bootloader for flashing | [2024](${S.y2024}) |
-| 2025 | Satellite TV System: a Decoder that decodes frames for subscribed channels | Analog Devices MAX78000, \`BOARD=FTHR_RevA\` | **Docker** + pip/venv; MSDK tag \`v2024_02\`; MITRE eCTF bootloader | [2025](${S.y2025}) |
-| 2026 | Hardware Security Module (HSM) storing files with group permissions and a PIN | Texas Instruments **MSPM0L2228** (exact board name not verified here — see lesson 4) | **Docker** with TI MSPM0 SDK and **TI Arm Clang**; \`uv\` for the Python design package | [2026](${S.y2026}) |
+| 2024 | "MISC" system protecting a medical device from supply-chain attacks: one Application Processor and two Components on I2C | Three Analog Devices **MAX78000FTHR** boards on MITRE's eCTF breakout board (\`BOARD=FTHR_RevA\`) | **Nix** shell + **Poetry**; MSDK tag \`v2023_06\`; MITRE eCTF bootloader for flashing | [2024](${S.y2024}) |
+| 2025 | Satellite TV System: a Decoder that decodes frames for subscribed channels | One **MAX78000FTHR** (\`BOARD=FTHR_RevA\`) | **Docker** + pip/venv; MSDK tag \`v2024_02\`; MITRE eCTF bootloader | [2025](${S.y2025}) |
+| 2026 | Hardware Security Module (HSM): permissioned file storage and transfer, with group permissions and a PIN | Texas Instruments **MSPM0L2228** on the custom **MSP-LITO-L2228** board, with an external XDS110 probe | **Docker** with TI MSPM0 SDK and **TI Arm Clang**; \`uv\` for the tools; TI **UniFlash** to install the MITRE bootloader | [2026](${S.y2026}) |
 
-Sources per year: 2017${src('README', S.y2017readme, 'bootloader Makefile', S.y2017make)}; 2018${src('README', S.y2018readme, 'CARD project file', S.y2018proj)}; 2019${src('README', S.y2019readme)}; 2020${src('README', S.y2020readme)}; 2021${src('README', S.y2021readme, 'controller README', S.y2021ctrl)}; 2022${src('README', S.y2022readme, 'bootloader Makefile', S.y2022make)}; 2023${src('README', S.y2023readme, 'tools README', S.y2023tools, 'car Makefile', S.y2023make)}; 2024${src('README', S.y2024readme, 'shell.nix', S.y2024nix)}; 2025${src('README', S.y2025readme, 'Dockerfile', S.y2025docker)}; 2026${src('README', S.y2026readme, 'Dockerfile', S.y2026docker, 'firmware Makefile', S.y2026make)}.`,
+Sources per year: 2017${src('README', S.y2017readme, 'bootloader Makefile', S.y2017make)}; 2018${src('README', S.y2018readme, 'CARD project file', S.y2018proj)}; 2019${src('README', S.y2019readme)}; 2020${src('README', S.y2020readme)}; 2021${src('README', S.y2021readme, 'controller README', S.y2021ctrl)}; 2022${src('README', S.y2022readme, 'bootloader Makefile', S.y2022make)}; 2023${src('README', S.y2023readme, 'tools README', S.y2023tools, 'car Makefile', S.y2023make)}; 2024${src('README', S.y2024readme, 'shell.nix', S.y2024nix)}; 2025${src('README', S.y2025readme, 'Dockerfile', S.y2025docker)}; 2026${src('README', S.y2026readme, 'Dockerfile', S.y2026docker, 'firmware Makefile', S.y2026make)}. Board names for 2024–2026 are from the rules pages${src('2024 architecture', S.r24arch, '2025 board', S.r25board, '2026 board', S.r26board)}.`,
 
     { t: 'callout', kind: 'note', title: 'What this table does not claim', md: `- The READMEs for 2017 and 2018 do not state an official theme name, and the 2019 README does not expand "MES". Those cells describe the system, nothing more.
-- For 2024 and 2025 the repositories prove the MCU (MAX78000) and the board support package (\`FTHR_RevA\`). That the physical kit handed to teams was the MAX78000FTHR is the natural reading, but the kit contents are defined by that year's rules, which were not opened here.
-- No rules site was found for 2017–2022; those READMEs point at older MITRE pages.
+- For 2024–2026 the board names come from the rules pages, not the repositories: a repository proves the MCU (a compiler define, a board support package), never the board in the box. The 2026 board is the example to remember — the MCU's obvious evaluation board is TI's LP-MSPM0L2228 LaunchPad, but the kit is a custom **MSP-LITO-L2228** that is not sold commercially; the rules call the LaunchPad "largely interchangeable"${src('2026 board page', S.r26board)}.
+- No rules site was found for 2017–2023; those READMEs point at older MITRE pages.
 - None of the rows is an ESP32. This course teaches on the ESP32 for reasons given in the next lesson, not because eCTF used it.` },
 
     `## Reading the table as an engineer
@@ -56,7 +56,7 @@ Sort the rows by what actually changes between years:
 
 - **Processor family.** An Atmel AVR (2017), a Cypress PSoC 4 (2018), Zynq boards running Linux with FPGA fabric (2019, 2020), an emulated Stellaris part (2021), TI Tiva C (2022, 2023), a Cortex-M4F with a RISC-V coprocessor (2024, 2025), a Cortex-M0+ (2026). The cores of the 2024–2026 parts are established from vendor headers in lessons 3 and 4. For the earlier parts the fact sheet records part numbers, not cores — look the core up in each manufacturer's datasheet rather than trusting memory.
 - **Whether there is physical hardware at all.** 2021 was emulated; 2022 was both.
-- **How code reaches the chip.** An ISP programmer (2017), a vendor IDE's programmer (2018), an SD card image (2019, 2020), a vendor flashing tool (2023), a MITRE bootloader over serial (2024, 2025).
+- **How code reaches the chip.** An ISP programmer (2017), a vendor IDE's programmer (2018), an SD card image (2019, 2020), a vendor flashing tool (2023), a MITRE bootloader over serial (2024, 2025), and in 2026 both: a vendor tool once to install the MITRE bootloader, then the bootloader over serial.
 - **How the build is made reproducible.** Vagrant VMs, then Docker, then Nix, then Docker again.
 
 What does *not* change: every year has a functional specification, security requirements, host tools that talk to the device over a defined interface, a build that injects per-device secrets, and a reference design that is deliberately insecure.`,
@@ -87,10 +87,32 @@ What stayed the same is narrow and worth knowing precisely: the linker layout. B
 - 2022: the reference flow is Docker plus a custom QEMU image; the physical MCU is debugged with Code Composer Studio.
 - 2023: the closest. The firmware is built in Docker and OpenOCD plus the Arm GNU toolchain are *recommended*, but the *required* list includes TI UniFlash and the Stellaris ICDI drivers.
 - 2024/2025: Arm GCC builds the firmware, but flashing goes through the MITRE bootloader and its host tool, and 2024 packages an Analog Devices fork of OpenOCD.
-- 2026: the reference design compiles with TI Arm Clang, not \`arm-none-eabi-gcc\`.
+- 2026: the reference design compiles with TI Arm Clang, not \`arm-none-eabi-gcc\`, and the MITRE bootloader is installed with TI UniFlash.
 
 If you answered 1 (for 2023) you read the table carefully; the difference is whether "recommended" counts. Either way the transferable conclusion is the same: a generic toolchain is necessary background, and each year adds something you have to learn from that year's documents.`,
       answer: { type: 'number', value: 0, tol: 1 } },
+
+    `## What the security requirements looked like, 2024–2026
+
+The functional system changes completely each year. Read the three sets of security requirements side by side and notice what *kind* of statement they are. These are paraphrases; the linked pages are the wording that counts.
+
+| Year | Requirement (summary) | Property |
+|---|---|---|
+| 2024 | SR1: the Application Processor boots only if every expected Component is present and valid | Authenticity of peers |
+| | SR2: Components boot only when commanded by a valid AP that has confirmed integrity | Authenticity of peers |
+| | SR3: the Attestation PIN and Replacement Token stay confidential | Confidentiality of credentials |
+| | SR4: Component Attestation Data stays confidential | Confidentiality of data |
+| | SR5: integrity and authenticity of post-boot messages (confidentiality not required) | Integrity, authenticity |
+| 2025 | SR1: frames cannot be decoded without a Decoder holding a valid, currently active subscription for that channel | Access control, confidentiality |
+| | SR2: a Decoder decodes only genuine frames from the Satellite System it was provisioned for | Authenticity |
+| | SR3: a Decoder decodes only frames with strictly increasing timestamps | Freshness |
+| 2026 | SR1: no file action without a validly provisioned HSM holding the matching permission for that file's group | Access control |
+| | SR2: no PIN-protected action without knowing the PIN, and the PIN itself must not leak | Authentication, confidentiality |
+| | SR3: an HSM receives only files generated by a valid HSM with write permission for that group | Integrity, authenticity |
+
+Sources${src('2024 security requirements', S.r24sec, '2025 security requirements', S.r25sec, '2026 security requirements', S.r26sec)}.
+
+Every row is a statement about what an attacker must **not** achieve, and none names a mechanism or a chip feature. That is why the requirements transfer between platforms even though no line of driver code does: "authenticity", "freshness" and "the secret must not leak" have to be re-implemented on each year's hardware with whatever that hardware offers. One 2026 number is worth carrying into the security section of this course: any operation with an invalid PIN may take up to **5 seconds**${src('2026 detailed specifications', S.r26detail)} — the specification deliberately leaves room for a delay that makes guessing a 6-hex-digit PIN slow.`,
 
     `## Harder application: predicting the unknown year
 
@@ -99,7 +121,10 @@ Suppose next year's kit is announced with only a part number you have never seen
     { t: 'refs', items: [
       { title: 'MITRE eCTF reference designs, 2016–2025 (mitre-cyber-academy)', url: S.mcaRepos },
       { title: 'MITRE eCTF 2026 insecure example (ectfmitre)', url: S.y2026 },
-      { title: 'MITRE eCTF rules site', url: S.rules, note: 'Not load-tested when the fact sheet was written; the authority for any year’s rules.' },
+      { title: 'MITRE eCTF rules site (2026; 2024 and 2025 archived)', url: S.rules, note: 'The authority for those years’ rules.' },
+      { title: 'eCTF 2026 security requirements', url: S.r26sec },
+      { title: 'eCTF 2025 security requirements', url: S.r25sec },
+      { title: 'eCTF 2024 security requirements', url: S.r24sec },
     ] },
   ],
   quiz: [
@@ -165,7 +190,7 @@ The name covers chips with different instruction sets. From ESP-IDF v6.1's own c
 | ESP32-C3 | RISC-V | 1 | 160 MHz | USB Serial/JTAG |
 | ESP32-C6 | RISC-V | 1 | 160 MHz | Wi-Fi + Bluetooth + IEEE 802.15.4, USB Serial/JTAG |
 
-The specific Xtensa core names (often quoted as "LX6" and "LX7") are not stated in the configuration files that were read; confirm them in each chip's datasheet (candidate URL, not load-tested: ${S.esp32ds}).
+The core names come from the datasheets, not the configuration files: the ESP32 has "single-/dual-core 32-bit **LX6** microprocessor(s)" and the ESP32-S3 an "Xtensa 32-bit **LX7** dual-core microprocessor"${src('ESP32 datasheet v5.3', S.esp32ds, 'ESP32-S3 datasheet v2.2', S.esp32s3ds)}. A common module, the ESP32-WROOM-32E, carries an ESP32-D0WD-V3 chip and 4, 8 or 16 MB of flash${src('module datasheet', S.espWroom32e)}.
 
 Neither Xtensa nor RISC-V is Arm. The eCTF 2024–2025 part (MAX78000) and the eCTF 2026 part (MSPM0L2228) both have an Arm Cortex-M core as their main processor (lessons 3 and 4). So the ESP32 already differs from those kits at the level of the instruction set, the exception model and the debugger.`,
 
@@ -205,7 +230,9 @@ Two consequences an engineer should draw without being told. First, a tutorial w
 
     { t: 'callout', kind: 'security', title: 'eFuses are one-way, and fault injection is a documented limit', md: `eFuse bits can be programmed once and not cleared. That is what makes them a trust anchor, and also what makes a mistake permanent: a board with secure boot enabled against a key you have lost is finished. Practise the whole flow on a board you are prepared to lose, and read the ESP-IDF security guides end to end first.
 
-Hardware protections also have published limits. Espressif's own vulnerability list records CVE-2023-35818, advisory AR2023-005: bypassing Secure Boot and Flash Encryption using electromagnetic fault injection, applicable to ESP32 chip revisions v3.0/v3.1${src('vulnerabilities.rst', S.idfVuln)}. Earlier voltage-glitching research on older revisions (often cited as "LimitedResults, 2019", with CVE-2019-15894 and CVE-2019-17391) was **not** verified for this course — read Espressif's advisories and the NVD entries yourself before quoting it.
+Hardware protections also have published limits. Espressif's own vulnerability list records CVE-2023-35818, advisory AR2023-005: bypassing Secure Boot and Flash Encryption using electromagnetic fault injection, applicable to ESP32 chip revisions v3.0/v3.1${src('vulnerabilities.rst', S.idfVuln)}. Two earlier advisories concern older silicon: CVE-2019-15894 (fault injection bypasses the Secure Boot digest check at start-up) and CVE-2019-17391 (a fault just after reset defeats eFuse read protection and exposes the flash-encryption and secure-boot keys). For the second, Espressif states there is no software mitigation for deployed parts and that the ESP32-D0WD-V3 "has checks in ROM which prevent this attack"${src('CVE-2019-15894 advisory', S.espAdv15894, 'CVE-2019-17391 advisory', S.espAdv17391)}.
+
+Put those together carefully. Revision 3 closed *those two* attacks; AR2023-005 then showed a different fault-injection attack on revision 3 itself, and says there is "no immediate mitigation". So "V3 fixes fault injection" is false. The accurate sentence is: V3 has ROM checks against the 2019 attacks and is still subject to the 2023 one. (The researchers' own write-ups and the NVD entries were not read for this course; the statements above are Espressif's.)
 
 Defence, and how to check it: treat physical access as a threat-model decision, not something secure boot makes disappear; keep long-term secrets off devices that will be in an attacker's hands where the design allows; and verify eFuse state on your own board with the read-only summary command in Espressif's esptool suite (confirm the exact command name in the [esptool repository](${S.esptool})).` },
 
@@ -233,7 +260,7 @@ Defence, and how to check it: treat physical access as a threat-model decision, 
 |---|---|---|
 | Where is the program? | External SPI flash, mapped through a cache | The MAX78000 (eCTF 2024, 2025) and MSPM0L2228 (eCTF 2026) have internal flash at fixed addresses (lessons 3 and 4) |
 | What is the core? | Xtensa or RISC-V | Those kits are Cortex-M4F (+RISC-V) and Cortex-M0+: different exception model, stack frames, toolchain and disassembly |
-| How is firmware installed? | esptool through the ROM's serial download mode, or USB Serial/JTAG | 2024/2025 used a MITRE bootloader; 2026's procedure is in that year's rules (not verified here) |
+| How is firmware installed? | esptool through the ROM's serial download mode, or USB Serial/JTAG | 2024/2025 used a MITRE bootloader dropped onto a DAPLink drive; 2026 uses a MITRE bootloader installed once with TI UniFlash through an external probe |
 | Who chooses the security features? | You, in ESP-IDF configuration | The competition rules decide what you may enable; a feature the chip has can be off-limits |
 | What runs underneath? | ESP-IDF, which is built on FreeRTOS | The eCTF reference designs are structured around the vendor SDK for that year; whether an RTOS is used is a per-year, per-team decision to check |`,
 
@@ -249,6 +276,98 @@ Defence, and how to check it: treat physical access as a threat-model decision, 
 
 The feature that addresses it is **secure boot**: the ROM verifies the second-stage bootloader and the bootloader verifies the app, so unsigned code does not run. The general rule: confidentiality and authenticity are separate properties and each needs its own mechanism. To verify the defence on a board you own, enable both, then confirm that an unsigned image is refused at boot and that the eFuse summary shows the enable bits set.` },
 
+    `## Working on the board: pins, electrical limits and interfaces
+
+The rest of this lesson is the practical half: what you need to know to wire, build, flash and debug an original ESP32, with the same headings the next two lessons use for the eCTF parts.
+
+**Communication interfaces.** ESP-IDF's capability header for the ESP32 counts 3 UARTs, 2 I2C controllers, 3 SPI peripherals (one of them shares the bus of the module's flash), 1 TWAI (CAN) controller, 2 DAC channels and 40 GPIO numbers${src('soc_caps.h', S.idfCaps32h)}. Most peripheral signals can be routed to most pins, which is convenient and is also why the pin *restrictions* matter: the routing is flexible, the electrical and boot-time rules are not.
+
+**Logic levels and drive.** From the DC characteristics table of the datasheet (Table 5-3, at 3.3 V and 25 °C)${src('ESP32 datasheet v5.3', S.esp32ds)}:
+
+| Parameter | Value |
+|---|---|
+| Input high, V_IH | at least 0.75 × VDD, at most VDD + 0.3 V |
+| Input low, V_IL | at most 0.25 × VDD |
+| Output high, V_OH | at least 0.8 × VDD |
+| Output low, V_OL | at most 0.1 × VDD |
+| Source current I_OH, drive strength at maximum | 40 mA typical (20 mA in the VDD_SDIO domain) |
+| Sink current I_OL, drive strength at maximum | 28 mA typical |
+| Internal pull-up / pull-down | 45 kΩ typical |
+| Supply pins, absolute maximum (Table 5-1) | 3.6 V |
+
+Two things that table does **not** contain, although you will read both online: a 5 V-tolerance statement (the only input limit given is VDD + 0.3 V, so a 5 V signal needs a divider or level shifter), and a "recommended 12 mA per pin" figure. Designing for a few milliamps per pin is sound conservative practice — the 40 mA and 28 mA entries are *typical* values at maximum drive strength, not guaranteed minimums — but it is your design margin, not a datasheet number.
+
+**ADC.** Two 12-bit SAR ADCs. The reference is 1100 mV by design and varies from chip to chip, which is why ESP-IDF has a calibration layer. The usable input range depends on the attenuation setting (datasheet Table 4-4): 100–950 mV, 100–1250 mV, 150–1750 mV and 150–2450 mV for attenuation 0 to 3${src('ESP32 datasheet v5.3', S.esp32ds, 'adc_calibration.rst', S.idfAdcCal)}. The ADC does not read down to 0 V or up to 3.3 V.`,
+
+    { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Configuring one output and one input with the ESP-IDF v6.1 GPIO driver. Each call and constant was checked against driver/gpio.h; the fragment was not compiled as a program or run on a board.', code: String.raw`#include "driver/gpio.h"
+
+void pins_init(void)
+{
+    gpio_config_t led = {
+        .pin_bit_mask = 1ULL << GPIO_NUM_4,
+        .mode         = GPIO_MODE_OUTPUT,
+        .pull_up_en   = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&led);
+
+    gpio_config_t button = {
+        .pin_bit_mask = 1ULL << GPIO_NUM_27,
+        .mode         = GPIO_MODE_INPUT,
+        .pull_up_en   = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type    = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&button);
+
+    gpio_set_level(GPIO_NUM_4, 1);
+    int pressed = (gpio_get_level(GPIO_NUM_27) == 0);
+    (void)pressed;
+}`,
+      explain: [
+        { lines: '5-12', md: '`pin_bit_mask` is a 64-bit mask, one bit per GPIO number, so one call can configure several pins. `gpio_config` routes the pad to the GPIO function and enables its output driver. GPIO4 is chosen because it is not a strapping pin, not a flash pin and not input-only.' },
+        { lines: '14-21', md: 'An input with the internal pull-up (about 45 kΩ) enabled: the pin reads 1 when the button is open and 0 when the button connects it to ground. The same code on GPIO34–39 would leave the pin floating, because those pads have no internal pull resistors.' },
+        { lines: '23-24', md: '`gpio_set_level` writes the output register; `gpio_get_level` samples the pad. "Pressed" is level 0 because the button pulls the pin low.' },
+      ] },
+
+    `## Development environment, build and flash
+
+1. **Install.** Since ESP-IDF v6.0 the default on Linux is the ESP-IDF Installation Manager: add Espressif's APT repository, \`sudo apt install eim\`, then \`eim install\`${src('eim-install-idf.rst', S.idfEim, 'linux-setup.rst', S.idfLinux)}. The rendered "stable" documentation showed v6.1.1 when it was checked; this course's code is checked against v6.1.
+2. **Select the chip.** \`idf.py set-target esp32\` (or \`esp32s3\`, \`esp32c3\`, …). This is the step that picks the toolchain, the memory layout and the bootloader offset from the last section; it also clears any existing build and configuration in the project.
+3. **Build.** \`idf.py build\` compiles the second-stage bootloader, the partition table and your application.
+4. **Flash and watch.** \`idf.py -p PORT flash monitor\` writes all three at the offsets for the selected target using esptool through the ROM's serial download mode, then opens the serial console${src('start-project.rst', S.idfStart)}.
+
+You should see the ROM's boot messages, then the second-stage bootloader's log, then your application's output. If nothing appears, the usual causes are the wrong serial port, or a strapping pin held at the wrong level by your circuit.
+
+## Debugging workflow
+
+- **Serial log first.** \`idf.py monitor\` shows the boot chain's own messages, so you can tell *which stage* failed — the single most useful fact in a boot problem.
+- **JTAG when you need to stop the CPU.** On the original ESP32, JTAG is on GPIO12–15 and needs an external probe or a board with one built in; \`idf.py openocd\` starts Espressif's OpenOCD and \`idf.py gdb\` connects GDB to it${src('using-debugger.rst', S.idfJtagUse, 'JTAG guide', S.idfJtag)}. The board configuration file depends on your hardware (the guide's example for the ESP-WROVER-KIT is \`board/esp32-wrover-kit-3.3v.cfg\`). The S3, C3 and C6 need no probe: their USB Serial/JTAG controller does it over the USB cable.
+- **JTAG is also an attack surface.** Secure boot and flash encryption in release mode disable it by burning eFuses; that is one of the irreversible steps to rehearse on a spare board.
+
+## Hardware limitations to design around
+
+- Program storage is outside the chip; anything not encrypted is readable with a flash clip.
+- Five strapping pins, six input-only pins without pull resistors, the flash pins, and ADC2 lost to Wi-Fi: pin choice is a design decision.
+- Inputs are limited to VDD + 0.3 V; the ADC covers roughly 0.1–2.45 V at most and needs calibration.
+- eFuse changes are permanent, and published fault-injection attacks exist for every revision of the original ESP32.`,
+
+    { t: 'exercise', prompt: `A sensor board powered from 1.8 V drives a logic output straight into an ESP32 GPIO. The ESP32's VDD is 3.3 V. Using the datasheet thresholds in this lesson: (a) what is the lowest input voltage the ESP32 is guaranteed to read as a 1? Enter it in volts. (b) Will the sensor's "high" of at most 1.8 V be read reliably? (c) Is the ESP32's own output high safe for the sensor's 1.8 V input?`,
+      hints: [
+        `Which row of the table tells you what the *input* needs, as opposed to what the output delivers?`,
+        `V_IH is at least 0.75 × VDD. The region between V_IL and V_IH is not guaranteed to read as either level.`,
+        `Multiply 0.75 by 3.3 V, and 0.25 by 3.3 V. Then place 1.8 V on that scale. For (c), compute the ESP32's minimum output high, 0.8 × VDD, and ask what the sensor's input limit would have to be.`,
+      ],
+      solution: `(a) V_IH(min) = 0.75 × 3.3 V = **2.475 V**. V_IL(max) = 0.25 × 3.3 V = 0.825 V.
+
+(b) No. 1.8 V lies between 0.825 V and 2.475 V, where the datasheet guarantees nothing. It may read as 1 on your bench and as 0 on a colder day or another chip — the worst kind of fault, because it passes a first test.
+
+(c) Not without checking the sensor's datasheet: the ESP32 drives at least 0.8 × 3.3 V = 2.64 V, well above a 1.8 V supply. Unless the sensor's inputs are specified to tolerate that, it needs level shifting in this direction too.
+
+The fix is a level shifter (or a sensor variant with 3.3 V I/O). The method transfers to any chip: find V_IH and V_IL as fractions of the supply in the DC characteristics table, compute them for *your* supply, and compare with the other device's guaranteed output levels — both directions.`,
+      answer: { type: 'number', value: 2.475, tol: 0.03, unit: 'V' } },
+
     `## Harder application
 
 Take the table "why it is not a substitute" and turn each row into a question you could answer about *any* chip in ten minutes with its documentation: where is the program stored; what core; how is firmware installed; who is allowed to turn on which security feature; what software layer sits under the application. Then answer them for the ESP32-C3 using only the sources cited in this lesson, noting for each answer the file it came from. Lessons 3 and 4 answer the same questions for the two eCTF parts, and lesson 5 puts the three side by side.`,
@@ -259,7 +378,11 @@ Take the table "why it is not a substitute" and turn each row into a question yo
       { title: 'ESP-IDF v6.1: Security vulnerabilities list (includes AR2023-005 / CVE-2023-35818)', url: S.idfVuln },
       { title: 'ESP-IDF v6.1: ESP32 GPIO notes (strapping pins, input-only pins, ADC2)', url: S.idfGpio },
       { title: 'ESP-IDF v6.1: ESP32 memory map (soc.h)', url: S.idfSoc },
-      { title: 'ESP-IDF Programming Guide (rendered)', url: S.idfGuide, note: 'Not load-tested when the fact sheet was written.' },
+      { title: 'ESP32 Series Datasheet (v5.3): core, DC characteristics (Table 5-3), ADC (Table 4-4)', url: S.esp32ds },
+      { title: 'Espressif advisory: fault injection and eFuse protections (CVE-2019-17391)', url: S.espAdv17391 },
+      { title: 'Espressif advisory: fault injection and Secure Boot (CVE-2019-15894)', url: S.espAdv15894 },
+      { title: 'ESP-IDF v6.1: JTAG debugging guide', url: S.idfJtag },
+      { title: 'ESP-IDF Programming Guide (rendered; "stable" showed v6.1.1 when checked)', url: S.idfGuide },
     ] },
   ],
   quiz: [

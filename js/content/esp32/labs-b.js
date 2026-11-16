@@ -203,9 +203,9 @@ On an **ESP32-S3** or **ESP32-C3** keep \`SPI2_HOST\` (the C3 has only that one 
 
 Plug in USB so the board supplies 3.3 V.`,
       { t: 'predict', q: 'No data has been sent. What will the LEDs show at power-up?', choices: [
-        { t: 'All off, because the chip resets itself', why: 'The 74HC595 has no power-on reset. SRCLR clears only the shift register, and only while it is held low.' },
-        { t: 'An arbitrary pattern that can differ from one power-up to the next', ok: true, why: 'The storage-register flip-flops power up in whatever state they settle into. Nothing defines it until the first latch. This is why the firmware writes 0x00 before anything else, and why a real product would hold OE high (outputs off) until that first write.' },
-        { t: 'All on, because the inputs float high', why: 'Floating inputs do not load the storage register; only a rising edge on RCLK does. A floating RCLK might produce such an edge from noise, but then the pattern is still undefined.' },
+        { t: 'All off, because the chip clears both registers at power-on', why: 'The 74HC595 has no power-on reset. SRCLR clears only the shift register, and only while it is held low.' },
+        { t: 'An arbitrary pattern that may differ between power-ups', ok: true, why: 'The storage-register flip-flops power up in whatever state they settle into. Nothing defines it until the first latch. This is why the firmware writes 0x00 before anything else, and why a real product would hold OE high (outputs off) until that first write.' },
+        { t: 'All on, because unconnected inputs float high and load ones into the outputs', why: 'Floating inputs do not load the storage register; only a rising edge on RCLK does. A floating RCLK might produce such an edge from noise, but then the pattern is still undefined.' },
       ], reveal: 'Whatever you see, write it down, then power-cycle twice and compare. Undefined power-up state is a design problem you solve in hardware (a pull-up on OE that the firmware later overrides) when the outputs drive something that matters.' },
     ] },
     { title: 'Run the shift-register model on your PC', blocks: [
@@ -418,8 +418,8 @@ static void flash_read_jedec_id(uint8_t id[3])
         { lines: '26-29', md: 'While the command byte was going out, the flash was not yet driving a reply. The byte received in that slot is meaningless and must be skipped.' },
       ] },
       { t: 'predict', q: 'While the ESP32 talks to the flash chip, SCLK and MOSI are also connected to the 74HC595. Do the LEDs change?', choices: [
-        { t: 'No. The shift register fills with flash traffic, but the outputs keep their old values', ok: true, why: 'SRCLK toggles, so the 595\'s shift register does take in those bits. But RCLK is the 595\'s own CS line, which stays high during a flash transaction, so there is no rising edge and the storage register keeps driving the LEDs with the last latched byte. The next sr_write() shifts in a full new byte before latching, so the garbage never becomes visible.' },
-        { t: 'Yes, they show the flash command bytes', why: 'They would only if RCLK saw a rising edge during or after the flash transaction. Check which signal drives RCLK and what it does while a different device is selected.' },
+        { t: 'No: the bits are shifted in, but nothing latches them to the outputs', ok: true, why: 'SRCLK toggles, so the 595\'s shift register does take in those bits. But RCLK is the 595\'s own CS line, which stays high during a flash transaction, so there is no rising edge and the storage register keeps driving the LEDs with the last latched byte. The next sr_write() shifts in a full new byte before latching, so the garbage never becomes visible.' },
+        { t: 'Yes: they show the flash command bytes as each one finishes shifting in', why: 'They would only if RCLK saw a rising edge during or after the flash transaction. Check which signal drives RCLK and what it does while a different device is selected.' },
         { t: 'No, because the 74HC595 ignores the clock while it is not selected', why: 'The 595 has no select input at all. Its shift register follows SRCLK whenever SRCLK moves. Something else is protecting the outputs.' },
       ], reveal: 'This only works because one transaction always shifts a whole byte before latching. If you ever latched without shifting eight fresh bits first, the flash traffic would appear on the LEDs.' },
       `You should see three bytes that match the ID table in your flash chip's datasheet. For Winbond parts the manufacturer byte is \`0xEF\`; look up the other two rather than trusting a web page. If you see \`FF FF FF\` or \`00 00 00\`, the flash is not driving MISO: add MISO to the analyser on CH3 and check wiring and CS.`,
@@ -516,7 +516,7 @@ No solution is given. Your evidence is the passing model test, the capture, and 
     { kind: 'circuit', q: 'Two 74HC595s are cascaded. You send byte `A` then byte `B` in one transaction and latch. Where do they end up?', choices: [
       { t: '`B` in the chip connected to MOSI, `A` in the far chip', ok: true, why: 'The first byte is pushed through the near chip and out of QH\' by the eight clocks of the second byte. First sent travels furthest.' },
       { t: '`A` in the chip connected to MOSI, `B` in the far chip', why: 'That assumes each chip keeps the first byte it sees. A shift register keeps nothing: every clock moves every bit one stage further along.' },
-      { t: 'Both chips hold `B`', why: 'Both chips would hold the same byte only if both SER pins were wired to MOSI in parallel. In a cascade the second chip is fed from the first chip\'s QH\' output.' },
+      { t: 'Both chips hold `B`, since the second byte overwrites the first in each', why: 'A shift register does not overwrite, it passes bits along. Both chips would hold the same byte only if both SER pins were wired to MOSI in parallel. In a cascade the second chip is fed from the first chip\'s QH\' output.' },
     ] },
     { kind: 'code', q: 'What does this transaction put on the wire?', code: String.raw`spi_transaction_t t = {
     .flags   = SPI_TRANS_USE_TXDATA,
@@ -524,23 +524,23 @@ No solution is given. Your evidence is the passing model test, the capture, and 
     .tx_data = { 0xAB, 0xCD },
 };`, choices: [
       { t: '12 clock pulses: all of 0xAB, then the top four bits of 0xCD', ok: true, why: '`length` is a bit count. The driver sends bytes in order, most-significant bit first, and stops after 12 bits: 1010 1011 1100.' },
-      { t: '12 bytes, the last ten of them zero', why: 'That reads `length` as a byte count. Check the unit in the `spi_transaction_t` documentation; it also would overrun the 4-byte `tx_data` array.' },
+      { t: '12 bytes, of which the last ten are zero padding', why: 'That reads `length` as a byte count. Check the unit in the `spi_transaction_t` documentation; it also would overrun the 4-byte `tx_data` array.' },
       { t: '16 clock pulses, because SPI always sends whole bytes', why: 'The controller has a bit counter, not a byte counter. Parts with 12-bit or 9-bit words depend on that.' },
     ] },
     { kind: 'concept', q: 'You write a configuration register of an SPI sensor and the function returns `ESP_OK`. What does that tell you about the sensor?', choices: [
-      { t: 'Nothing: SPI has no acknowledgement, so the call succeeds even with no sensor connected', ok: true, why: 'The controller only generates clocks and data. To know the write arrived you must read something back, such as the same register or an ID register.' },
-      { t: 'The sensor acknowledged the write', why: 'An acknowledge bit is a feature of I2C. SPI has no line on which a peripheral could signal that.' },
+      { t: 'Nothing: the call succeeds even with no sensor connected', ok: true, why: 'SPI has no acknowledgement: the controller only generates clocks and data. To know the write arrived you must read something back, such as the same register or an ID register.' },
+      { t: 'The sensor acknowledged the write, as every SPI peripheral must', why: 'An acknowledge bit is a feature of I2C. SPI has no line on which a peripheral could signal that.' },
       { t: 'The sensor is present, because otherwise the transfer would time out', why: 'A time-out needs something to wait for. The controller does not wait for the peripheral at any point in an SPI transfer.' },
     ] },
     { kind: 'circuit', q: 'A learner ties RCLK and SRCLK of a 74HC595 together to save a pin. What is the visible effect?', choices: [
-      { t: 'The outputs follow the shift register during shifting, so LEDs ghost through intermediate patterns', ok: true, why: 'Every clock now also latches, so the storage register is no longer a buffer that hides the bits in transit. The outputs also lag the shift register by one clock.' },
-      { t: 'Nothing changes; the two clocks are equivalent', why: 'They have different jobs: one moves bits, the other publishes them. Merging them removes the reason the chip has two registers.' },
-      { t: 'The chip stops shifting', why: 'SRCLK still gets its edges, so shifting continues. Think about what the storage register does on each of those same edges.' },
+      { t: 'The LEDs ghost through intermediate patterns while bits shift', ok: true, why: 'Every clock now also latches, so the storage register is no longer a buffer that hides the bits in transit. The outputs also lag the shift register by one clock.' },
+      { t: 'Nothing visible changes, because both pins are rising-edge clocks anyway', why: 'They have different jobs: one moves bits, the other publishes them. Merging them removes the reason the chip has two registers.' },
+      { t: 'The chip stops shifting, because the latch freezes the shift register', why: 'SRCLK still gets its edges, so shifting continues. Think about what the storage register does on each of those same edges.' },
     ] },
     { kind: 'arch', q: 'Why is `spi_device_polling_transmit` a reasonable choice for writing one byte at 100 kHz but a poor one for sending a 4 kB display buffer?', choices: [
-      { t: 'Polling keeps the CPU busy for the whole transfer; that is 80 µs for a byte but a long time for 4 kB, during which lower-priority tasks cannot run', ok: true, why: 'For short transfers the busy-wait is cheaper than blocking and being woken by an interrupt. For long ones, the interrupt-driven call lets the scheduler run other work.' },
-      { t: 'Polling transfers cannot use chip select', why: 'CS handling is the same for both call types. The difference lies in what the calling task does while the hardware shifts bits.' },
-      { t: 'Polling transfers are limited to four bytes', why: 'Four bytes is the size of the inline `tx_data` field, which is unrelated to whether the driver polls or waits for an interrupt.' },
+      { t: 'Polling keeps the CPU busy until the transfer ends, and 4 kB takes far longer', ok: true, why: 'One byte is 80 µs of spinning; 4 kB at the same clock is about a third of a second during which lower-priority tasks cannot run. For short transfers the busy-wait is cheaper than blocking and being woken by an interrupt. For long ones, the interrupt-driven call lets the scheduler run other work.' },
+      { t: 'Polling transfers cannot drive chip select, so a long transfer would lose its framing', why: 'CS handling is the same for both call types. The difference lies in what the calling task does while the hardware shifts bits.' },
+      { t: 'Polling transfers are limited to the four bytes that fit in the inline `tx_data` field', why: 'Four bytes is the size of the inline `tx_data` field, which is unrelated to whether the driver polls or waits for an interrupt.' },
     ] },
   ],
 };
@@ -949,9 +949,9 @@ vTaskDelay(pdMS_TO_TICKS(1000));` },
     { title: 'Connect two boards and exchange raw bytes', blocks: [
       `Flash the same raw test to the second board. Unplug both boards, wire the three connections from the table (TX to RX twice, ground to ground), and plug both in. Open a monitor on each.`,
       { t: 'predict', q: 'Both boards send "hello\\n" once a second and neither knows when the other started. Will each read always return exactly the 6 bytes of one message?', choices: [
-        { t: 'No. A read returns whatever bytes have arrived by then, which may be part of a message or more than one', ok: true, why: '`uart_read_bytes` knows nothing about your messages. It returns after the timeout with what is in the driver\'s buffer. Depending on the phase between the two boards\' loops you will see 6 bytes, sometimes fewer, sometimes 12. That is the problem framing solves.' },
-        { t: 'Yes. The UART delivers each write as one unit', why: 'A UART has no concept of a write. On the wire the bytes of one call and the next are just consecutive characters with idle time between them.' },
-        { t: 'Yes, as long as the baud rates match', why: 'Matching baud rates make each *byte* arrive intact. They say nothing about how bytes are grouped by the reader.' },
+        { t: 'No: a read returns whatever has arrived, which may be part of a message or several', ok: true, why: '`uart_read_bytes` knows nothing about your messages. It returns after the timeout with what is in the driver\'s buffer. Depending on the phase between the two boards\' loops you will see 6 bytes, sometimes fewer, sometimes 12. That is the problem framing solves.' },
+        { t: 'Yes: the driver delivers the bytes of each `uart_write_bytes` call as one unit', why: 'A UART has no concept of a write. On the wire the bytes of one call and the next are just consecutive characters with idle time between them.' },
+        { t: 'Yes, as long as the baud rates match, since the idle gap separates the messages', why: 'Matching baud rates make each *byte* arrive intact. They say nothing about how bytes are grouped by the reader, and a read that times out mid-message or spans two messages ignores any gap.' },
       ], reveal: 'Leave it running for a minute and look for a read that does not return 6 bytes. Now capture CH0 and CH1 with the UART decoder at 115200 8N1: you should see the idle level high, each byte 10 bits long, and one bit lasting about 8.7 µs. Sample at 1 MS/s or more so each bit gets at least 8 samples.' },
     ] },
     { title: 'Run the framed protocol', blocks: [
@@ -1146,9 +1146,9 @@ For each input byte, \`crc ^= byte << 8\` lines the byte up with the top of the 
 No solution is given.`,
   quiz: [
     { kind: 'circuit', q: 'A 5 V microcontroller and an ESP32 must exchange UART data. Which connection is acceptable as it stands?', choices: [
-      { t: 'Neither direction can be assumed safe: 5 V into the ESP32 exceeds its input rating, and 3.3 V into the 5 V part must be checked against its VIH', ok: true, why: 'One direction is a survival question (absolute maximum input voltage), the other is a threshold question (does 3.3 V count as high). Both are answered from datasheet tables, and at least the 5 V to 3.3 V direction needs a divider or level shifter.' },
-      { t: 'Both directions directly, because UART is a standard', why: 'UART standardises the frame of bits, not the voltages. The voltages are whatever each chip\'s supply and I/O cells make them.' },
-      { t: 'Both directions directly, as long as the grounds are connected', why: 'A common ground is necessary for any link, but it does not lower a 5 V output to a level a 3.3 V input can survive.' },
+      { t: 'Neither direction as it stands: each must be checked against the receiving part\'s datasheet', ok: true, why: '5 V into the ESP32 exceeds its input limit of VDD + 0.3 V, and 3.3 V into the 5 V part must be compared with its VIH. One direction is a survival question (absolute maximum input voltage), the other is a threshold question (does 3.3 V count as high). Both are answered from datasheet tables, and at least the 5 V to 3.3 V direction needs a divider or level shifter.' },
+      { t: 'Both directions directly, because UART is a standard and standards fix the voltage levels', why: 'UART standardises the frame of bits, not the voltages. The voltages are whatever each chip\'s supply and I/O cells make them.' },
+      { t: 'Both directions directly, as long as the grounds are connected so the levels share a reference', why: 'A common ground is necessary for any link, but it does not lower a 5 V output to a level a 3.3 V input can survive.' },
     ] },
     { kind: 'concept', q: 'At 115200 baud, 8N1, roughly how long does a 37-byte frame occupy the wire?', choices: [
       { t: 'About 3.2 ms', ok: true, why: 'Each byte is 10 bits (start, 8 data, stop): 370 bits at 8.68 µs each is 3.2 ms.' },
@@ -1156,24 +1156,24 @@ No solution is given.`,
       { t: 'About 0.32 ms', why: 'Check the bit time: 1/115200 s is 8.68 µs, and there are several hundred bits.' },
     ] },
     { kind: 'security', q: 'Why does the parser compare LEN with the buffer size the moment the LEN byte arrives, rather than relying on the CRC to reject bad frames?', choices: [
-      { t: 'The CRC is only known after the payload has been stored, so an unchecked LEN would already have caused writes past the buffer', ok: true, why: 'Order of operations is the point. Validation must happen before the value is used, and the first use of LEN is storing payload bytes.' },
-      { t: 'The CRC cannot detect errors in the LEN field', why: 'LEN is covered by the CRC in this frame. The issue is when the check happens relative to the writes, not what it covers.' },
-      { t: 'Checking LEN makes the parser faster', why: 'Speed is not the motivation; an out-of-range length is a memory-safety problem, and it exists whether the parser is fast or slow.' },
+      { t: 'The CRC is known only after the payload is stored, so a bad LEN would already have overflowed', ok: true, why: 'Order of operations is the point. Validation must happen before the value is used, and the first use of LEN is storing payload bytes.' },
+      { t: 'The CRC is computed over TYPE and PAYLOAD only, so it can never detect an error in the LEN field', why: 'LEN is covered by the CRC in this frame. The issue is when the check happens relative to the writes, not what it covers.' },
+      { t: 'Rejecting a bad LEN early makes the parser faster, which matters at 115200 baud', why: 'Speed is not the motivation; an out-of-range length is a memory-safety problem, and it exists whether the parser is fast or slow.' },
     ] },
     { kind: 'concept', q: 'A frame arrives with a valid CRC. What can the receiver conclude?', choices: [
-      { t: 'The frame was very probably not corrupted by accident; it says nothing about who sent it', ok: true, why: 'A CRC is public arithmetic. Random errors almost never produce a matching CRC, but anyone can compute the right CRC for any content they choose.' },
-      { t: 'The frame came from the paired board', why: 'Nothing in a CRC depends on a secret or an identity. A device that needs to know the sender must use a keyed MAC or a signature.' },
-      { t: 'The frame is new and not a repeat of an earlier one', why: 'A recorded frame replays with the same valid CRC. Freshness needs a counter or a nonce that the receiver tracks.' },
+      { t: 'Accidental corruption is very unlikely; it says nothing about who sent it', ok: true, why: 'A CRC is public arithmetic. Random errors almost never produce a matching CRC, but anyone can compute the right CRC for any content they choose.' },
+      { t: 'The frame came from the paired board, as only it knows the polynomial', why: 'The polynomial is public, and nothing in a CRC depends on a secret or an identity. A device that needs to know the sender must use a keyed MAC or a signature.' },
+      { t: 'The frame is new, since a repeat would give a different CRC', why: 'The CRC depends only on the bytes, so a recorded frame replays with the same valid CRC. Freshness needs a counter or a nonce that the receiver tracks.' },
     ] },
     { kind: 'code', q: 'What is the purpose of calling `frame_parser_timeout()` when `uart_read_bytes` returns 0?', choices: [
-      { t: 'To abandon a half-received frame so that the next frame\'s SOF is recognised as a start', ok: true, why: 'Without it, a truncated frame leaves the parser waiting for payload, and it would swallow the beginning of the next good frame as data.' },
-      { t: 'To retransmit the last frame', why: 'This protocol has no retransmission; the function only changes receiver state. Reliability on top of detection is the independent challenge.' },
-      { t: 'To clear the UART hardware FIFO', why: 'The function is pure C and does not know a UART exists. It resets the parser\'s state variable and counts the event.' },
+      { t: 'To abandon a half-received frame so the next SOF is seen as a start', ok: true, why: 'Without it, a truncated frame leaves the parser waiting for payload, and it would swallow the beginning of the next good frame as data.' },
+      { t: 'To retransmit the last frame, since silence means the other side missed it', why: 'This protocol has no retransmission; the function only changes receiver state. Reliability on top of detection is the independent challenge.' },
+      { t: 'To clear the UART hardware FIFO of bytes left over from the broken frame', why: 'The function is pure C and does not know a UART exists. It resets the parser\'s state variable and counts the event.' },
     ] },
     { kind: 'arch', q: 'Why is the frame codec kept free of ESP-IDF includes?', choices: [
-      { t: 'So it can be compiled and tested on a PC, where error cases are cheap to generate, and reused on any microcontroller', ok: true, why: 'Logic that depends only on its inputs can be exercised with thousands of cases in a second. Hardware is then needed only to prove the wiring and the driver.' },
-      { t: 'Because ESP-IDF headers cannot be included from more than one file', why: 'They can be included anywhere. The separation is a design choice about testability and portability.' },
-      { t: 'Because CRC code must not run inside a FreeRTOS task', why: 'It runs inside `rx_task` on the board. What matters is that it does not *call* the RTOS or drivers itself.' },
+      { t: 'So it can be compiled and tested on a PC, and reused unchanged on other microcontrollers', ok: true, why: 'Logic that depends only on its inputs can be exercised with thousands of cases in a second. Hardware is then needed only to prove the wiring and the driver.' },
+      { t: 'Because ESP-IDF headers cannot safely be included from more than one source file', why: 'They can be included anywhere. The separation is a design choice about testability and portability.' },
+      { t: 'Because CRC code must not run inside a FreeRTOS task, where it could be pre-empted', why: 'It runs inside `rx_task` on the board, and pre-emption does not harm a function that touches only its own state. What matters is that it does not *call* the RTOS or drivers itself.' },
     ] },
   ],
 };
@@ -1714,24 +1714,24 @@ Before the HTTP request, the client and server perform a handshake. The server s
 No solution is given. A good answer includes the threat model, the state machine of the provisioning flow, and a test for each way the flow can be interrupted.`,
   quiz: [
     { kind: 'arch', q: 'Why does the application wait for `IP_EVENT_STA_GOT_IP` before starting its network work, and not for the Wi-Fi connected event?', choices: [
-      { t: 'Association and the WPA handshake give a link, but sockets need an IP address, which arrives only when DHCP completes', ok: true, why: 'They are different layers. A station can be associated for a long time with no address if DHCP fails, and any socket call in that window fails.' },
-      { t: 'The connected event is never delivered in station mode', why: 'It is delivered. It simply marks an earlier stage than the one the application needs.' },
-      { t: 'Because the got-IP event carries the passphrase check result', why: 'The passphrase is checked during the WPA handshake, before DHCP starts. A failure there shows up as a disconnect with a reason code.' },
+      { t: 'Association gives a link, but sockets need an IP address, which arrives only after DHCP', ok: true, why: 'They are different layers. A station can be associated for a long time with no address if DHCP fails, and any socket call in that window fails.' },
+      { t: 'The connected event is never delivered in station mode, so got-IP is the only one available', why: 'It is delivered. It simply marks an earlier stage than the one the application needs.' },
+      { t: 'Because the got-IP event is the one that carries the result of the passphrase check', why: 'The passphrase is checked during the WPA handshake, before DHCP starts. A failure there shows up as a disconnect with a reason code.' },
     ] },
     { kind: 'code', q: 'A handler for `WIFI_EVENT_STA_DISCONNECTED` calls `vTaskDelay(pdMS_TO_TICKS(10000))` and then `esp_wifi_connect()`. What is the system-level effect?', choices: [
-      { t: 'No event of any kind is delivered from the default loop for 10 s, because all handlers share one task', ok: true, why: 'The handler runs in the event loop task. Sleeping there stalls the delivery of every queued event, not just Wi-Fi ones.' },
-      { t: 'Only this handler is delayed; other handlers run in parallel', why: 'Handlers on one event loop are called one after another by a single task. There is no parallelism to fall back on.' },
-      { t: 'The delay is ignored inside handlers', why: '`vTaskDelay` works in any task context, including the event loop task. That is exactly why it is harmful here.' },
+      { t: 'No event of any kind is delivered from the default loop for 10 s', ok: true, why: 'All handlers share one task: the handler runs in the event loop task. Sleeping there stalls the delivery of every queued event, not just Wi-Fi ones.' },
+      { t: 'Only this handler is delayed; the loop runs other handlers in parallel meanwhile', why: 'Handlers on one event loop are called one after another by a single task. There is no parallelism to fall back on.' },
+      { t: 'The delay is ignored, because FreeRTOS delays have no effect inside event handlers', why: '`vTaskDelay` works in any task context, including the event loop task. That is exactly why it is harmful here.' },
     ] },
     { kind: 'security', q: 'A team stores the Wi-Fi passphrase with Kconfig and excludes `sdkconfig` from git. Which statement about the shipped product is true?', choices: [
-      { t: 'The passphrase is in every device\'s flash as plain text unless flash encryption is enabled, and it is the same in every unit', ok: true, why: 'Kconfig solved the repository problem only. Physical access to one device reveals a secret shared by the fleet.' },
+      { t: 'It is in every unit\'s flash as plain text unless flash encryption is enabled', ok: true, why: 'Kconfig solved the repository problem only, and the same passphrase is built into every unit. Physical access to one device reveals a secret shared by the fleet.' },
       { t: 'The passphrase cannot be recovered from a device because it is not in the source code', why: 'The compiled image contains the string. Where the value was typed has no effect on where it ends up.' },
       { t: 'The passphrase is protected because firmware binaries are not human-readable', why: 'A tool such as `strings` lists every text literal in a binary in seconds. Unreadable to a person is not the same as protected.' },
     ] },
     { kind: 'security', q: 'An HTTPS client is configured to skip server certificate verification because "the data is encrypted anyway". What can an attacker who controls the local network do?', choices: [
-      { t: 'Answer the connection themselves with any certificate, then read and alter everything in both directions', ok: true, why: 'Encryption protects the channel to whoever is at the other end. Without verification the device cannot tell the real server from an impostor, so the attacker simply becomes the other end.' },
-      { t: 'Nothing, because the traffic is still encrypted with TLS', why: 'It is encrypted — to the attacker, if the attacker is who the device completed the handshake with. Think about who chose the key.' },
-      { t: 'Only see the size and timing of messages', why: 'That is what a passive observer of a properly verified connection learns. An active attacker facing no verification gets far more.' },
+      { t: 'Answer the connection with their own certificate, then read and alter the traffic', ok: true, why: 'Encryption protects the channel to whoever is at the other end. Without verification the device cannot tell the real server from an impostor, so the attacker simply becomes the other end.' },
+      { t: 'Nothing useful, because the traffic is still encrypted with TLS session keys', why: 'It is encrypted — to the attacker, if the attacker is who the device completed the handshake with. Think about who chose the key.' },
+      { t: 'Only observe the size and timing of messages, as with any encrypted connection', why: 'That is what a passive observer of a properly verified connection learns. An active attacker facing no verification gets far more.' },
     ] },
     { kind: 'code', q: '`char b[32]; int n = snprintf(b, sizeof b, "%s", s);` and `s` is 50 characters long. What are the contents of `b` and the value of `n`?', choices: [
       { t: '`b` holds the first 31 characters and a terminator; `n` is 50', ok: true, why: '`snprintf` truncates safely but reports the untruncated length, so that the caller can detect truncation. Using `n` as a byte count for sending reads past the buffer.' },
@@ -1739,9 +1739,9 @@ No solution is given. A good answer includes the threat model, the state machine
       { t: '`b` overflows by 18 bytes; `n` is 50', why: 'The size argument is the whole point of the `n` variant: it never writes past it. The hazard lies in how the return value is used afterwards.' },
     ] },
     { kind: 'concept', q: 'Why is exponential backoff with a cap better than a fixed 1 s retry for a fleet of devices?', choices: [
-      { t: 'Short outages still recover quickly, while long outages cause few attempts, saving energy and letting the access point recover', ok: true, why: 'The first retries are fast; later ones are spaced out. The cap keeps the worst-case recovery delay bounded.' },
-      { t: 'It guarantees that a device reconnects within one second', why: 'After several failures the wait is up to the cap, 30 s here. Backoff trades worst-case recovery time for lower load.' },
-      { t: 'It makes the Wi-Fi handshake itself faster', why: 'The handshake takes the time it takes. Backoff only decides how long to wait between attempts.' },
+      { t: 'Short outages still recover quickly, and long outages cause few attempts', ok: true, why: 'The first retries are fast; later ones are spaced out, which saves energy and lets a restarting access point recover. The cap keeps the worst-case recovery delay bounded.' },
+      { t: 'It guarantees that every device reconnects within one second of the network returning', why: 'After several failures the wait is up to the cap, 30 s here. Backoff trades worst-case recovery time for lower load.' },
+      { t: 'It shortens the WPA handshake itself, because each attempt reuses the previous keys', why: 'Each attempt performs a complete handshake and takes the time it takes. Backoff only decides how long to wait between attempts.' },
     ] },
   ],
 };
@@ -2097,9 +2097,9 @@ void app_main(void)
     { title: 'Read the stack numbers and size the stacks', blocks: [
       `Let the program run for a few minutes, press the button several times and turn the knob. Write down the smallest \`stack free\` value you see for each task. That value is the least headroom the task has ever had since it started.`,
       { t: 'predict', q: 'In ESP-IDF, `xTaskCreate(..., 3072, ...)` and a reported high-water mark of 1900. What do those numbers mean?', choices: [
-        { t: 'The stack is 3072 bytes and at its deepest the task still had 1900 bytes unused, so it has used about 1170', ok: true, why: 'ESP-IDF measures task stacks in bytes (standard FreeRTOS ports use words). The high-water mark is minimum free space, so used = size − mark.' },
-        { t: 'The task has used 1900 bytes of 3072', why: 'The mark counts what was never touched, not what was used. Reading it the wrong way round leads to shrinking a stack that is nearly full.' },
-        { t: 'The stack is 3072 words, 12 288 bytes', why: 'That is the unit in upstream FreeRTOS on a 32-bit port. ESP-IDF\'s port takes the size in bytes; check the FreeRTOS page of its documentation.' },
+        { t: 'A 3072-byte stack that never had less than 1900 bytes free', ok: true, why: 'ESP-IDF measures task stacks in bytes (standard FreeRTOS ports use words). The high-water mark is minimum free space, so used = size − mark, about 1170 bytes here.' },
+        { t: 'A 3072-byte stack of which the task has used 1900 bytes at its deepest', why: 'The mark counts what was never touched, not what was used. Reading it the wrong way round leads to shrinking a stack that is nearly full.' },
+        { t: 'A stack of 3072 words (12 288 bytes) with 1900 words still free', why: 'That is the unit in upstream FreeRTOS on a 32-bit port. ESP-IDF\'s port takes the size in bytes; check the FreeRTOS page of its documentation.' },
       ], reveal: 'A common sizing rule: run every code path, including error paths and the longest log line, take the peak usage, and add a margin of a quarter to a half. Then enable stack overflow checking in menuconfig for development builds. Logging with long format strings is often the deepest call chain in a task, which is why `report_task` was given more.' },
     ] },
     { title: 'Make the watchdog fire on purpose', blocks: [
@@ -2217,34 +2217,34 @@ The falling edge on GPIO27 sets a bit in the GPIO interrupt status register. The
 No solution is given. The deliverable is the task table (name, priority, period, stack, what it blocks on), the worst-case measurements, and the explanation.`,
   quiz: [
     { kind: 'code', q: 'Why does the button ISR call `xSemaphoreGiveFromISR` and not `xSemaphoreGive`?', choices: [
-      { t: 'The task-level call assumes it runs in a task that may be blocked and rescheduled; in an ISR there is no such task, so only the non-blocking `FromISR` variant is safe', ok: true, why: 'The `FromISR` functions never block and hand back a flag instead of switching context themselves; the port then switches as the interrupt exits.' },
-      { t: 'The `FromISR` variant is faster, which matters in interrupts', why: 'Speed is a side effect. The reason is correctness: the ordinary call can corrupt scheduler state when used outside a task.' },
-      { t: 'A binary semaphore can only ever be given from an interrupt', why: 'Tasks give semaphores too. The rule is about which *function* is legal in which context.' },
+      { t: 'The task-level call may try to block the caller, and an ISR has no task to block', ok: true, why: 'The `FromISR` functions never block and hand back a flag instead of switching context themselves; the port then switches as the interrupt exits.' },
+      { t: 'The `FromISR` variant is faster, and speed is the only thing that matters in interrupts', why: 'Speed is a side effect. The reason is correctness: the ordinary call can corrupt scheduler state when used outside a task.' },
+      { t: 'A binary semaphore can only ever be given from an interrupt, never from a task', why: 'Tasks give semaphores too. The rule is about which *function* is legal in which context.' },
     ] },
     { kind: 'arch', q: 'A task that drives a motor every 5 ms and a task that updates a display every 500 ms. Which gets the higher priority, and why?', choices: [
-      { t: 'The motor task: its deadline is tighter, and it runs briefly then blocks, so the display task still gets the CPU', ok: true, why: 'Priority follows urgency. A short, frequent, well-behaved high-priority task costs the lower ones very little.' },
-      { t: 'The display task, because it does more work per run and needs more CPU', why: 'Giving the heavier task priority means the 5 ms deadline is missed whenever a redraw is in progress. Amount of work is not urgency.' },
-      { t: 'Equal priorities, so the scheduler shares time fairly', why: 'Round-robin among equals switches at tick boundaries. A 5 ms deadline cannot rely on waiting for a redraw to use up its time slice.' },
+      { t: 'The motor task: its deadline is tighter, and it runs briefly and then blocks', ok: true, why: 'Priority follows urgency, and the display task still gets the CPU between motor updates. A short, frequent, well-behaved high-priority task costs the lower ones very little.' },
+      { t: 'The display task, because it does more work per run and so needs more CPU time', why: 'Giving the heavier task priority means the 5 ms deadline is missed whenever a redraw is in progress. Amount of work is not urgency.' },
+      { t: 'Equal priorities, so the scheduler shares time fairly and both deadlines are met', why: 'Round-robin among equals switches at tick boundaries. A 5 ms deadline cannot rely on waiting for a redraw to use up its time slice.' },
     ] },
     { kind: 'concept', q: 'What does a mutex give you that a binary semaphore does not?', choices: [
-      { t: 'Ownership and priority inheritance: the holder is temporarily raised to the priority of the highest waiter', ok: true, why: 'That bounds how long a high-priority task can be kept waiting by a low-priority holder that is being pre-empted by medium-priority work.' },
-      { t: 'It can be given from an interrupt', why: 'That is the property of the semaphore. A mutex has an owner task, and an ISR is not a task, so mutexes must not be used from interrupts.' },
-      { t: 'It carries a data value to the receiver', why: 'Neither carries data. A queue does.' },
+      { t: 'An owner, and priority inheritance that raises the holder while a higher task waits', ok: true, why: 'That bounds how long a high-priority task can be kept waiting by a low-priority holder that is being pre-empted by medium-priority work.' },
+      { t: 'The ability to be given from an interrupt handler as well as from a task', why: 'That is the property of the semaphore. A mutex has an owner task, and an ISR is not a task, so mutexes must not be used from interrupts.' },
+      { t: 'A data value that is carried from the giver to the task that takes it', why: 'Neither carries data. A queue does.' },
     ] },
     { kind: 'code', q: 'A task created with a 4096-byte stack reports a high-water mark of 180. What should you conclude?', choices: [
-      { t: 'At its deepest it had only 180 bytes left; one deeper call path or a longer log line could overflow it, so the stack should be enlarged', ok: true, why: 'The mark is the minimum free space ever observed. 180 bytes of margin is less than a single formatted-print call can need.' },
-      { t: 'It uses only 180 bytes, so the stack can be reduced to about 512', why: 'That reads the number as usage. It is the opposite: the amount never used.' },
-      { t: 'The stack has already overflowed by 180 bytes', why: 'An overflow would show as a mark of zero and, with checking enabled, a panic. A positive mark means there was still room — just very little.' },
+      { t: 'At its deepest it had only 180 bytes left, so the stack should be enlarged', ok: true, why: 'The mark is the minimum free space ever observed; one deeper call path or a longer log line could overflow it. 180 bytes of margin is less than a single formatted-print call can need.' },
+      { t: 'It uses only 180 bytes at its deepest, so the stack can be cut to about 512', why: 'That reads the number as usage. It is the opposite: the amount never used.' },
+      { t: 'The stack has already overflowed by 180 bytes and memory below it is corrupted', why: 'An overflow would show as a mark of zero and, with checking enabled, a panic. A positive mark means there was still room — just very little.' },
     ] },
     { kind: 'arch', q: 'Why does `report_task` copy `s_stats` into a local variable and release the mutex before calling `ESP_LOGI`?', choices: [
-      { t: 'Logging is slow; holding the mutex across it would block the higher-priority processing task for milliseconds and let the queue fill', ok: true, why: 'The locked region should contain memory operations only. The copy gives the reporter a consistent snapshot to print at leisure.' },
-      { t: '`ESP_LOGI` cannot be called while any mutex is held', why: 'It can; nothing forbids it. The problem is how long the lock would be held and who would be waiting.' },
-      { t: 'To save stack space in the report task', why: 'The copy costs stack space. It is paid for the sake of a short critical section.' },
+      { t: 'Logging is slow, and holding the mutex across it would block the processing task', ok: true, why: 'The processing task would wait for milliseconds while its queue filled. The locked region should contain memory operations only. The copy gives the reporter a consistent snapshot to print at leisure.' },
+      { t: '`ESP_LOGI` must not be called while any mutex is held, or the logging lock deadlocks', why: 'It can; nothing forbids it, and the two locks are never taken in opposite orders here. The problem is how long the lock would be held and who would be waiting.' },
+      { t: 'To save stack space in the report task, since the copy replaces the shared struct', why: 'The copy is an extra structure on the stack, so it costs stack space. It is paid for the sake of a short critical section.' },
     ] },
     { kind: 'concept', q: 'The sensor task sends to a full queue with a timeout of 0 and counts the failure. What is the reasoning behind not waiting for space?', choices: [
-      { t: 'Waiting would make the sampling period depend on the consumer; dropping keeps the timing and makes the overload measurable', ok: true, why: 'A periodic producer that blocks on its consumer inherits the consumer\'s delays. A drop counter turns a hidden timing fault into a visible number.' },
-      { t: 'A timeout of 0 makes the queue lossless', why: 'It does the opposite: it allows loss, deliberately, and reports it through the return value.' },
-      { t: 'FreeRTOS does not allow a high-priority task to block on a queue', why: 'Any task may block on a queue. The choice here is a design decision about what should give way under overload.' },
+      { t: 'Waiting would tie the sampling period to the consumer; dropping keeps the timing', ok: true, why: 'A periodic producer that blocks on its consumer inherits the consumer\'s delays. Counting the failure matters as much as dropping: a drop counter turns a hidden timing fault into a visible number.' },
+      { t: 'A timeout of 0 makes the queue lossless, because the send is retried on the next tick', why: 'Nothing retries the send. A timeout of 0 does the opposite: it allows loss, deliberately, and reports it through the return value.' },
+      { t: 'FreeRTOS does not allow a high-priority task to block on a queue a lower one reads', why: 'Any task may block on a queue. The choice here is a design decision about what should give way under overload.' },
     ] },
   ],
 };
@@ -2449,9 +2449,9 @@ Fill in a task table:
 | display | low | \`s_view_ui\` | 200 ms | … | display |
 | network | lowest | \`s_view_net\`, timeouts | minutes | … | Wi-Fi, HTTP |`,
       { t: 'predict', q: 'In the skeleton the controller sends the view to the display with `xQueueOverwrite` on a queue of length 1, not `xQueueSend` on a queue of length 8. Why?', choices: [
-        { t: 'The display only needs the newest state; overwriting never blocks the controller and never shows a backlog of stale views', ok: true, why: 'With a normal queue, a slow display would either block the controller when the queue fills or fall seconds behind. A mailbox that holds only the latest value suits "show the current state".' },
-        { t: 'Because a length-1 queue uses less RAM', why: 'It does, slightly, but that is not the reason. Think about what happens to the alarm logic when the display stops reading.' },
-        { t: 'Because `xQueueSend` cannot carry a struct', why: 'Any queue carries items of whatever size it was created with, structs included. The two calls differ in what they do when the queue is full.' },
+        { t: 'The display needs only the newest state, and overwriting never blocks the controller', ok: true, why: 'With a normal queue, a slow display would either block the controller when the queue fills or fall seconds behind. A mailbox that holds only the latest value suits "show the current state".' },
+        { t: 'Because a length-1 queue uses less RAM than one holding eight copies of the view', why: 'It does, slightly, but that is not the reason. Think about what happens to the alarm logic when the display stops reading.' },
+        { t: 'Because `xQueueSend` copies only scalar items and cannot carry a struct like `view_t`', why: 'Any queue carries items of whatever size it was created with, structs included. The two calls differ in what they do when the queue is full.' },
       ], reveal: 'The same reasoning does **not** apply to `s_events`: button presses and samples are events that must each be processed once, so that queue is a normal one, and the sender counts failures.' },
     ] },
     { title: 'Write and test the state machine on your PC', blocks: [
@@ -2889,9 +2889,9 @@ No solution is given. The deliverable is the updated design document, the soak-t
   ],
   quiz: [
     { kind: 'arch', q: 'A sensor driver task and a display driver task both use the same I2C bus. Which arrangement is sound?', choices: [
-      { t: 'One mutex taken around every complete transaction by both, or a single bus-owner task serving requests from a queue', ok: true, why: 'Both give the bus one owner at a time for the whole of a logical transaction, so transfers cannot interleave.' },
+      { t: 'One mutex taken around every complete transaction, or a single bus-owner task with a queue', ok: true, why: 'Both give the bus one owner at a time for the whole of a logical transaction, so transfers cannot interleave.' },
       { t: 'Give the sensor task a higher priority so that its transfers always finish first', why: 'Higher priority is precisely what lets it interrupt the display task in the middle of a transfer. Priority orders tasks; it does not make a sequence of bus operations indivisible.' },
-      { t: 'Nothing special: I2C addresses keep the two devices apart', why: 'Addresses select which device listens. They do not stop one controller-side task from starting a new transaction inside another task\'s unfinished one.' },
+      { t: 'Nothing special: the I2C addresses already keep the two devices\' traffic apart', why: 'Addresses select which device listens. They do not stop one controller-side task from starting a new transaction inside another task\'s unfinished one.' },
     ] },
     { kind: 'circuit', q: 'On an original ESP32 that uses Wi-Fi, which pin assignment is acceptable?', choices: [
       { t: 'An analog sensor on GPIO34', ok: true, why: 'GPIO34 is an ADC1 input, which is unaffected by Wi-Fi, and an analog sensor needs only an input, which is all GPIO34 can be.' },
@@ -2900,24 +2900,24 @@ No solution is given. The deliverable is the updated design document, the soak-t
       { t: 'A push button to ground on GPIO0', why: 'GPIO0 is sampled at reset to choose the boot mode. A button holding it low during reset stops the application from starting.' },
     ] },
     { kind: 'concept', q: 'The alarm threshold is 30.0 °C with 1.0 °C hysteresis and readings carry ±0.3 °C of noise. Why does the alarm not chatter when the true temperature sits at 30.0 °C?', choices: [
-      { t: 'Once on, it stays on until a reading falls below 29.0 °C, and noise of ±0.3 °C cannot carry a 30.0 °C value that far', ok: true, why: 'Two separate trip points mean the noise would have to span the gap between them to cause repeated transitions.' },
-      { t: 'Because hysteresis averages the readings', why: 'No averaging takes place. The readings are compared as they are, but against two different levels depending on the current state.' },
-      { t: 'Because the alarm is only evaluated once per minute', why: 'It is evaluated on every sample. What prevents chatter is the gap between the on and off levels.' },
+      { t: 'Once on, it stays on until a reading falls below 29.0 °C, out of the noise\'s reach', ok: true, why: 'Noise of ±0.3 °C takes a 30.0 °C value no lower than 29.7 °C. Two separate trip points mean the noise would have to span the gap between them to cause repeated transitions.' },
+      { t: 'Because hysteresis averages the last few readings, which cancels the ±0.3 °C noise', why: 'No averaging takes place. The readings are compared as they are, but against two different levels depending on the current state.' },
+      { t: 'Because the alarm is evaluated only once per minute, so brief noise is never seen', why: 'It is evaluated on every sample. What prevents chatter is the gap between the on and off levels.' },
     ] },
     { kind: 'arch', q: 'Why must the controller task never perform an HTTP request itself?', choices: [
-      { t: 'The request can block for seconds when the network is down, and during that time the controller would not process sensor or button events', ok: true, why: 'The task that owns the alarm behaviour must have a response time that does not depend on anything outside the device.' },
-      { t: 'HTTP functions can only be called from the main task', why: 'They can be called from any task with enough stack. The issue is what the calling task fails to do while it waits.' },
-      { t: 'It would use too much flash', why: 'The HTTP code takes the same flash whichever task calls it. The concern is time, not size.' },
+      { t: 'It can block for seconds when the network is down, stalling sensor and button events', ok: true, why: 'The task that owns the alarm behaviour must have a response time that does not depend on anything outside the device.' },
+      { t: 'HTTP client functions may only be called from the main task that started Wi-Fi', why: 'They can be called from any task with enough stack. The issue is what the calling task fails to do while it waits.' },
+      { t: 'The HTTP code would add too much flash to the task that holds the state machine', why: 'The HTTP code takes the same flash whichever task calls it. The concern is time, not size.' },
     ] },
     { kind: 'security', q: 'Settings are loaded from NVS at start-up. Why validate them even though only your own firmware writes them?', choices: [
-      { t: 'Flash can be blank, partly written, written by an older layout, or modified by someone with physical access; unvalidated values then drive the device\'s behaviour', ok: true, why: 'Storage is an input like any other. Validation protects against accidents and against tampering with the same few lines.' },
-      { t: 'NVS returns random data on every read unless the values are validated', why: 'NVS returns what was stored. The danger is that what was stored may not be what the current firmware expects.' },
-      { t: 'Validation is needed only if NVS encryption is enabled', why: 'Encryption hides contents from a reader; it does not make an old layout or an out-of-range value meaningful to new firmware.' },
+      { t: 'Stored data can be blank, half-written, from an older layout, or tampered with', ok: true, why: 'Storage is an input like any other, and unvalidated values would drive the device\'s behaviour. Validation protects against accidents and against tampering with the same few lines.' },
+      { t: 'NVS returns random data on every read unless the values are validated first', why: 'NVS returns what was stored. The danger is that what was stored may not be what the current firmware expects.' },
+      { t: 'Validation is needed only if NVS encryption is enabled, to detect a wrong key', why: 'Encryption hides contents from a reader; it does not make an old layout or an out-of-range value meaningful to new firmware.' },
     ] },
     { kind: 'concept', q: 'Why is the fake-sensor stage worth doing before the real sensor is connected?', choices: [
-      { t: 'It proves the tasks, queues and state machine with fully controlled input, so that later faults can be attributed to the newly added hardware', ok: true, why: 'Integrating one unknown at a time keeps the search space for any fault small, and the fake can produce cases the real sensor cannot produce on demand.' },
-      { t: 'Real sensors must warm up for several hours before use', why: 'Some sensors do need settling time, but that is not why a fake is used. The reason is control over the input and isolation of faults.' },
-      { t: 'The ESP32 cannot run I2C and FreeRTOS tasks until the logic has been tested', why: 'There is no such restriction. The order is an engineering choice to make faults easy to locate.' },
+      { t: 'It proves tasks, queues and state machine with controlled input before hardware is added', ok: true, why: 'Later faults can then be attributed to the newly added hardware. Integrating one unknown at a time keeps the search space for any fault small, and the fake can produce cases the real sensor cannot produce on demand.' },
+      { t: 'Real sensors must warm up for several hours before their readings can be trusted at all', why: 'Some sensors do need settling time, but that is not why a fake is used. The reason is control over the input and isolation of faults.' },
+      { t: 'The ESP32 cannot run I2C and FreeRTOS tasks together until the logic has been tested', why: 'There is no such restriction. The order is an engineering choice to make faults easy to locate.' },
     ] },
   ],
 };

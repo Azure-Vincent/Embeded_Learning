@@ -134,7 +134,7 @@ static void gpio_init(uint32_t pin, gpio_dir_t dir, bool pullup)
 }
 ` + step1Main,
   solution: HEAD + GPIO_TYPES + GPIO_INIT + step1Main,
-  tests: [{ name: 'direction and pull-up bits for each pin', stdout: 'DIR=0028 PULLUP=0004\n', regs: { GPIO_DIR: 0x28, GPIO_PULLUP: 0x04 } }],
+  tests: [{ name: 'direction and pull-up bits for each pin', stdout: 'DIR=0028 PULLUP=0004\n', regs: { GPIO_DIR: 0x28, GPIO_PULLUP: 0x04 }, noWarning: ['bits 16-31', 'write-only'] }],
   hints: [
     'For each of the two registers, list the cases in which the pin\'s bit must end up 1 and the cases in which it must end up 0. Does your code write the bit in every case, including when a pin is configured a second time?',
     'Build `mask = 1u << pin` once, after rejecting `pin >= GPIO_PIN_COUNT`.',
@@ -186,8 +186,8 @@ static bool gpio_read(uint32_t pin)
 ` + step2Main,
   solution: HEAD + GPIO_TYPES + GPIO_INIT + GPIO_RW + step2Main,
   tests: [
-    { name: 'button held down: LED follows', gpioIn: { value: 0x0000, mask: 0x0004 }, stdout: 'OUT=0001\npressed=1 led=1 pin0=1\n', regs: { GPIO_OUT: 0x21 } },
-    { name: 'button released: pull-up reads high, LED off', gpioIn: { value: 0x0000, mask: 0x0000 }, stdout: 'OUT=0001\npressed=0 led=0 pin0=1\n', regs: { GPIO_OUT: 0x01 } },
+    { name: 'button held down: LED follows', gpioIn: { value: 0x0000, mask: 0x0004 }, stdout: 'OUT=0001\npressed=1 led=1 pin0=1\n', regs: { GPIO_OUT: 0x21 }, noWarning: ['bits 16-31', 'write-only'] },
+    { name: 'button released: pull-up reads high, LED off', gpioIn: { value: 0x0000, mask: 0x0000 }, stdout: 'OUT=0001\npressed=0 led=0 pin0=1\n', regs: { GPIO_OUT: 0x01 }, noWarning: ['bits 16-31', 'write-only'] },
   ],
   hints: [
     'Check the access column of the register table for `GPIO_SET`, `GPIO_CLR` and `GPIO_IN`. Which assignment operator makes sense for a write-only register, and which register tells you the level actually on a pin?',
@@ -234,7 +234,7 @@ static void uart_putc(char c)
 }
 ` + step3Main,
   solution: HEAD + UART_BITS + UART_INIT_PUTC + step3Main,
-  tests: [{ name: 'every byte is transmitted', uartTx: 'Hello\n', stdout: 'BAUD=104 CTRL=1\n', regs: { UART_BAUD: 104, UART_CTRL: 0x1 } }],
+  tests: [{ name: 'every byte is transmitted', uartTx: 'Hello\n', stdout: 'BAUD=104 CTRL=1\n', regs: { UART_BAUD: 104, UART_CTRL: 0x1 }, noWarning: ['bits 16-31', 'write-only'] }],
   hints: [
     'Evaluate the right-hand side of the assignment in `uart_init` by hand, starting from the reset value 0. Then read the simulator note under the failed test: it names the condition under which a written byte is thrown away.',
     '`UART_CTRL & ~UART_CTRL_EN` *clears* the enable bit. Transmission is dropped while it is 0. Set it with `|=`.',
@@ -283,7 +283,7 @@ static void uart_put_hex8(uint8_t value)
 }
 ` + step4Main,
   solution: HEAD + GPIO_TYPES + UART_BITS + GPIO_INIT + GPIO_RW + UART_INIT_PUTC + UART_PUTS_HEX + step4Main,
-  tests: [{ name: 'strings and hex bytes', uartTx: 'boot ok\nOUT=0x20 id=0x0A\n' }],
+  tests: [{ name: 'strings and hex bytes', uartTx: 'boot ok\nOUT=0x20 id=0x0A\n', noWarning: ['bits 16-31', 'write-only'] }],
   hints: [
     'What marks the end of a C string, and should that byte be transmitted? For the hex function: how many bits does one hex digit stand for, and which of the two digits must be sent first?',
     '`uart_puts` walks the string with the pointer until `*s` is `\'\\0\'`, calling `uart_putc(*s)` and then `s++`. The high digit is `(value >> 4) & 0xF`, the low digit is `value & 0xF`.',
@@ -375,10 +375,10 @@ static void command_loop(void)
 }
 ` + step5Main,
   tests: [
-    { name: 'LED on, button held, quit', uartRx: '1bq', gpioIn: { value: 0x0000, mask: 0x0004 }, uartTx: 'ready\nok\npressed\nbye\n', regs: { GPIO_OUT: 0x20 } },
-    { name: 'on, toggle, off, toggle, unknown, button released', uartRx: '1t0txbq', gpioIn: { value: 0x0000, mask: 0x0000 }, uartTx: 'ready\nok\nok\nok\nok\nerr\nreleased\nbye\n', regs: { GPIO_OUT: 0x20 } },
-    { name: 'quit immediately leaves the LED off', uartRx: 'q', uartTx: 'ready\nbye\n', regs: { GPIO_OUT: 0x00 } },
-    { name: 'slow typist: on, then toggle back off, with long pauses between keys', uartRx: { data: '1tq', interval: 400, start: 600 }, uartTx: 'ready\nok\nok\nbye\n', regs: { GPIO_OUT: 0x00 } },
+    { name: 'LED on, button held, quit', uartRx: '1bq', gpioIn: { value: 0x0000, mask: 0x0004 }, uartTx: 'ready\nok\npressed\nbye\n', regs: { GPIO_OUT: 0x20 }, noWarning: ['bits 16-31', 'write-only'] },
+    { name: 'on, toggle, off, toggle, unknown, button released', uartRx: '1t0txbq', gpioIn: { value: 0x0000, mask: 0x0000 }, uartTx: 'ready\nok\nok\nok\nok\nerr\nreleased\nbye\n', regs: { GPIO_OUT: 0x20 }, noWarning: ['bits 16-31', 'write-only'] },
+    { name: 'quit immediately leaves the LED off', uartRx: 'q', uartTx: 'ready\nbye\n', regs: { GPIO_OUT: 0x00 }, noWarning: ['bits 16-31', 'write-only'] },
+    { name: 'slow typist: on, then toggle back off, with long pauses between keys', uartRx: { data: '1tq', interval: 400, start: 600 }, uartTx: 'ready\nok\nok\nbye\n', regs: { GPIO_OUT: 0x00 }, noWarning: ['bits 16-31', 'write-only'] },
   ],
   hints: [
     'The tests type the commands slowly, so `uart_getc` is often called when nothing has arrived yet. What does `UART_DATA` return then, and which status bit tells you a byte is really there?',

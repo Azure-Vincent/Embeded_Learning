@@ -52,7 +52,8 @@ All registers are 32 bits wide. The header below is predefined; exercises can al
 | `0x08` | `TIM_COUNT` | RO | current count; decrements once per simulated tick while enabled |
 | `0x0C` | `TIM_STATUS` | RW | bit 0 `EXPIRED`; write 1 to clear |
 
-One simulated tick elapses per executed statement, so polling loops make progress.
+One simulated tick elapses per executed statement (and per loop iteration), so polling loops make progress. A
+read-modify-write of an object in memory takes a second tick between its load and its store (see Interrupts).
 
 ### ADC — base `0x4000_3000` (12-bit)
 | Offset | Name | Access | Meaning |
@@ -63,9 +64,30 @@ One simulated tick elapses per executed statement, so polling loops make progres
 
 ### Interrupts
 `void __attribute__((interrupt)) name(void)` or any function registered with `irq_attach(int irq, void (*fn)(void))`
-runs between statements when its source is pending and enabled (`IRQ_UART_RX` = 0, `IRQ_TIMER` = 1).
-`irq_disable()` / `irq_enable()` mask and unmask globally. This models *preemption between statements*, which is
-enough to demonstrate lost updates on shared variables; it is not cycle-accurate.
+runs when its source is pending and enabled (`IRQ_UART_RX` = 0, `IRQ_TIMER` = 1).
+`irq_disable()` / `irq_enable()` mask and unmask globally; interrupts do not nest.
+
+An interrupt can be taken at two kinds of point:
+- **between statements**, and
+- **inside a read-modify-write statement, between the load and the store.** This applies to `++`, `--`, every compound
+  assignment (`|=`, `&=`, `^=`, `+=`, …) and any plain assignment whose right-hand side reads the object it writes
+  (`x = x + 1`, `reg = reg | bit`, `*p = *p + 1`), whenever the object lives in memory: a global, a `static`, a
+  peripheral register, or anything reached through a pointer. Such a statement costs two ticks instead of one (one at
+  the start, one between load and store). A plain local variable is exempt, because no handler can name it.
+
+So `counter++` in main code really does lose updates to a handler that also changes `counter`, and `GPIO_OUT |= bit`
+really can undo a handler's change to another pin, exactly as load / modify / store does on hardware. A single store
+(`GPIO_SET = bit`, `flag = 1`) cannot be split. Wrapping the statement in `irq_disable()` / `irq_enable()` makes it atomic.
+
+Flags are level-triggered: a handler must clear its source (`TIM_STATUS = TIM_EXPIRED`, or read `UART_DATA`) or it is
+entered again as soon as it returns. Dispatch has a latency of 0–3 ticks taken from a fixed pseudo-random sequence, so a
+timer period that happens to be a multiple of the main loop length does not always interrupt at the same place. Runs are
+fully reproducible. The model is not cycle-accurate: other expressions, such as a function call's arguments or a
+condition, are not split.
+
+The simulator also warns about two register mistakes that happen to work on Bench-MCU: a read-modify-write of the
+write-1-to-clear `TIM_STATUS` (`TIM_STATUS |= …`), and reading a write-only register (`GPIO_SET |= …`). A c-lab test can
+turn a warning into a failure with `noWarning: 'write-only'` (any substring of the message, or a list).
 
 ## Predefined header (always included)
 ```c
@@ -87,29 +109,13 @@ Library: `printf` (`%d %i %u %x %X %c %s %p %%`, with width, zero-pad and `l`/`l
 `memcpy`, `memmove`, `memset`, `memcmp`, `strlen`, `strcpy`, `strncpy`, `strcmp`, `strncmp`, `malloc`, `free`, `abs`,
 `exit`. Floating point is not supported.
 
-Undefined behaviour is surfaced where it teaches something: out-of-bounds writes really corrupt neighbouring memory,
-use-after-free reads stale data and is flagged, signed overflow wraps and is flagged with a warning, uninitialised
-locals contain leftover stack bytes.
-
-## Implementation details authors rely on
-- **Stack layout.** Locals are placed in declaration order from high to low addresses, so an array overflows into
-  variables declared *before* it, then the saved frame pointer, then the return address.
-- **UART.** TX is busy for 4 ticks after a write. RX delivers one byte every 16 ticks into a 16-byte FIFO, whether or
-  not `ENABLE` is set. `RX_OVERRUN` clears when `UART_DATA` is read.
-- **ADC.** A conversion takes 3 ticks. Reading `ADC_DATA` early returns the previous value with a warning.
-- **Timer.** Writing `TIM_LOAD` also loads `TIM_COUNT`.
-- **Interrupts.** Flags are level-triggered: a handler that does not clear its flag re-enters and starves `main`.
-  `__attribute__((interrupt))` with no argument binds by function name (`uart`/`rx` → UART, `tim`/`tick` → timer,
-  otherwise both); `interrupt(IRQ_TIMER)` is also accepted. Dispatch has a reproducible pseudo-random latency of 0–3
-  ticks, so that lost-update bugs cannot hide behind a timer period that happens to align with the loop length.
-- **Formatting.** `%p` prints `0x%08x`.
-- **Limits.** 1000 nested calls (reported as stack overflow), 256 KiB of output, first compile error only.
-- **Rejected with a compile error.** Floating point, bit-fields, `goto`, variable-length arrays, compound literals,
-  user-defined variadic functions, and `case` labels nested inside inner blocks.
-
-## Test objects (`runTest`) beyond the basic contract
-- A runtime fault fails a test unless the test sets `fault: true` or `fault: 'substring'`.
-- Extra expectations: `uartTxIncludes`, `gpioTrace`, `mem[].offset`, and `mem` values given as arrays or strings.
-- Extra inputs: `gpioIn` as `{value, mask}` or `[[tick, value], …]`; `uartRx` as `{data, interval, start}`; `adc` per channel.
-- `ticks` runs exactly that many ticks and stops without error; if `main` returns early, interrupts keep running
-  until the budget ends.
+Undefined behaviour is surfaced where it teaches something:
+- out-of-bounds writes really corrupt neighbouring memory;
+- use-after-free reads stale data and is flagged with a warning;
+- signed overflow wraps and is flagged with a warning (so does a left shift that overflows a signed `int`, such as `1 << 31`);
+- a shift by a negative count, or by a count greater than or equal to the width of the promoted left operand
+  (`1u << 32`, `x >> n` with `n == 32`, a 64-bit value shifted by 64), **stops the program** with
+  "undefined behaviour: shift count N >= width W" and the line. Real CPUs disagree about the result, so no value is invented;
+- division by zero stops the program;
+- uninitialised locals contain leftover stack bytes;
+- writing bits 16–31 of a GPIO register (a pin number out of range) is ignored with a warning.

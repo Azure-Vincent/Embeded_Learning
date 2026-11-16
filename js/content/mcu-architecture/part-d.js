@@ -77,7 +77,8 @@ Large local arrays, recursion, and \`printf\`-family functions (hundreds of byte
 
 ### An overflow, address by address
 
-An invented but typical layout on a 32 KB part with SRAM at \`0x2020_0000\`: the linker reserves the top 256 bytes
+An invented but typical layout on a 32 KB part with SRAM linked at \`0x2020_0000\` (the view of its RAM that TI's
+MSPM0L2228 linker file uses): the linker reserves the top 256 bytes
 for the stack (\`0x2020_7F00\`–\`0x2020_7FFF\`, initial SP \`0x2020_8000\`), and the last variable in \`.bss\`, a
 \`uint32_t baud_rate\` holding 115200 (\`0x0001_C200\`), sits directly below it at \`0x2020_7EFC\`.
 
@@ -693,7 +694,8 @@ MEPC, MCAUSE, MTVAL and the ABI-named registers), in the debugger, and in any as
 **MAX78000.** Besides the Cortex-M4 there is a RISC-V core. It does not start by itself: the Arm core must set
 it up and hand over, the two share peripherals and coordinate through inter-core semaphores, and it is debugged
 through a separate JTAG port. The MSDK device header has a separate interrupt map for it. Which RV32 variant and
-extensions it implements is a user-guide item; look it up before writing code for it.`,
+extensions it implements is a user-guide item that this course has not verified (Analog Devices' documents could
+not be read when the facts were checked); look it up before writing code for it.`,
 
       { t: 'predict',
         q: 'A RISC-V trap handler written in C is declared as an ordinary function (no interrupt attribute, no assembly stub) and installed directly in `mtvec`. It increments a counter and returns. What happens?',

@@ -14,7 +14,7 @@ const labs = [
       'Provoke a fault deliberately and trace it to a source line',
     ],
     hardware: [
-      'One development board you own with a debug connection: an ESP32-S3 or ESP32-C3 board with its USB Serial/JTAG port, a MAX78000FTHR (on-board DAPLink), an MSPM0L2228 board with its debug probe, or another Cortex-M board with an on-board probe',
+      'One development board you own with a debug connection: an ESP32-S3 or ESP32-C3 board with its USB Serial/JTAG port, a MAX78000FTHR (on-board DAPLink), an MSPM0L2228 board (the LP-MSPM0L2228 LaunchPad has an XDS110 on board; the 2026 eCTF MSP-LITO-L2228 board, which is not sold, needs an external XDS110 on eight jumper wires), or another Cortex-M board with an on-board probe',
       'A data-capable USB cable',
       'Optional: a USB-to-UART adapter if the board\'s console is not on the debug USB port',
       'No board? Steps 1–3 need none, and steps 4–9 can be followed in the simulated session',
@@ -42,7 +42,7 @@ Rehearsal comes first because a debugger is a poor place to learn a debugger. In
       |
      USB
       |
-  [ probe: on-board DAPLink / XDS110 / built-in USB Serial/JTAG ]
+  [ probe: on-board DAPLink / on-board or external XDS110 / built-in USB Serial/JTAG ]
       |  SWD or JTAG, GND, (reset)
   [ target MCU ]----UART or USB CDC----> serial monitor (Terminal 3)`, caption: 'Three terminals: OpenOCD, GDB, and the serial console. Keep all three visible.' },
       `| Board | Debug connection | OpenOCD start (see the OpenOCD lesson for details) |
@@ -50,7 +50,8 @@ Rehearsal comes first because a debugger is a poor place to learn a debugger. In
 | ESP32-S3 / ESP32-C3 | USB cable to the chip's own USB pins | \`idf.py openocd\` |
 | Original ESP32 | External JTAG probe on GPIO12–15 | \`idf.py openocd --openocd-commands "-f <your board or interface+target files>"\` |
 | MAX78000FTHR | On-board MAX32625PICO (DAPLink) | MSDK OpenOCD with \`interface/cmsis-dap.cfg\` and \`target/max78000.cfg\` |
-| MSPM0L2228 board with XDS110 | On-board or external XDS110 | Upstream OpenOCD with \`board/ti/mspm0-launchpad.cfg\` |`,
+| LP-MSPM0L2228 LaunchPad | On-board XDS110 | Upstream OpenOCD with \`board/ti/mspm0-launchpad.cfg\` |
+| MSP-LITO-L2228 (2026 eCTF board) | External XDS110, eight female-to-female jumper wires matched to the silkscreen labels | Upstream OpenOCD with \`interface/xds110.cfg\` and \`target/ti/mspm0.cfg\`, as the 2026 rules give it; the rules say a recent pre-release build is needed |`,
     ],
     steps: [
       { title: 'Rehearse the tour', md: `Open the simulated session. Its flash starts erased at \`0x0800_0000\`. Before typing anything, write down what you expect \`pc\` and \`msp\` to be after \`monitor reset halt\` on an erased chip, and what they will be once a program is loaded and the chip is reset again. Then follow the tool's ten steps (connect, reset, load, reset again, \`break checksum\`, \`continue\`, \`bt\`, \`info args\`, \`x/6xb data\`, \`finish\`) and answer its three questions.\n\nThen explore on your own: \`break main\`, restart with \`monitor reset halt\` and \`continue\`, \`next\` twice, \`step\` into the call, \`info locals\`, \`x/8xw $sp\`, \`x/2xw 0x08000000\`.\n\nYou should be able to say, for the last command, which word is the initial stack pointer and which is the reset vector, and why the second is odd.`,
@@ -79,8 +80,12 @@ idf.py openocd
 # MAX78000FTHR (MSDK environment)
 openocd -s "$MAXIM_PATH/Tools/OpenOCD/scripts" -f interface/cmsis-dap.cfg -f target/max78000.cfg
 
-# MSPM0L2228 with XDS110 (upstream OpenOCD with the mspm0 driver)
-openocd -f board/ti/mspm0-launchpad.cfg` },
+# MSPM0L2228 LaunchPad, on-board XDS110 (upstream OpenOCD with the mspm0 driver)
+openocd -f board/ti/mspm0-launchpad.cfg
+
+# MSP-LITO-L2228 (2026 eCTF board), external XDS110: the form given in the 2026 rules.
+# The rules document OpenOCD for debugging only; flashing is UniFlash (bootloader) then the eCTF tools.
+openocd -f interface/xds110.cfg -f target/ti/mspm0.cfg` },
       { title: 'Connect GDB and verify the image', md: `In a second terminal start the matching GDB with your ELF and connect. Reset and halt. Then check that the ELF and the flash agree.\n\nYou should see each loadable section reported as "matched" by \`compare-sections\`. If any reports "MIS-MATCHED", stop: reflash from this exact ELF.`,
         lang: 'text', status: 'reviewed', code: String.raw`$ arm-none-eabi-gdb build/hello.elf          # or: idf.py gdb   (its generated init file connects, resets, halts and runs to app_main)
 (gdb) target extended-remote :3333

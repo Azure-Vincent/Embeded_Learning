@@ -477,6 +477,19 @@ test('a read-modify-write of a memory object costs two ticks, of a local one', (
   assert.equal(steps('global++;') - steps('local++;'), 1);
   assert.equal(steps('global = global + 1;') - steps('global = local + 1;'), 1);
 });
+test('register misuse that happens to work is warned about, and noWarning turns it into a test failure', () => {
+  const w1c = main('TIM_LOAD = 5; TIM_CTRL = 1; while (!(TIM_STATUS & 1)) { } TIM_STATUS |= TIM_EXPIRED; printf("%u", TIM_STATUS);');
+  assert.equal(run(w1c).stdout, '0'); assert.ok(hasWarn(run(w1c), /write-1-to-clear/));
+  assert.ok(hasWarn(run(main('TIM_STATUS = TIM_STATUS | 1u;')), /write-1-to-clear/));
+  assert.deepEqual(run(main('TIM_STATUS = TIM_EXPIRED;')).warnings, []);
+  assert.ok(hasWarn(run(main('unsigned pin = 16; GPIO_DIR |= 1u << pin;')), /bits 16-31/));
+  assert.deepEqual(run(main('GPIO_DIR &= ~(1u << 3); GPIO_CLR = 0xFFFFFFFFu; GPIO_DIR |= 1u << 15;')).warnings, []);
+  assert.equal(runTest(w1c, { stdout: '0' }).pass, true);
+  const t = runTest(w1c, { stdout: '0', noWarning: ['write-only', 'write-1-to-clear'] });
+  assert.equal(t.pass, false); assert.match(t.message, /the simulator flagged a problem on line 6: TIM_STATUS is write-1-to-clear/);
+  assert.equal(runTest(main('GPIO_DIR = 1; GPIO_SET |= 1u;'), { regs: { GPIO_OUT: 1 }, noWarning: 'write-only' }).pass, false);
+  assert.equal(runTest(main('GPIO_DIR = 1; GPIO_SET = 1u;'), { regs: { GPIO_OUT: 1 }, noWarning: 'write-only' }).pass, true);
+});
 test('an interrupt whose flag is never cleared starves main', () => {
   const pre = 'volatile int n = 0;\nvoid timer_isr(void) { n++; }';
   const r = run(main('irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 3; TIM_CTRL = TIM_ENABLE | TIM_IRQ_EN; while (n < 1000000) { } printf("done");', pre), { maxSteps: 20000 });

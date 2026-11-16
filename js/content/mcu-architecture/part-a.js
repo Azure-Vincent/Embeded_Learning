@@ -649,8 +649,8 @@ bits read 1 (\`0xFF\`). **Program** adds charge to selected cells, turning 1 int
 into 1. So:
 
 - To change a byte from \`0x0F\` to \`0xF0\` you must erase the whole block containing it and rewrite everything else in that block.
-- The erase unit is large. MAX78000: 8 KB pages (\`0x2000\`). The MSPM0 code in the 2026 eCTF reference design uses
-  1 KB flash pages. Typical SPI flash on an ESP32 module: 4 KB sectors.
+- The erase unit is large. MAX78000: 8 KB pages (\`0x2000\`). MSPM0L2228: 1 KB sectors (datasheet SLASF94A, section 8.10; the 2026
+  eCTF reference design uses the same 1 KB page constant). Typical SPI flash on an ESP32 module: 4 KB sectors.
 - Erase is slow (milliseconds to hundreds of milliseconds). Losing power in the middle leaves a
   block in an undefined state.
 - Each erase damages the cells slightly. **Endurance** is specified in the datasheet as a minimum number of
@@ -690,7 +690,7 @@ An **eFuse** bit starts at 0 and can be burned to 1 once. There is no erase. Chi
 change or be forged: the ESP32 keeps its flash-encryption key, secure-boot key digest and the counters that enable
 those features in eFuses, with further fuses that block software from reading the key blocks back. The MSPM0 family
 keeps boot configuration (debug access policy, bootloader options, write protection) in a separate flash region called
-NONMAIN at \`0x41C0_0000\`; it is flash rather than fuses, but can be write-protected so that it behaves as permanent.`,
+NONMAIN at \`0x41C0_0000\`; it is flash rather than fuses, but can be write-protected. How permanent that is depends on a second setting: the TRM (SLAU847F, section 1.4.2.3) says an SWD mass erase or factory reset overrides static write protection unless those commands are themselves password-protected or disabled.`,
 
       { t: 'widget', name: 'memory-map', props: { platform: 'generic' }, title: 'A generic MCU address space',
         caption: 'For each region, say whether a write there is a plain store, an erase/program sequence, or impossible.' },

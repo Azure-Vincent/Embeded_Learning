@@ -1,286 +1,403 @@
 // eCTF platforms track, lessons 4-6: MSPM0L2228 (eCTF 2026), cross-platform comparison, reading competition docs.
-// Every hardware / tooling / year statement is taken from docs/FACTS.md. Nothing here was run on hardware.
+// Every hardware / tooling / year statement is taken from docs/FACTS.md (round 2) or from the primary document cited
+// next to it (TI datasheet SLASF94A, TRM SLAU847F, the 2026 rules pages and reference repository). Nothing was run on hardware.
 import { S, NOT_LOADED as N, src } from './src.js';
 
 const mspm0 = {
   id: 'ectf-plat-mspm0',
   title: 'Texas Instruments MSPM0L2228 (eCTF 2026)',
-  minutes: 55,
-  summary: 'A Cortex-M0+ whose RAM starts at 0x20200000, built with TI Arm Clang in Docker. Read the memory map before you port a single line.',
+  minutes: 65,
+  summary: 'A Cortex-M0+ with one 32 KB RAM visible at three addresses, built with TI Arm Clang in Docker and loaded through a MITRE bootloader. Read the memory map before you port a single line.',
   skills: ['ectf-plat-mspm0-map'],
   blocks: [
-    `## The problem: a HardFault before main
+    `## The problem: two engineers, two RAM addresses, both sure
 
-You have a tidy bare-metal project from the MAX78000: startup code, a linker script, a UART driver behind a small interface. For eCTF 2026 you change the compiler flags to Cortex-M0+, swap the UART driver, keep the linker script's RAM line — \`0x20000000\`, as on every Cortex-M part you have used — and flash it. The processor faults before \`main\` is reached.
+First week of eCTF 2026. One teammate reviews the reference linker script and flags a "typo": SRAM origin \`0x20200000\`. Every Cortex-M part she has used has RAM at \`0x20000000\`. A second teammate opens TI's datasheet and finds SRAM listed at \`0x20000000\` — and at \`0x20100000\`, and at \`0x20200000\`. A third has a debugger attached and reports that a variable the map file puts at \`0x20200010\` can also be read at \`0x20000010\`.
 
-Nothing is wrong with the C. The chip has no RAM at that address.`,
+Nobody is wrong, and nothing is broken. But a design decision is hiding in that address, and you cannot make it until you know what the three ranges are. This lesson works it out from the memory map, then builds the rest of the 2026 platform around it: the board, the bootloader, the build, the debugger and the security features.`,
 
-    `## The chip
+    `## The chip and the board
 
-- **Core.** Arm Cortex-M0+ (r0p1) with an MPU, a relocatable vector table (VTOR present) and 2 NVIC priority bits, i.e. four interrupt priority levels${src('mspm0l222x.h', S.tiHdr)}. The 2026 reference Makefile builds with \`-mcpu=cortex-m0plus -march=thumbv6m -mfloat-abi=soft\`${src('2026 firmware Makefile', S.y2026make)}: ARMv6-M, no floating-point unit.
-- **Main flash.** Origin **\`0x00000000\`**, length \`0x40000\` (256 KB)${src('mspm0l2228.cmd', S.tiCmd)}.
-- **SRAM.** Origin **\`0x20200000\`** — *not* \`0x20000000\` — length \`0x8000\` (32 KB)${src('mspm0l2228.cmd', S.tiCmd)}.
-- **NONMAIN configuration memory.** A separate flash region holding boot configuration: \`BCR_CONFIG\` at \`0x41C00000\` and \`BSL_CONFIG\` at \`0x41C00100\`${src('mspm0l2228.cmd', S.tiCmd)}.
-- **Peripherals** in the device header: UART0–4, I2C0–2, SPI0–1, ADC0, a comparator, a voltage reference, general-purpose timers (TIMG0/4/5/8/12) and an advanced timer (TIMA0), GPIO ports A, B and C, DMA, an **LCD** controller, an RTC, a window watchdog, and a low-frequency subsystem (**LFSS**)${src('mspm0l222x.h', S.tiHdr)}.
-- **Security modules** in the device header: **AESADV** (an AES accelerator), **TRNG**, **KEYSTORECTL** (a key store controller) and a CRC unit${src('mspm0l222x.h', S.tiHdr)}.`,
+- **Core.** Arm Cortex-M0+ (r0p1) with an MPU, a relocatable vector table (VTOR present) and 2 NVIC priority bits, i.e. four interrupt priority levels${src('mspm0l222x.h', S.tiHdr)}. Maximum CPU frequency **32 MHz**; supply 1.62 V to 3.6 V${src('datasheet SLASF94A, Features', S.tiDs)}. The 2026 reference Makefile builds with \`-mcpu=cortex-m0plus -march=thumbv6m -mfloat-abi=soft\`${src('2026 firmware Makefile', S.y2026make)}: ARMv6-M, no floating-point unit, no divide instruction.
+- **Main flash.** 256 KB with ECC at **\`0x00000000\`**, organised as two 128 KB banks (bank 1 starts at \`0x00020000\`) that can swap addresses, in 1 KB sectors. Endurance is 100 000 program/erase cycles for the lowest 32 KB and 10 000 for the rest. No data-flash region is listed for this part${src('datasheet Table 8-4 and section 8.10', S.tiDs)}.
+- **SRAM.** One 32 KB memory "with ECC or parity", reachable through three address ranges — the subject of the next section.
+- **NONMAIN configuration memory.** 1 KB of flash at \`0x41C00000\` holding boot policy: \`BCR_CONFIG\` at \`0x41C00000\` and \`BSL_CONFIG\` at \`0x41C00100\`${src('mspm0l2228.cmd', S.tiCmd, 'datasheet Table 8-4', S.tiDs)}.
+- **Peripherals** in the device header: UART0–4, I2C0–2, SPI0–1, a 12-bit ADC, a comparator, a voltage reference, general-purpose timers (TIMG0/4/5/8/12) and an advanced timer (TIMA0), GPIO ports A, B and C, DMA, a segment **LCD** controller, an RTC, a window watchdog, and a battery-backed low-frequency subsystem (**LFSS**)${src('mspm0l222x.h', S.tiHdr)}.
+- **Security modules:** **AESADV** (AES accelerator), **TRNG**, **KEYSTORECTL** (key store) and a CRC unit${src('mspm0l222x.h', S.tiHdr)}. Details below.
+
+**The board** is the **MSP-LITO-L2228**, a custom board that TI designed and donated for the competition. It is not sold; MITRE describes TI's LP-MSPM0L2228 LaunchPad as "largely interchangeable" for teams buying extra boards. The debug probe is **not on the board**: an external TI **XDS110** is connected with 8 female-to-female jumper wires, matching the silkscreen labels on both sides, and appears to the host as a serial device${src('2026 board page', S.r26board)}. (The LaunchPad, by contrast, has an XDS110 on board${src('LaunchPad page', S.tiLp)}.) The MSP-LITO-L2228's schematic is distributed to teams and was not read for this course.`,
 
     { t: 'widget', name: 'mcu-block-diagram', props: { platform: 'mspm0l2228' }, caption: 'Compare with the MAX78000 diagram from the last lesson: one core instead of two, a quarter of the RAM, and security blocks with different names.' },
 
-    `## The unusual SRAM base
+    `## One RAM, three views
 
-Many Cortex-M microcontrollers place SRAM at \`0x20000000\`. The Arm architecture reserves the range \`0x20000000\`–\`0x3FFFFFFF\` *for* SRAM; it does not say where inside that range a vendor must put it. TI put this part's SRAM at \`0x20200000\`.
+The Arm architecture reserves \`0x20000000\`–\`0x3FFFFFFF\` for SRAM and leaves the rest to the vendor. TI maps this part's single 32 KB SRAM into that range **three times**${src('datasheet SLASF94A Table 8-4', S.tiDs, 'TRM SLAU847F section 1.3.2', S.tiTrm)}:
 
-So the valid RAM addresses are \`0x20200000\` up to, but not including, \`0x20208000\`. Everything a linker script or startup file derives from the RAM base moves with it: where \`.data\` is copied to, where \`.bss\` is zeroed, where the heap starts, and the initial stack pointer in the first word of the vector table.`,
+| Address range | View | What an access through it gets |
+|---|---|---|
+| \`0x20000000\`–\`0x20007FFF\` | Default, **ECC-checked** | 8 check bits per 64 data bits: single-bit errors corrected, double-bit errors detected. Writes take two cycles |
+| \`0x20100000\`–\`0x20107FFF\` | **Parity-checked** | 1 parity bit per byte: single-bit errors detected, not corrected |
+| \`0x20200000\`–\`0x20207FFF\` | **Unchecked** | No integrity check at all |
+| \`0x20300000\`–\`0x20307FFF\` | ECC / parity code | Reads back the check bits themselves |
 
-    { t: 'widget', name: 'memory-map', props: { platform: 'mspm0l2228' }, caption: 'Use the "where does this address live?" quiz. Try 0x20000000, 0x20200000 and 0x20207FFC before reading on.' },
+These are **aliases**: the same physical memory cells answer at each range. In TI's words, writing data to \`0x20000000\` "will cause the same data to appear at" \`0x20200000\`. There are 32 KB in total, not 96.
 
-    { t: 'predict', q: `Take the opening scenario: the linker script still says RAM starts at 0x20000000 with length 0x8000, so the vector table's first word (the initial stack pointer) is 0x20008000. On a Cortex-M, the reset handler is ordinary C-callable code. At what point does the processor first fault, and why does it happen *before* any of your C statements run?`,
+TI's linker file for the part, and the eCTF 2026 reference \`firmware.ld\`, both declare \`SRAM : origin = 0x20200000, length = 0x8000\`${src('mspm0l2228.cmd', S.tiCmd, '2026 firmware.ld', S.y2026ld)} — the unchecked view. So in the opening scene the linker script has no typo, the datasheet reader is right that \`0x20000000\` is valid RAM, and the debugger shows two views of one cell.
+
+What differs is behaviour under error, and two rules from the TRM that bite in practice:
+
+1. **Pick one view per memory location.** The check bits are written by whichever view you write through. Write through the parity view and read through the ECC view, and the stored code is the wrong kind: "an ECC error may be generated".
+2. **Initialise before you read through a checked view.** SRAM contents are random at power-up, so the check bits do not match the data. A read of a never-written location through the ECC or parity view can raise an error and hard-fault the processor.`,
+
+    { t: 'widget', name: 'memory-map', props: { platform: 'mspm0l2228' }, caption: 'Select each of the three SRAM views in turn and compare base, size and error checking. Then use the quiz: which view contains 0x20100124?' },
+
+    { t: 'predict', q: `The reference firmware is linked against the unchecked view, so its start-up code initialises \`.data\` and \`.bss\` through \`0x202xxxxx\` addresses. A teammate adds a "free integrity check": a routine that re-reads one important global through its \`0x200xxxxx\` (ECC-checked) address instead. Nothing else changes. What should you expect?`,
       choices: [
-        { t: 'At the first stack access or the first write of .data/.bss in the startup code, because those addresses are not backed by memory on this part', ok: true, why: 'Reset loads SP and PC without touching RAM. The first push, or the first store while initialising .data/.bss, addresses memory that does not exist and raises a fault.' },
-        { t: 'At reset itself, because the core validates the stack pointer when loading it', why: 'The core loads the initial SP value from the vector table without checking that memory exists there; nothing is accessed until an instruction uses it.' },
-        { t: 'Never — writes to unmapped addresses are ignored and reads return zero', why: 'Some buses behave that way, but you cannot assume it; a Cortex-M normally raises a fault on an access to an address with no memory behind it.' },
-        { t: 'Only when the heap is first used', why: 'The stack and the static data initialisation both come long before any heap use, and both use the wrong base.' },
+        { t: 'The same bytes are there, but the ECC code for them was never written, so the checked read may report an error or fault', ok: true, why: 'Check bits are only maintained by writes made through a checked view. Data stored through the unchecked view has no valid ECC code, so a checked read of it can flag an error that is not real.' },
+        { t: 'A bus fault on every read, because this chip has no memory mapped at 0x20000000', why: 'The datasheet memory map lists 0x20000000 as the default view of the SRAM. The address is valid; think about what an access through that particular view checks.' },
+        { t: 'A different value, because 0x20000000 and 0x20200000 are separate 32 KB memories', why: 'The part has 32 KB of SRAM in total. The three ranges are aliases onto the same cells, so the stored bytes are identical whichever range you use.' },
+        { t: 'Silent correction of any bit that flipped since boot, because ECC is computed when the read happens', why: 'A read can only compare the data against a code stored at write time. If no code was stored through this view, there is nothing valid to compare with.' },
       ],
-      reveal: `The core fetches the initial SP from the first vector-table word and the reset vector from the second, then starts executing. The startup code runs before \`main\`: it copies \`.data\` from flash to RAM and zeroes \`.bss\`, and any function prologue pushes to the stack. With the base wrong, the first of those accesses hits an address with no RAM behind it.
+      reveal: `The data is the same — aliases share cells — but integrity checking is a property of the *whole history* of a location, not of one read. The ECC code is stored when a write goes through the ECC view. The start-up code and every assignment in the program wrote through the unchecked view, so the code bits for that global are whatever they happened to be. TI's TRM warns against exactly this mixing, and says a checked read of a location not initialised through that view can hard-fault${src('TRM SLAU847F section 1.3.2', S.tiTrm)}.
 
-The symptom is easy to misread as "the board is dead" or "the flash failed", because no output ever appears. The check takes one minute: compare the RAM \`ORIGIN\` in your linker script with the vendor's linker file${src('mspm0l2228.cmd', S.tiCmd)}, and look at the first vector-table word of your image — it must lie between \`0x20200000\` and \`0x20208000\` inclusive of the top.` },
+If you want ECC on some data, do it properly: give that data its own linker region in the \`0x200xxxxx\` range, make sure start-up code initialises it through the same range, decide what the fault handler does when an error is reported, and accept the two-cycle writes. Until then the checked views are not a free upgrade.` },
 
-    { t: 'callout', kind: 'why', title: 'The transferable lesson', md: `"SRAM is at 0x20000000" was never a fact about Cortex-M; it was a habit formed on particular chips. The memory map is defined by the *device*, not by the core. On every new part, open the vendor's linker file or device header and write down flash base, flash size, RAM base and RAM size before you write or port anything. It costs minutes and removes a whole class of faults that look like hardware failure.` },
+    { t: 'callout', kind: 'why', title: 'The transferable lesson', md: `"SRAM is at 0x20000000" is a habit, not a fact about Cortex-M, and so is "RAM has one address". The memory map belongs to the *device*. On every new part, open the datasheet's memory-map table and the vendor's linker file together and write down, for flash and RAM: base, size, and **anything listed more than once**. Here that table tells you there is one RAM with three views and different error checking — information a linker script alone would never give you, and a design choice (which view, for which data) you would otherwise not know you had.` },
+
+    { t: 'callout', kind: 'security', title: 'Why a security design cares which view it uses', md: `Fault-injection attacks work by flipping bits: in a comparison result, a loop counter, a "PIN verified" flag. Through the unchecked view a flipped bit in RAM is simply the new value. Through the ECC view a single flipped bit is corrected and a double flip is reported. That makes the checked views one possible layer against glitching *stored* state — with limits: they do not protect CPU registers or the instruction being executed, they only help if the fault handler fails closed, and the cost is slower writes and the initialisation rules above. Whether to use them is a design decision to make deliberately and test on a board you own, not a default to inherit from the reference linker script.` },
 
     `## The eCTF 2026 layout on top of the chip
 
-The 2026 reference \`firmware.ld\` divides the 256 KB of flash${src('2026 firmware.ld', S.y2026ld)}:`,
+The 2026 rules divide the 256 KB of flash like this${src('2026 detailed specifications', S.r26detail)}:`,
 
-    { t: 'ascii', text: `eCTF 2026 reference layout on the MSPM0L2228 (from firmware.ld)
+    { t: 'ascii', text: `eCTF 2026 flash layout on the MSPM0L2228 (from the rules; SRAM line from firmware.ld)
 
 0x0003FFFF ┌───────────────────────────┐
-           │ APP2          len 0x5C00  │  0x0003A400
+           │ RESERVED      len 0x0400  │  0x0003FC00   <- reserved for the bootloader
+0x0003FC00 ├───────────────────────────┤
+           │ APP2          len 0x5800  │  0x0003A400   <- team firmware, second region
 0x0003A400 ├───────────────────────────┤
            │ FAT           len 0x0400  │  0x0003A000   <- file allocation table, fixed address
 0x0003A000 ├───────────────────────────┤
-           │ FLASH (team)  len 0x34000 │  0x00006000   <- your firmware is linked here
+           │ APP1 (FLASH)  len 0x34000 │  0x00006000   <- team firmware is linked here
 0x00006000 ├───────────────────────────┤
-           │ BOOTLOADER    len 0x6000  │  0x00000000   <- "Bootloader flash - unusable"
+           │ BOOTLOADER    len 0x6000  │  0x00000000   <- MITRE eCTF bootloader
 0x00000000 └───────────────────────────┘
 
 0x20207FFF ┌───────────────────────────┐
-           │ SRAM          len 0x8000  │  0x20200000
+           │ SRAM          len 0x8000  │  0x20200000   <- the unchecked view of the one 32 KB RAM
 0x20200000 └───────────────────────────┘
 
 0x41C00100   BSL_CONFIG   (NONMAIN)
-0x41C00000   BCR_CONFIG   (NONMAIN)`, caption: 'Check: 0x6000 + 0x34000 + 0x400 + 0x5C00 = 0x40000, the whole 256 KB. The linker script also sets a stack size of 256.' },
+0x41C00000   BCR_CONFIG   (NONMAIN)`, caption: 'Check: 0x6000 + 0x34000 + 0x400 + 0x5800 + 0x400 = 0x40000, the whole 256 KB.' },
 
-    `Three things to notice.
+    `Four things to notice.
 
-1. **You do not own address zero.** A Cortex-M0+ takes its initial stack pointer and reset vector from the vector table, which after reset is at address 0. That is inside the BOOTLOADER region, so something there runs first and then transfers control to the team image at \`0x6000\`; the core has a VTOR register that lets the vector table be moved${src('mspm0l222x.h', S.tiHdr)}. *How* the 2026 MITRE bootloader does this, how it is installed and how it is put into update mode are **not verified here** — confirm in the 2026 rules (${S.rules}, not load-tested).
-2. **The file allocation table has a fixed address,** \`0x0003A000\`, because, in the reference design's words, "the data structure location must be known by the secure bootloader"${src('2026 firmware.ld', S.y2026ld, 'filesystem.h', S.y2026fs)}. A layout constraint that comes from the functional specification is not yours to move.
-3. **The stack is small.** With 32 KB of RAM in total and a 256 setting for stack size in the reference linker script, deep call chains, large local buffers and recursion are design risks, not style issues. (Confirm the unit and how the script uses that value in \`firmware.ld\` itself.)`,
+1. **You do not own address zero.** A Cortex-M0+ takes its initial stack pointer and reset vector from the vector table, which after reset is at address 0. That is inside the BOOTLOADER region, so MITRE's bootloader runs first and then hands over to the team image at \`0x6000\`; the core's VTOR register is what lets a vector table live there${src('mspm0l222x.h', S.tiHdr)}.
+2. **The file allocation table has a fixed address,** \`0x0003A000\`, because, in the reference design's words, "the data structure location must be known by the secure bootloader"${src('2026 firmware.ld', S.y2026ld, 'filesystem.h', S.y2026fs)}. The rules define it as 8 entries of 24 bytes (UUID, length, padding, address). A layout constraint that comes from the specification is not yours to move.
+3. **The rules and the reference linker script disagree by one sector.** The published \`firmware.ld\` gives APP2 a length of \`0x5C00\`, which runs to the very end of flash; the rules give \`0x5800\` and reserve the last \`0x400\` bytes for the bootloader. The rules are the specification. If your image grows into APP2, the last sector is not yours — exactly the kind of difference you only find by reading both documents.
+4. **The stack is small.** The reference linker script passes \`--stack_size=256\` and places \`.stack\` at the high end of SRAM${src('2026 firmware.ld', S.y2026ld)}: 256 bytes of stack out of 32 KB of RAM. Deep call chains, large local buffers and recursion are design risks here, not style issues.`,
 
-    `## The 2026 system
+    `## The 2026 system and its requirements
 
-The reference design is "an insecure example design for an eCTF Hardware Security Module". From the firmware headers${src('commands.h', S.y2026cmds, 'filesystem.h', S.y2026fs, 'security.h', S.y2026sec, 'host_messaging.h', S.y2026msg)}:
+The system is a **Hardware Security Module**: a "permissioned file storage and transfer system". From the rules and the firmware headers${src('2026 functional requirements', S.r26func, '2026 detailed specifications', S.r26detail, 'commands.h', S.y2026cmds, 'filesystem.h', S.y2026fs, 'security.h', S.y2026sec, 'host_messaging.h', S.y2026msg)}:
 
-- The HSM stores **files** in slots: up to 8 files, names up to 32 bytes, contents up to 8192 bytes, each with a 16-byte UUID.
-- Each file belongs to a 16-bit **group ID**. An HSM holds per-group permissions: \`R\` (read), \`W\` (write), \`C\` (receive); up to 8 permission entries.
-- A **PIN** of 6 hex characters protects operations.
-- Commands, as one-byte opcodes: LIST \`L\`, READ \`R\`, WRITE \`W\`, RECEIVE \`C\`, INTERROGATE \`I\`, LISTEN \`N\`; plus ACK \`A\`, DEBUG \`D\` and ERROR \`E\`. Each packet has a header: magic byte \`%\`, the command byte and a 16-bit length.
-- The reference design stores each file in 9 flash pages of 1024 bytes, starting at \`0x10000\`.
+- The HSM stores **files** in 8 slots: names up to 32 bytes, contents up to 8192 bytes, each with a 16-byte UUID.
+- Each file belongs to a 16-bit **group ID**. An HSM holds per-group permissions: \`R\` (read), \`W\` (write), \`C\` (receive), written like \`1234=RW-:aabb=RWC\`.
+- A **PIN** of exactly 6 lowercase hex characters protects operations.
 
-The **named security requirements** for 2026 are on the rules site and were not opened. Search-engine summaries of them exist but disagree with each other on wording, so this course does not quote them. Read the 2026 specification pages yourself.
+| Command | Needs | What it does |
+|---|---|---|
+| List | PIN | Lists the files on this HSM |
+| Read | PIN + read permission for the file's group | Returns a file's contents |
+| Write | PIN + write permission | Stores a file in a slot (overwrites it); must survive power loss |
+| Listen | no PIN | Serves exactly one request from a neighbouring HSM |
+| Interrogate | PIN | Lists the neighbour's files for which this HSM has receive permission |
+| Receive | PIN + receive permission | Copies a file (name, UUID, group, contents) from the neighbour |
+
+On the wire, each packet has a header — magic byte \`%\`, a one-byte opcode (\`L\`, \`R\`, \`W\`, \`C\`, \`I\`, \`N\`, plus \`A\` ack, \`D\` debug, \`E\` error) and a 16-bit length. Timing maxima: wake 1 s, list 500 ms, read/write/receive 3 s, interrogate 1 s, and **any operation with an invalid PIN 5 s**.
+
+**Security requirements (three, summarised)**${src('2026 security requirements', S.r26sec)}:
+
+- **SR1.** No file action without a validly provisioned HSM that holds the matching permission for that file's group. (Receive permission also gates Interrogate.)
+- **SR2.** No PIN-protected action without prior knowledge of the PIN — and the PIN itself must not leak.
+- **SR3.** An HSM only receives files that were generated by a valid HSM with write permission for that group: file integrity and authenticity.
+
+In the attack phase the attacker is modelled as an insider Technician who has one HSM *and its PIN*${src('2026 attack flags', S.r26flags)}. So the PIN is not the last line of defence for other groups' files: permissions (SR1) have to hold against someone who can legitimately log in.
 
 MITRE's README also tells teams **not to fork** the repository: clone it and push to a private repository instead${src('2026 README', S.y2026readme)}. A public fork of your secure design is readable by the teams who will later attack it.`,
 
-    `## Pins, GPIO and serial configuration
+    `## Pins, GPIO and peripheral configuration
 
-The reference design uses two UARTs at 115200 baud and two GPIOs${src('ti_msp_dl_config.h', S.y2026dl, 'simple_uart.h', S.y2026uart)}:
+The reference design uses two UARTs at 115200 baud and two GPIOs${src('ti_msp_dl_config.h', S.y2026dl, 'simple_uart.h', S.y2026uart, '2026 board page', S.r26board)}:
 
 | Function | Peripheral | Pins |
 |---|---|---|
 | Control interface (host ↔ HSM) | UART0 | PA10 TX, PA11 RX |
-| Transfer interface (HSM ↔ HSM) | UART1 | PA8 TX, PA9 RX |
-| Status LED | GPIO | PB14 |
-| Button S2 | GPIO | PB21 |
+| Transfer interface (HSM ↔ HSM) | UART1 | PA8 TX, PA9 RX — crossed TX↔RX between the two boards, shared ground |
+| Status LED D1 | GPIO | PB14 |
+| Button S2 | GPIO | PB21 (internal pull-up) |
 
-The CPU clock is configured as 32 MHz (\`CPUCLK_FREQ 32000000\`). That is what the reference design configures; it is not confirmed here as the part's maximum — see the datasheet's clock specifications.
+The CPU clock is configured as 32 MHz (\`CPUCLK_FREQ 32000000\`), which is also the part's maximum.
 
-On this family, pin and peripheral setup goes through TI's **driverlib** (the reference Makefile links the driverlib build for \`mspm0l122x_l222x\`${src('2026 firmware Makefile', S.y2026make)}). TI's SDK also provides **SysConfig**, a graphical tool that generates configuration code${src('SDK tools docs', S.tiTools)}. The reference design's \`ti_msp_dl_config.h\` carries the file name SysConfig conventionally generates; whether MITRE generated it with SysConfig or wrote it by hand is not something the fact sheet establishes, and you do not need SysConfig to build the reference design.
+On this family, pin and peripheral setup goes through TI's **driverlib** (the reference Makefile links the driverlib build for \`mspm0l122x_l222x\`${src('2026 firmware Makefile', S.y2026make)}). The reference design's \`ti_msp_dl_config.c\` says in its header that it was generated by TI's **SysConfig** tool; you do not need SysConfig to build the design, but you do need to understand what it generated, because the order matters. The fragment below is condensed from that file${src('ti_msp_dl_config.c', S.y2026dlc)}.`,
 
-Whichever way the code is produced, bringing up a UART on an MSPM0 follows this order. The function names are from memory of TI's driverlib and are **not verified here**: confirm each in the SDK's \`dl_gpio.h\` and \`dl_uart_main.h\`, and copy the real sequence from the reference design's configuration source.`,
-
-    { t: 'code', lang: 'c', status: 'pseudo', caption: 'Order of operations for a UART on MSPM0 driverlib. Illustrative; names and arguments must be checked against the SDK headers.', code: String.raw`/* 1. Power the peripherals. An unpowered peripheral ignores register writes. */
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'UART0, the LED and the button on the MSPM0L2228, condensed from the eCTF 2026 reference design\'s SysConfig-generated ti_msp_dl_config.c. Transcribed, not compiled or run here.', code: String.raw`/* 1. Reset, then power the peripherals. An unpowered peripheral ignores register writes. */
+DL_GPIO_reset(GPIOA);
+DL_UART_Main_reset(UART0);
 DL_GPIO_enablePower(GPIOA);
+DL_GPIO_enablePower(GPIOB);
 DL_UART_Main_enablePower(UART0);
+delay_cycles(POWER_STARTUP_DELAY);
 
-/* 2. Route the pins. Each pad has an IOMUX entry selecting GPIO or a peripheral function. */
-DL_GPIO_initPeripheralOutputFunction(IOMUX_PA10, IOMUX_PA10_FUNC_UART0_TX);
-DL_GPIO_initPeripheralInputFunction (IOMUX_PA11, IOMUX_PA11_FUNC_UART0_RX);
+/* 2. Route the pads: each has an IOMUX entry selecting GPIO or a peripheral function. */
+DL_GPIO_initPeripheralOutputFunction(IOMUX_PINCM25, IOMUX_PINCM25_PF_UART0_TX);  /* PA10 */
+DL_GPIO_initPeripheralInputFunction (IOMUX_PINCM26, IOMUX_PINCM26_PF_UART0_RX);  /* PA11 */
+DL_GPIO_initDigitalOutput(IOMUX_PINCM35);                                        /* PB14, LED */
+DL_GPIO_initDigitalInputFeatures(IOMUX_PINCM63,                                  /* PB21, S2  */
+    DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_PULL_UP,
+    DL_GPIO_HYSTERESIS_DISABLE, DL_GPIO_WAKEUP_DISABLE);
+DL_GPIO_setPins(GPIOB, DL_GPIO_PIN_14);
+DL_GPIO_enableOutput(GPIOB, DL_GPIO_PIN_14);
 
-/* 3. Give the UART a clock, then frame format and baud-rate divisors for 115200 at that clock. */
-DL_UART_Main_setClockConfig(UART0, &uart_clock_cfg);
-DL_UART_Main_init(UART0, &uart_cfg);
-/* ...baud-rate divisor call, computed from the UART clock... */
+/* 3. Clock the UART, set the frame format, then the baud-rate divisors. */
+DL_UART_Main_setClockConfig(UART0, &uart_clock_cfg);   /* BUSCLK, divide by 1 */
+DL_UART_Main_init(UART0, &uart_cfg);                   /* 8 data bits, no parity, 1 stop bit */
+DL_UART_Main_setOversampling(UART0, DL_UART_OVERSAMPLING_RATE_16X);
+DL_UART_Main_setBaudRateDivisor(UART0, 17, 23);        /* 115200 baud from 32 MHz */
 
 /* 4. Enable it last. */
 DL_UART_Main_enable(UART0);`,
       explain: [
-        { lines: '1-3', md: 'MSPM0 peripherals have their own power-enable control. Skipping this is the classic first-day bug on this family: every later write appears to do nothing.' },
-        { lines: '5-7', md: 'Pin multiplexing is a separate step from peripheral setup. The pad for PA10 must be told it carries UART0 TX; otherwise the UART runs and nothing leaves the chip. The macro names here are placeholders.' },
-        { lines: '9-12', md: 'The divisors depend on the UART’s clock source and frequency. If the clock tree changes (for example from the 32 MHz the reference design configures), the baud rate changes with it.' },
+        { lines: '1-7', md: 'MSPM0 peripherals have their own reset and power-enable controls, and need a short delay after power-up. Skipping this is the classic first-day bug on this family: every later write appears to do nothing.' },
+        { lines: '9-11', md: 'Pin multiplexing is a separate step. The IOMUX entry is named after the *pad* (`PINCM25` is PA10 on this package), not the port pin, which is why the reference header defines both. If the pad is not switched to the UART function, the UART runs and nothing leaves the chip.' },
+        { lines: '12-17', md: 'PB14 becomes a digital output and is driven high before its output driver is enabled, so the LED starts in a known state. PB21 is an input with the internal pull-up: S2 reads 1 when released and 0 when pressed — the level the bootloader samples at reset.' },
+        { lines: '19-23', md: 'The UART is clocked from the 32 MHz bus clock with 16× oversampling. The divisor is 32 000 000 / (16 × 115 200) = 17.36: integer part 17, fraction in 64ths ≈ 23. If the clock tree changes, these two numbers must change with it.' },
       ] },
 
-    { t: 'callout', kind: 'mistake', title: 'Talking to the wrong UART', md: `The 2026 reference design has **two** serial interfaces with different jobs: UART0 on PA10/PA11 is the host control interface, UART1 on PA8/PA9 carries HSM-to-HSM transfers${src('simple_uart.h', S.y2026uart)}. A USB-serial adapter on the wrong pair, or TX and RX swapped, looks exactly like dead firmware. It also matters for security: the two interfaces face different parties, so input arriving on one deserves different trust from input arriving on the other.` },
+    { t: 'callout', kind: 'mistake', title: 'Talking to the wrong UART', md: `The 2026 design has **two** serial interfaces with different jobs: UART0 on PA10/PA11 is the host control interface, UART1 on PA8/PA9 carries HSM-to-HSM transfers${src('simple_uart.h', S.y2026uart)}. An adapter on the wrong pair, TX and RX not crossed, or two boards without a common ground all look exactly like dead firmware. It also matters for security: the two interfaces face different parties. UART1's peer is *another device*, which in the attack phase may be modified or simulated by the attacker, and the Listen command answers it without any PIN.` },
 
-    `## Toolchain and build
+    `## Development environment and build
 
-The reference build is a **Docker** image (\`firmware/Dockerfile\`, \`FROM ubuntu:24.04\`) containing the **TI MSPM0 SDK** at tag \`mspm0_sdk_2_06_00_05\` and **TI Arm Clang** \`ti-cgt-armllvm_4.0.3.LTS\` (\`tiarmclang\`, \`tiarmobjcopy\`). It is **not** \`arm-none-eabi-gcc\`${src('2026 Dockerfile', S.y2026docker, '2026 firmware Makefile', S.y2026make)}.`,
+**Host software:** Git, Docker and **uv**. The MITRE tools run as \`uvx ectf …\`, so nothing else is installed on the host${src('2026 machine setup', S.r26setup)}. Pre-approved languages are C, C++ and Rust.
 
-    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'eCTF 2026 reference build, as given in the 2026 repository. The docker run mounts are elided in the fact sheet: copy the full command from the README. Not run here.', code: `# 1. build the container image (wraps: docker build -t build-hsm ./firmware/)
-make docker
+The firmware build is a **Docker** image (\`firmware/Dockerfile\`, \`FROM ubuntu:24.04\`) containing the **TI MSPM0 SDK** at tag \`mspm0_sdk_2_06_00_05\` and **TI Arm Clang** \`ti-cgt-armllvm_4.0.3.LTS\` (\`tiarmclang\`, \`tiarmobjcopy\`). It is **not** \`arm-none-eabi-gcc\`${src('2026 Dockerfile', S.y2026docker, '2026 firmware Makefile', S.y2026make)}.`,
 
-# 2. generate global secrets for your groups (uses uv; ectf26_design needs Python >= 3.12)
+    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'eCTF 2026 reference build, from the repository and the rules. The volume mounts of docker run are elided: copy the full command from the rules. Not run here.', code: `# 1. build the container image
+docker build -t build-hsm ./firmware/
+
+# 2. generate global secrets for your groups (ectf26_design needs Python >= 3.12)
 uvx --with-editable ./ectf26_design --from ectf26_design secrets global.secrets <groups>
 
 # 3. build one HSM image with its PIN and permissions
-docker run ... -e HSM_PIN=<pin> -e PERMISSIONS='<group>=RWC' build-hsm
-#   build.sh runs secrets_to_c_header.py, then make -> hsm.elf and hsm.bin`,
+docker run ... -e HSM_PIN='1a2b3c' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
+#   build.sh runs secrets_to_c_header.py, then make -> /out/hsm.elf and /out/hsm.bin`,
       explain: [
-        { lines: '5', md: 'Secrets are produced by the team’s own Python package. Whatever ends up in `global.secrets` is shared by every HSM built from it.' },
-        { lines: '8-9', md: 'The PIN and permission set are per-device build inputs passed as environment variables; a script turns the secrets into a C header that is compiled into the image. Anything in that header is in flash in plain form unless your design does something about it.' },
+        { lines: '5', md: 'Global Secrets are produced once per deployment by the team’s own Python package and are read-only afterwards. Whatever ends up in `global.secrets` is shared by every HSM built from it.' },
+        { lines: '8-9', md: 'The PIN and the permission string are per-device build inputs passed as environment variables; a script turns the secrets into a C header that is compiled into the image. Anything in that header is in flash in plain form unless your design does something about it.' },
       ] },
 
-    `Source for the commands${src('2026 README', S.y2026readme, 'root Makefile', S.y2026rootmake)}.`,
+    `Source for the commands${src('2026 README', S.y2026readme, 'root Makefile', S.y2026rootmake, '2026 functional requirements', S.r26func)}.`,
 
-    { t: 'callout', kind: 'decision', title: 'Stay on TI Arm Clang unless you have a reason', md: `TI's SDK supports several compilers — TI Arm Clang, GCC, IAR and Keil${src('SDK tools docs', S.tiTools)} — so building with \`arm-none-eabi-gcc\` is possible in principle. The reference design chose TI Arm Clang, and its linker script, startup code and flags are written for it. Switching compiler means porting those, re-checking code size against a 208 KB team region and a small stack, and owning every difference in code generation. On a Cortex-M0+ with no divide instruction and no FPU, library routines for division and floating point are supplied by the toolchain, so their size *and timing* depend on the compiler. Make that switch deliberately and early, or not at all.` },
+    { t: 'callout', kind: 'decision', title: 'Stay on TI Arm Clang unless you have a reason', md: `TI's SDK supports several compilers — TI Arm Clang, GCC, IAR and Keil${src('SDK tools docs', S.tiTools)} — so building with \`arm-none-eabi-gcc\` is possible in principle. The reference design chose TI Arm Clang, and its linker script, startup code and flags are written for it. Switching compiler means porting those, re-checking code size against a 208 KB team region and a 256-byte stack, and owning every difference in code generation. On a Cortex-M0+ with no divide instruction and no FPU, library routines for division and floating point are supplied by the toolchain, so their size *and timing* depend on the compiler. Make that switch deliberately and early, or not at all.` },
 
-    `## Debugging and flashing
+    `## Flashing: bootloader first, then your image
 
-- **Probe.** TI's SDK documentation names the **XDS110** debug probe (JTAG and SWD) alongside SEGGER, PEmicro and Lauterbach probes${src('debug_program.rst', S.tiDebug)}. Which probe the 2026 kit's board carries is **not verified** — see the board-name note below.
-- **OpenOCD.** The MSPM0 family is supported in **upstream** OpenOCD: the flash driver \`src/flash/nor/mspm0.c\` has part-table entries for the MSPM0L2228, and the board file \`tcl/board/ti/mspm0-launchpad.cfg\` selects the XDS110 interface and the MSPM0 target${src('mspm0.c', S.oocdMspm0, 'mspm0-launchpad.cfg', S.oocdLp)}.
-- **Vendor tools.** Code Composer Studio and UniFlash are TI's own debug and flashing tools${src('SDK tools docs', S.tiTools)}.
-- **The competition's path.** Whether teams flash 2026 images with OpenOCD, UniFlash or a MITRE bootloader tool is **not verified here**. The linker script's "Bootloader flash - unusable" region shows a bootloader is involved; the procedure is in the 2026 rules.`,
+Design-phase boards ship **without** the bootloader. Getting firmware onto a board is therefore two procedures, done with two different tools${src('2026 bootloader page', S.r26boot, '2026 boot reference', S.r26bootref)}.
 
-    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Attaching upstream OpenOCD and GDB to an MSPM0 LaunchPad with an XDS110. Written from the OpenOCD repository layout; not run here, and only applicable if your board and the rules allow a debug probe.', code: `# terminal 1: OpenOCD with the upstream MSPM0 LaunchPad board file
-openocd -f board/ti/mspm0-launchpad.cfg
+**Once per board — install the MITRE insecure bootloader with TI UniFlash.**
+
+1. Wire the XDS110 to the board (8 jumpers, labels matching) and plug it in.
+2. In UniFlash choose the device **MSPM0L2228** and the connection **Texas Instruments XDS110 USB Debug Probe**. (If UniFlash auto-detects some LaunchPad, ignore it and configure manually.)
+3. Select the downloaded \`insecure.out\`. LaunchPad owners use \`launchpad.out\` instead, which uses button S1 (PA18) and a blue LED.
+4. Under "Settings & Utilities" choose the erase setting **"Erase MAIN and NONMAIN necessary sectors only"**, then load the image.
+
+**Every time — load your firmware through the bootloader.**
+
+1. Enter **update mode**: reset the board while holding **S2 (PB21)**. You should see LED **D1 (PB14) flashing red**.
+2. Use the eCTF tools.`,
+
+    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Loading a team image through the eCTF 2026 bootloader, as given in the rules. The port name is an example. Not run here.', code: `uvx ectf hw /dev/ttyACM0 erase
+uvx ectf hw /dev/ttyACM0 flash ./build/hsm.bin -n hsm
+uvx ectf hw /dev/ttyACM0 start`,
+      explain: [
+        { lines: '1-2', md: 'The bootloader erases the team region and writes `hsm.bin` into it over the serial link. It only answers in update mode (red flashing LED).' },
+        { lines: '3', md: 'Leaves update mode and starts the image. If nothing responds afterwards, the image is running and has a problem of its own — a different failure from "the flash did not work".' },
+      ] },
+
+    { t: 'callout', kind: 'warn', title: 'The erase setting is not a detail', md: `UniFlash can erase MAIN flash, NONMAIN, or both. NONMAIN holds the boot policy — debug access, mass-erase and factory-reset permissions, bootstrap-loader configuration. Erasing or misprogramming it is how MSPM0 boards get locked or bricked, which is why the rules name the exact setting to use. On **attack boards** the stakes are higher: they come with a keyed *secure* bootloader that loads encrypted \`.prot\` images. A UniFlash factory reset removes it, and it cannot be put back.` },
+
+    `## Debugging workflow
+
+OpenOCD is the documented **debugging** tool for 2026 — not the flashing tool. (The rules page's paragraph about flashing with OpenOCD is commented out in its source, with a warning that erasing the wrong sector can brick the device.) The MSPM0L2228 needs the latest OpenOCD pre-release; older packaged versions predate the driver${src('2026 OpenOCD page', S.r26openocd, 'OpenOCD mspm0 driver', S.oocdMspm0)}.`,
+
+    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'Attaching OpenOCD and GDB to the MSPM0L2228 through the external XDS110, from the 2026 rules. Not run here; design-phase boards only.', code: `# terminal 1: OpenOCD over the XDS110 (SWD); leaves a GDB server on port 3333
+openocd -s ./share/openocd/scripts/ -f interface/xds110.cfg -f target/ti/mspm0.cfg \\
+        -c 'bindto 0.0.0.0; init; halt'
 
 # terminal 2: GDB with the ELF from the Docker build, for symbols
-gdb-multiarch <output-dir>/hsm.elf -ex "target extended-remote :3333"`,
+gdb-multiarch ./build/hsm.elf -ex "target extended-remote :3333"`,
       explain: [
-        { lines: '2', md: 'The board file pulls in `interface/xds110.cfg` and `target/ti/mspm0.cfg`. If your OpenOCD reports that it cannot find the file, the installed version predates MSPM0 support.' },
-        { lines: '5', md: '`<output-dir>` is wherever your `docker run` mounted the build output. Port 3333 is OpenOCD’s default GDB port.' },
+        { lines: '2-3', md: '`interface/xds110.cfg` selects the probe, `target/ti/mspm0.cfg` the chip. You should see OpenOCD report a Cortex-M0+ with 4 breakpoints and 2 watchpoints — a budget to plan around.' },
+        { lines: '6', md: 'Use the `.elf`, not the `.bin`: the ELF carries the symbols that turn addresses into function and variable names. Remember that variables will show `0x202xxxxx` addresses, the unchecked SRAM view.' },
       ] },
 
-    `## Boot architecture and hardware security, as far as the sources go
+    `Alongside the debugger: the XDS110 also carries a serial channel, the control UART at 115200 baud is your log, and the LED tells you which mode the bootloader is in. TI's own tools — Code Composer Studio and UniFlash — are the vendor alternative${src('SDK tools docs', S.tiTools, 'debug_program.rst', S.tiDebug)}.
 
-**NONMAIN boot configuration.** The device reads boot policy from the NONMAIN region. The options exposed in TI's \`boot_config.h\` for this part include: debug access (enabled, enabled with password, or disabled); SWD port enable/disable; TI failure-analysis enable; mass erase and factory reset (enabled, password-protected, or disabled); bootstrap loader (BSL) pin invoke and bootloader mode; fast boot; static write protection of NONMAIN; a bank-swap policy; a flag saying a Customer Secure Code image exists; and a secure-boot application check by CRC or hash${src('boot_config.h', S.tiBootCfg)}.
+## Boot architecture and hardware security
 
-**Customer Secure Code (CSC).** TI's MCUboot-based secure-boot stage for this device family. It verifies images with ECDSA P-256 and SHA-256, uses under 18 kB of flash per bank ("allowing for two 110kB images on a 256kB device"), sets up write, read and IP-protect firewalls, the KEYSTORE and the bank-swap policy, provides rollback protection, and has an optional CMAC fast-boot check. TI states it "does not guarantee a full secure boot implementation on a device"${src('CSC user guide', S.tiCsc)}.
+**What runs first.** After reset, TI's ROM boot configuration routine (BCR) runs before any flash code. It applies the policy stored in NONMAIN: the debug policy, any pending mass erase or factory reset, static write protection, an optional **32-bit CRC** check of application flash, and whether to start the bootstrap loader${src('TRM SLAU847F section 1.4.2', S.tiTrm)}. A CRC detects corruption; it is not a signature and says nothing about who wrote the image.
 
-**Peripherals and SDK examples.** The SDK's LP_MSPM0L2228 examples cover AES in CBC, CTR, ECB, CMAC and GCM modes with 128- and 256-bit keys, tamper I/O (heartbeat, timestamp on tamper, scratchpad erase on tamper), flash ECC and dynamic memory protection, and writing NONMAIN${src('SDK examples', S.tiExamples)}.`,
+**Debug lock-down.** NONMAIN selects one of three SWD security levels: **0**, no restrictions (the factory default); **1**, custom — application debug, mass erase and factory reset each enabled, password-protected (128-bit) or disabled; **2**, the debug port fully disabled. The critical fields use 16-bit patterns so that a single flipped bit falls to the most secure state rather than the least${src('TRM SLAU847F sections 1.4.1–1.4.2', S.tiTrm)}.
+
+**Bootstrap loader (BSL).** A ROM loader over **UART or I2C**, enabled by default, always protected by a **256-bit password**, and possible to disable in NONMAIN. It starts on the BSL-invoke pin at boot, automatically on a blank device, or on request from software${src('datasheet section 8.34', S.tiDs, 'TRM section 1.4.3', S.tiTrm)}.
+
+**Static write protection.** Per sector for the first 32 sectors of main flash and per 8 sectors after that; NONMAIN can be locked too. Application code and the BSL cannot modify protected sectors — but an SWD mass erase or factory reset **overrides** the protection unless those commands are themselves password-protected or disabled${src('TRM section 1.4.2.3', S.tiTrm)}. Write protection without a debug policy protects against bugs, not against a person with a probe.
+
+**Crypto and keys.** AESADV handles 128-bit blocks with **128- or 256-bit keys** (no 192) in GCM/GMAC, CCM/CBC-MAC, CBC and CTR modes. The **keystore** holds up to four AES keys so that the engine can use a key without software being able to read it; it is meant to be loaded during a Customer Secure Code stage. The TRNG produces 32-bit outputs intended to seed a deterministic generator${src('datasheet sections 8.19–8.21', S.tiDs)}.
+
+**Tamper.** The battery-backed LFSS has an RTC, an independent watchdog, 32 bytes of scratchpad memory and up to three tamper inputs (TIO0–TIO2, package dependent) with event timestamps${src('datasheet', S.tiDs, 'SDK examples', S.tiExamples)}.
+
+**Customer Secure Code (CSC).** TI's MCUboot-based secure-boot stage for this family: ECDSA P-256 with SHA-256 image verification, firewalls, keystore set-up, bank-swap policy and rollback protection, in under 18 kB per bank. It ends by writing \`INITDONE\`, after which its protections are locked in. TI states it "does not guarantee a full secure boot implementation on a device"${src('CSC user guide', S.tiCsc, 'TRM', S.tiTrm)}.`,
 
     { t: 'widget', name: 'boot-sequence', props: { platform: 'mspm0l2228' }, caption: 'Step the MSPM0 boot sequence. Which stages read NONMAIN, and which stages belong to the competition bootloader rather than to TI?' },
 
-    { t: 'callout', kind: 'security', title: 'The chip having a feature does not mean you may use it', md: `NONMAIN can disable debug access and SWD, and can restrict mass erase and factory reset. A wrong write there can lock you out of your own board, and in a competition the bootloader region and its configuration belong to the organisers. Before touching NONMAIN, CSC, the key store or the firewalls: (1) read the 2026 rules on what teams may configure; (2) read the TRM chapter on NONMAIN and the boot configuration routine so you know which settings are reversible; (3) only then try it, on a board you own and can afford to lose. Whether the eCTF 2026 bootloader uses CSC or any of these features is **not verified here**.` },
+    { t: 'callout', kind: 'security', title: 'The chip having a feature does not mean you may use it', md: `On 2026 attack boards the MITRE secure bootloader "functions as a CSC and issues INITDONE", and the rules tell teams to work out from TI's documentation how that affects the hardware security features they plan to use${src('2026 bootloader page', S.r26boot)}. Read that as a warning: anything that can only be configured *before* INITDONE — loading the keystore, setting firewalls — is decided by the stage that runs before you, and that stage is not yours. NONMAIN is in the same position: it is boot policy for a board whose bootloader belongs to the organisers.
 
-    { t: 'callout', kind: 'note', title: 'Not verified here — where to check', md: `| Item | Where to confirm |
+Before designing around any of these features: (1) read the 2026 rules on what teams may configure; (2) read TRM section 1.4 so you know which settings are reversible; (3) only then try it, on a design-phase board you can afford to lose. What the secure bootloader verifies internally is not published.` },
+
+    { t: 'callout', kind: 'note', title: 'Still not verified — where to check', md: `| Item | Where to confirm |
 |---|---|
-| **Exact 2026 board name.** The repository proves only the MCU. TI's evaluation board for this part is the LP-MSPM0L2228 LaunchPad${src('SDK README', S.tiReadme)}, but unopened search results mention a board called "MSP-LITO-L2228" for 2026 | eCTF 2026 rules, getting-started / hardware page |
-| On-board debugger of the 2026 board, and of the LP-MSPM0L2228 | Board user guide; 2026 rules |
-| How the 2026 MITRE bootloader is installed, entered and used to flash | eCTF 2026 rules, bootloader / getting-started pages |
-| Maximum CPU frequency | MSPM0L2228 datasheet, clock specifications |
-| Dual-bank flash details; presence and size of data flash (OpenOCD lists a family-level DATA region at \`0x41D00000\`, not confirmed for this part) | MSPM0L2228 datasheet memory section; MSPM0 L-series TRM, flash chapter |
-| ADC resolution, tamper pin count, operating voltage | MSPM0L2228 datasheet |
-| ROM bootstrap loader interfaces and how it is invoked | TRM, BSL chapter; BSL user guide in the SDK docs |
-| Static write protection semantics | TRM, NONMAIN / flash protection chapter |
+| MSP-LITO-L2228 schematic and on-board parts. The user manual MITRE links is for the near-identical MSP-LITO-G3507 | Schematics distributed to teams; that user manual |
+| What the MITRE secure bootloader checks and how \`.prot\` images are protected | Not published; only its visible behaviour is documented |
+| Exact BCR boot timing and the full NONMAIN field layout | TRM SLAU847, section 1.4 and the NONMAIN register tables |
+| Known silicon errata | TI's errata sheet for the MSPM0L222x (not read) |
+| Electrical limits of the GPIO pins (thresholds, drive current) | Datasheet SLASF94A, section 7 — read them before wiring anything to another board |
 
-Candidate vendor pages (not load-tested): ${S.tiProduct} , ${S.tiLp} .` },
+Everything else in this lesson cites the document it came from: [datasheet](${S.tiDs}), [TRM](${S.tiTrm}), [2026 rules](${S.rules}).` },
 
-    { t: 'exercise', prompt: `You are porting startup code to the 2026 platform. The linker script places the stack at the very top of SRAM, growing downward (the usual full-descending Cortex-M stack). What value must the first word of your image's vector table hold? Give it in hex.`,
+    `## Hardware limitations to design around
+
+- **32 KB of RAM and a 256-byte stack** in the reference configuration. One 8192-byte file is a quarter of all RAM.
+- **32 MHz, no divide instruction, no FPU.** Public-key operations are slow and software division has data-dependent timing — against a 3-second limit for read/write/receive and a 5-second ceiling on a wrong PIN.
+- **Flash endurance of 10 000 cycles** outside the lowest 32 KB, in 1 KB sectors. A counter that erases a sector on every event has a budget.
+- **Four interrupt priority levels.**
+- **An external probe on jumper wires** is your only debug access, and attack boards do not give you even that in a useful form.
+- **4 breakpoints and 2 watchpoints** when you do have it.`,
+
+    { t: 'exercise', prompt: `Your team decides to keep the reference design's choice of the unchecked SRAM view. The linker script places the stack at the very top of SRAM, growing downward (the usual full-descending Cortex-M stack). What value must the first word of your image's vector table hold? Give it in hex.`,
       hints: [
-        `The first vector-table word is the initial stack pointer. With a full-descending stack placed at the top of RAM, it points one byte past the last RAM byte.`,
-        `SRAM origin is 0x20200000 and its length is 0x8000.`,
-        `Add them. The result is not a valid RAM address itself — the first push decrements SP before writing.`,
+        `What does the first vector-table word mean to the processor, and where does a downward-growing stack start?`,
+        `With a full-descending stack at the top of RAM, the initial stack pointer is one byte past the last RAM byte. Which view's origin is the image linked against?`,
+        `SRAM origin 0x20200000 plus length 0x8000. The result is not itself a RAM address — the first push decrements SP before writing.`,
       ],
       solution: `\`0x20200000 + 0x8000 = 0x20208000\`.
 
-That address is one past the end of RAM, which is correct: a Cortex-M push decrements SP first, so the first stacked word lands at \`0x20207FFC\`. A value of \`0x20008000\` here is the fingerprint of a linker script carried over from a chip with RAM at \`0x20000000\`.
+That address is one past the end of RAM, which is correct: a Cortex-M push decrements SP first, so the first stacked word lands at \`0x20207FFC\`.
 
-Two follow-ups. In the eCTF 2026 layout, *your* vector table is at \`0x6000\`, not at 0, so it is the bootloader's hand-off (not the reset itself) that uses this word. And whether the reference script actually puts the stack at the top of RAM is for you to read in \`firmware.ld\` — the method is the same wherever it is.`,
-      answer: { type: 'text', accept: ['^\\s*(0x)?2020[_ ]?8000\\s*$'], nudge: 'Add the SRAM length to the SRAM origin — and check which origin you used.' } },
+Three follow-ups. (1) An image linked against the ECC view would hold \`0x20008000\` here — on this chip that is also a legal value, which is exactly why you cannot spot a view mix-up by eye; check that *every* RAM address in the map file starts with the same three hex digits. (2) In the eCTF 2026 layout your vector table is at \`0x6000\`, not at 0, so it is the bootloader's hand-off, not the reset itself, that loads this word. (3) With \`--stack_size=256\`, the stack occupies only \`0x20207F00\`–\`0x20207FFF\`; anything deeper silently overwrites whatever the linker placed below.`,
+      answer: { type: 'text', accept: ['^\\s*(0x)?2020[_ ]?8000\\s*$'], nudge: 'Add the SRAM length to the origin of the view the reference linker script uses.' } },
 
-    { t: 'exercise', prompt: `The reference design stores each file in 9 flash pages of 1024 bytes, starting at 0x10000, and allows 8 files. **Assume** the 8 slots are contiguous (confirm this in the filesystem source). (a) What is the first address after the last slot? (b) Does the file area lie entirely inside the team FLASH region? (c) File contents are at most 8192 bytes: what does the ninth page suggest? Enter the address for (a) in hex.`,
+    { t: 'exercise', prompt: `The reference design stores each file in 9 flash pages of 1024 bytes, starting at 0x10000, and allows 8 files. **Assume** the 8 slots are contiguous (confirm this in the filesystem source). (a) What is the first address after the last slot? (b) Does the file area lie entirely inside the team region APP1? (c) File contents are at most 8192 bytes: what does the ninth page suggest? Enter the address for (a) in hex.`,
       hints: [
-        `One slot is 9 × 1024 bytes. Eight slots is 72 × 1024 bytes.`,
-        `72 × 1024 = 73 728 = 0x12000. Add that to 0x10000.`,
-        `The team FLASH region runs from 0x6000 to 0x3A000. For (c): 8192 bytes is exactly 8 pages.`,
+        `How many bytes is one slot, and how many slots are there?`,
+        `One slot is 9 × 1024 bytes; eight slots is 72 × 1024 = 73 728 = 0x12000 bytes. Add that to the start address.`,
+        `APP1 runs from 0x6000 to 0x3A000. For (c): 8192 bytes is exactly 8 pages.`,
       ],
       solution: `(a) 8 × 9 × 1024 = 73 728 = \`0x12000\`, so the area ends at \`0x10000 + 0x12000 = 0x22000\`.
 
-(b) Yes: \`0x10000\`–\`0x22000\` is inside the team region \`0x6000\`–\`0x3A000\`. Note what it implies: under that assumption, the file area sits in the middle of the region your code is linked into, so code placed from \`0x6000\` has \`0xA000\` bytes (40 KB) before it would reach the first file slot. Whether the linker script or the code guards against that overlap is something to read in the repository, not to assume.
+(b) Yes: \`0x10000\`–\`0x22000\` is inside APP1, \`0x6000\`–\`0x3A000\`. Note what it implies: under that assumption the file area sits in the middle of the region your code is linked into, so code placed from \`0x6000\` has \`0xA000\` bytes (40 KB) before it would reach the first file slot. Whether the linker script or the code guards against that overlap is something to read in the repository, not to assume. It also straddles the boundary between the two flash banks at \`0x20000\`.
 
 (c) 8192 bytes of contents fill exactly 8 pages, so the ninth page is most plausibly for metadata such as name, group, UUID and length. That is an inference; \`filesystem.h\` is where to confirm it.
 
 The security-relevant observation: files and code share one flash region with no hardware boundary established by the layout itself. What stops a write of file data from landing on code, or a read from returning another group's file, is firmware logic — which is exactly what an attacker examines first.`,
       answer: { type: 'text', accept: ['^\\s*(0x)?0*22000\\s*$'], nudge: 'Start address plus 8 slots of 9 pages of 1024 bytes each.' } },
 
+    { t: 'exercise', prompt: `A teammate wants to run the UART from a 4 MHz clock instead of 32 MHz to save power, keeping 115200 baud and 16× oversampling. Using the method in the code walkthrough (divisor = clock / (16 × baud); integer part, then the fraction in 64ths, rounded): (a) what is the integer divisor? (b) what is the fractional setting? (c) how far off is the resulting baud rate, and is that acceptable? Enter the answer to (b).`,
+      hints: [
+        `Do the 32 MHz case first and check you get the reference design's 17 and 23.`,
+        `4 000 000 / (16 × 115 200) = 2.170. The integer part is 2; the fraction is 0.170.`,
+        `0.170 × 64 = 10.9, which rounds to 11. Then compute the real rate: 4 000 000 / (16 × (2 + 11/64)).`,
+      ],
+      solution: `(a) 4 000 000 / 1 843 200 = 2.1701, so the integer divisor is **2**.
+
+(b) 0.1701 × 64 = 10.89, rounded to **11**.
+
+(c) Actual rate = 4 000 000 / (16 × (2 + 11/64)) = 4 000 000 / 34.75 = 115 108 baud, an error of about −0.08 %. A UART tolerates a few percent of total mismatch between the two ends, so this is fine.
+
+Check of the method against the reference: 32 000 000 / 1 843 200 = 17.361 → 17 and 0.361 × 64 = 23.1 → 23, giving 115 211.5 baud, the figure in the generated file's comment.
+
+The point is not the arithmetic. Baud divisors are derived from the clock, so any change to the clock tree — for power, or because a different oscillator is selected after a fault — silently changes every serial link unless the divisors are recomputed. And slowing the CPU by 8× has a much larger effect on whether your cryptography meets the 3-second limits.`,
+      answer: { type: 'number', value: 11, tol: 0 } },
+
     `## Harder application
 
-The MAX78000 design you might be porting from had 128 KB of RAM, a hardware FPU, however many interrupt priority levels its header's \`__NVIC_PRIO_BITS\` gives (look it up — it is not recorded in this course's fact sheet) and 8 KB flash pages. The MSPM0L2228 has 32 KB of RAM, no FPU, four priority levels and — per the reference design — 1 KB flash pages. For a design that (i) buffers a whole 8192-byte file in RAM while verifying it, (ii) uses floating point in a rate limiter, (iii) relies on five distinct interrupt priorities, and (iv) keeps a monotonic counter in its own flash page: say for each whether it ports unchanged, ports with a cost, or must be redesigned, and what you would measure to be sure. Lesson 5 gives you the comparison tool for this.`,
+The MAX78000 design you might be porting from had 128 KB of RAM, a hardware FPU, 8 interrupt priority levels and 8 KB flash pages. The MSPM0L2228 has 32 KB of RAM, no FPU, four priority levels, 1 KB sectors and 10 000 erase cycles on most of its flash. For a design that (i) buffers a whole 8192-byte file in RAM while verifying it, (ii) uses floating point in a rate limiter, (iii) relies on five distinct interrupt priorities, and (iv) counts failed PIN attempts by erasing and rewriting one flash sector per failure: say for each whether it ports unchanged, ports with a cost, or must be redesigned, and what you would measure to be sure. For (iv), work out how many wrong PINs the sector survives, and what an attacker who can send wrong PINs all day does to a design that stops counting when the sector wears out. Then decide, with reasons, which SRAM view the failed-attempt state should live in while the device is running. Lesson 5 gives you the comparison tool for this.`,
 
     { t: 'refs', items: [
       { title: 'MITRE eCTF 2026 insecure example (ectfmitre)', url: S.y2026 },
+      { title: 'eCTF 2026 rules: MSP-LITO-L2228 board and debugger', url: S.r26board },
+      { title: 'eCTF 2026 rules: eCTF bootloader', url: S.r26boot },
+      { title: 'eCTF 2026 rules: OpenOCD', url: S.r26openocd },
+      { title: 'eCTF 2026 rules: detailed specifications (limits, flash layout)', url: S.r26detail },
+      { title: 'eCTF 2026 rules: security requirements', url: S.r26sec },
+      { title: 'TI MSPM0L222x / MSPM0L122x datasheet, SLASF94A (memory map: Table 8-4)', url: S.tiDs },
+      { title: 'TI MSPM0 L-series technical reference manual, SLAU847F (SRAM views: section 1.3.2; NONMAIN, SWD levels, BSL: section 1.4)', url: S.tiTrm },
       { title: 'TI MSPM0 SDK (repository)', url: S.ti },
-      { title: 'MSPM0 SDK: MSPM0L2228 linker command file (memory origins and lengths)', url: S.tiCmd },
-      { title: 'MSPM0 SDK: MSPM0L222x device header', url: S.tiHdr },
-      { title: 'MSPM0 SDK: boot configuration options for the L2228', url: S.tiBootCfg },
+      { title: 'MSPM0 SDK: MSPM0L2228 linker command file', url: S.tiCmd },
       { title: 'MSPM0 SDK: Customer Secure Code user guide (source)', url: S.tiCsc },
       { title: 'OpenOCD: MSPM0 flash driver', url: S.oocdMspm0 },
-      { title: 'OpenOCD: MSPM0 LaunchPad board configuration', url: S.oocdLp },
-      { title: 'TI MSPM0L2228 product page (datasheet, TRM)', url: S.tiProduct, note: 'Not load-tested.' },
-      { title: 'MITRE eCTF rules', url: S.rules, note: 'Not load-tested; the authority for the 2026 board, bootloader and requirements.' },
     ] },
   ],
   quiz: [
-    { kind: 'arch', q: `A generic Cortex-M linker script with \`RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 32K\` is used unchanged for the MSPM0L2228. The build succeeds. What should you expect on the board?`,
+    { kind: 'arch', q: `A generic Cortex-M linker script with \`RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 32K\` is used unchanged for the MSPM0L2228, with start-up code that initialises all of \`.data\` and \`.bss\`. What does that script actually select on this chip?`,
       choices: [
-        { t: 'A fault during startup, because the stack and static data are placed at addresses where this part has no RAM', ok: true, why: 'This part’s SRAM begins at 0x20200000. The linker cannot know that; it places data wherever the script says, and the first access fails.' },
-        { t: 'Normal operation, because all Cortex-M parts have SRAM at 0x20000000', why: 'The architecture reserves a range for SRAM but each vendor chooses where within it memory actually exists.' },
-        { t: 'A link error, because the linker checks addresses against the chip', why: 'The linker has no knowledge of the silicon; the script is its only description of memory.' },
-        { t: 'Correct operation but with only half the RAM available', why: 'No part of the range the script names is backed by RAM on this device, so nothing works rather than half.' },
+        { t: 'The ECC-checked view of the same 32 KB that TI’s linker file reaches at 0x20200000', ok: true, why: 'The datasheet maps one SRAM at three ranges. 0x20000000 is the default, ECC-checked view: valid RAM, with slower writes and faults on detected errors.' },
+        { t: 'Nothing: the part has no memory there, so the first stack push raises a bus fault before main', why: 'That is true of some chips, but this part’s memory-map table lists 0x20000000 as SRAM. Check the table before assuming a hole.' },
+        { t: 'A second, separate 32 KB of RAM, so the chip effectively has 64 KB if both ranges are used', why: 'The ranges are aliases of the same cells. Using two of them for different data would make the data overlap, not double the memory.' },
+        { t: 'The parity-checked view, because parity is the default integrity check on Cortex-M0+ parts', why: 'The core does not define RAM checking at all; the device does. On this part the default range is ECC-checked and parity has its own range.' },
       ] },
     { kind: 'concept', q: `The 2026 reference Dockerfile installs \`ti-cgt-armllvm\`. A teammate’s laptop has \`arm-none-eabi-gcc\` and they want to build natively "to save time". What is the strongest argument for using the container?`,
       choices: [
-        { t: 'The reference linker script, startup code and flags target TI Arm Clang at a pinned SDK version; another compiler yields a different, untested image', ok: true, why: 'Reproducibility is the purpose of the pinned container. A different compiler changes code generation, runtime library routines and possibly layout.' },
-        { t: 'GCC cannot generate code for the Cortex-M0+', why: 'GCC supports ARMv6-M, and TI’s SDK lists GCC among supported compilers; capability is not the issue.' },
-        { t: 'Docker builds run faster than native builds', why: 'Containers do not speed compilation; the benefit is that everyone builds the same thing.' },
-        { t: 'The rules forbid any compiler other than TI Arm Clang', why: 'That would be a rules question, and the rules were not verified here; do not assert a rule you have not read.' },
+        { t: 'The linker script, startup code and flags target TI Arm Clang at a pinned SDK version', ok: true, why: 'Reproducibility is the purpose of the pinned container. A different compiler changes code generation, runtime library routines and possibly layout, giving an image nobody else has tested.' },
+        { t: 'GCC cannot generate code for the Cortex-M0+, which needs a vendor compiler for ARMv6-M', why: 'GCC supports ARMv6-M, and TI’s SDK lists GCC among supported compilers; capability is not the issue.' },
+        { t: 'Docker builds finish faster than native builds because the container caches the SDK', why: 'Containers do not speed compilation; the benefit is that everyone builds exactly the same thing.' },
+        { t: 'The rules forbid every compiler other than TI Arm Clang for 2026 designs', why: 'The rules pre-approve languages (C, C++, Rust), not a single compiler. Do not assert a rule you have not read.' },
       ] },
-    { kind: 'security', q: `TI’s boot configuration for this part can disable the SWD port. A team wants to do this to their eCTF 2026 board immediately. What should they do first?`,
+    { kind: 'security', q: `A team sets static write protection on the flash sectors holding their key material and leaves the SWD policy at its factory default. Against which attacker does this protect the sectors?`,
       choices: [
-        { t: 'Read the 2026 rules on what teams may configure and the TRM on which NONMAIN settings are reversible, and trial it on a spare board they own', ok: true, why: 'NONMAIN is boot policy that can lock out debugging and recovery, and in a competition it may not be the team’s to change. Know both before writing it.' },
-        { t: 'Do it at once — disabling debug is always the secure choice', why: 'A control applied without knowing whether it is permitted or reversible can disqualify a design or destroy the only board.' },
-        { t: 'Nothing; NONMAIN cannot be written by user code', why: 'The SDK includes an example that writes NONMAIN, so it can be written, which is why care is needed.' },
-        { t: 'Disable it in software by not calling the SWD driver', why: 'Debug access is a hardware port governed by boot configuration, not a driver the application chooses to call.' },
+        { t: 'Against a bug in their own firmware, but not against someone with a debug probe', ok: true, why: 'Application code and the BSL cannot modify protected sectors, but an SWD mass erase or factory reset overrides the protection unless those commands are password-protected or disabled.' },
+        { t: 'Against anyone, since protected sectors cannot be changed until the chip is replaced', why: 'The protection is policy stored in NONMAIN, and the TRM describes debug-port commands that override it when they are left enabled.' },
+        { t: 'Against a debug probe, but not against the team’s own firmware writing by mistake', why: 'It is the other way round: static write protection stops code running on the chip, and at the default level the debug port is unrestricted.' },
+        { t: 'Against reading the key, because write protection also blocks read access to the sector', why: 'Write protection concerns modification. Whether data can be read out is governed by other mechanisms, such as the debug policy.' },
       ] },
-    { kind: 'arch', q: `The file allocation table is fixed at \`0x0003A000\` because the bootloader must know where it is. Your design would be simpler with the table elsewhere. What follows?`,
+    { kind: 'arch', q: `Your image has grown past APP1 into APP2. The reference \`firmware.ld\` gives APP2 a length of \`0x5C00\`; the 2026 rules give \`0x5800\` and a reserved region at \`0x3FC00\`. Your image ends at \`0x3FD00\`. What follows?`,
       choices: [
-        { t: 'The location is part of the interface between your firmware and the bootloader, so it is a constraint to design around, not a parameter to change', ok: true, why: 'When another component you do not control reads a structure at a fixed address, moving it breaks that component’s assumptions.' },
-        { t: 'Move it and update the linker script; the linker will inform the bootloader', why: 'The bootloader is a separate, pre-built image; nothing in your link step can change what address it reads.' },
-        { t: 'Keep a second copy elsewhere and ignore the fixed one', why: 'The bootloader would then act on stale or empty data, and two copies that can disagree create a consistency problem of their own.' },
-        { t: 'It only matters during the attack phase', why: 'A fixed layout requirement from the functional specification applies whenever the bootloader runs, in every phase.' },
+        { t: 'The link succeeds, but the last 0x100 bytes sit in a sector the rules reserve for the bootloader', ok: true, why: 'The rules are the specification; the linker script is one implementation of it. A link succeeding shows the script is self-consistent, not that the memory is yours.' },
+        { t: 'Nothing: the linker script ships with the reference design, so its region lengths are authoritative', why: 'A reference implementation can differ from the specification. When they disagree, the specification decides what you may use.' },
+        { t: 'The link fails, because TI’s linker checks region lengths against the rules’ flash layout', why: 'A linker knows only what its script says. Nothing connects it to the competition’s documentation.' },
+        { t: 'The image overflows physical flash, because 0x3FD00 is beyond the end of the 256 KB', why: '256 KB ends at 0x40000, so the address exists. The question is who is entitled to that last sector.' },
       ] },
     { kind: 'code', q: `On this Cortex-M0+ you write \`uint32_t avg = total / count;\` inside a function that compares a PIN attempt. Why might that line deserve a second look on this chip in particular?`,
       choices: [
-        { t: 'ARMv6-M has no divide instruction, so the division becomes a library call whose execution time can depend on the operand values', ok: true, why: 'Software division routines commonly take data-dependent time; next to secret-dependent code that can become a timing signal worth measuring.' },
-        { t: 'Division is undefined behaviour on a Cortex-M0+', why: 'Integer division is fully defined in C whenever the divisor is non-zero; the question is how it is implemented.' },
-        { t: 'The M0+ computes division in floating point, which is disabled', why: 'Integer division does not go through floating point; the build uses a soft-float ABI but that concerns float types.' },
-        { t: 'The result is 16 bits wide on this core', why: 'The core is 32-bit and `uint32_t` arithmetic is 32-bit; width is unaffected.' },
+        { t: 'ARMv6-M has no divide instruction, so it becomes a library call whose time can depend on the operands', ok: true, why: 'Software division routines commonly take data-dependent time; next to secret-dependent code that can become a timing signal worth measuring.' },
+        { t: 'Unsigned division is undefined behaviour in C on cores that lack a hardware divider, so the result may vary', why: 'Integer division is fully defined in C whenever the divisor is non-zero; the question is how it is implemented.' },
+        { t: 'The M0+ performs division in floating point, which this build has disabled with a soft-float ABI', why: 'Integer division does not go through floating point; the soft-float ABI concerns float and double types.' },
+        { t: 'The quotient is only 16 bits wide on this core, so large totals are silently truncated', why: 'The core is 32-bit and `uint32_t` arithmetic is 32-bit; width is unaffected.' },
       ] },
-    { kind: 'concept', q: `Which statement about the eCTF 2026 hardware is supported by this course’s fact sheet?`,
+    { kind: 'concept', q: `A teammate with an LP-MSPM0L2228 LaunchPad follows the 2026 bootloader instructions written for the competition board: flashes \`insecure.out\`, holds S2 during reset, and sees no flashing red LED. What is the most likely explanation?`,
       choices: [
-        { t: 'The MCU is the MSPM0L2228, established by the reference Makefile’s `-D__MSPM0L2228__`; the board’s exact name and on-board debugger are unconfirmed', ok: true, why: 'The repository proves the part; the board name appears only in unopened pages, with a conflicting candidate name.' },
-        { t: 'The kit is the LP-MSPM0L2228 LaunchPad and is flashed with OpenOCD', why: 'Both halves are assumptions: the board name is unverified and so is the official flashing path.' },
-        { t: 'The part has 512 KB of flash at 0x10000000', why: 'Those are the MAX78000’s figures from 2024–2025; this part has 256 KB at address zero.' },
-        { t: 'The reference design enables TI’s Customer Secure Code', why: 'CSC exists for this family, but whether the 2026 bootloader or reference design uses it was not established.' },
+        { t: 'The LaunchPad needs the separate `launchpad.out` build, which uses button S1 (PA18) and a blue LED', ok: true, why: '"Largely interchangeable" is not "identical": the boards wire the button and LED differently, so MITRE publishes a second bootloader build for the LaunchPad.' },
+        { t: 'LaunchPads cannot run the eCTF bootloader at all, because their XDS110 is on the board rather than external', why: 'Where the probe sits does not change what the MCU can run; the rules provide a bootloader build for the LaunchPad.' },
+        { t: 'The LaunchPad carries a different MCU, so an image built for the MSPM0L2228 does not start on it', why: 'The LP-MSPM0L2228 carries the same MSPM0L2228; what differs is the board around the chip.' },
+        { t: 'UniFlash erased NONMAIN, which permanently disables the bootloader button on LaunchPad boards', why: 'The button is an ordinary GPIO read by the bootloader. Think about which pin each board connects its button to.' },
+      ] },
+    { kind: 'security', q: `In the 2026 attack phase the attacker is an insider who holds one legitimate HSM and knows its PIN. Which security requirement does the PIN check, on its own, do least to enforce against that attacker?`,
+      choices: [
+        { t: 'SR1: file actions require the matching permission for the file’s group', ok: true, why: 'The attacker passes the PIN check legitimately. What must still stop them reading or receiving other groups’ files is the permission system, enforced by something they cannot forge or edit.' },
+        { t: 'SR2: PIN-protected actions require prior knowledge of the PIN, which must not leak', why: 'SR2 is the requirement the PIN check implements directly, for HSMs whose PIN the attacker does not have.' },
+        { t: 'None: an insider with a valid PIN is out of scope, so no requirement applies to them', why: 'The attack flags describe exactly this attacker. A threat the rules name is in scope by definition.' },
+        { t: 'All three equally, because a correct PIN check is sufficient to satisfy every requirement', why: 'The requirements are separate properties. Authentication of a user says nothing about which files that user’s device may touch.' },
       ] },
   ],
 };

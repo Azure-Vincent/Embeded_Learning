@@ -224,7 +224,7 @@ const p1 = {
     'Solderless breadboard and 3 jumper wires.',
     '1 × red 5 mm LED. Red has the lowest forward voltage (roughly 1.8–2.0 V), which leaves the most headroom from a 3.3 V pin.',
     '1 × 330 Ω resistor (orange-orange-brown). Chosen to give about 4 mA: clearly visible and well inside a conservative GPIO budget.',
-    '1 × 1 kΩ and 1 × 100 Ω resistor for the comparison in step 4 (optional).',
+    '1 × 1 kΩ and 1 × 100 Ω resistor for the comparison in step 4 and the load test in step 6.',
     'Multimeter with DC volts and continuity ranges.',
   ],
   software: [
@@ -369,7 +369,7 @@ That is more useful than reading back the output register: if the pin is shorted
       { t: 'code', lang: 'c', status: 'idf-built', code: P1_FINAL, caption: 'main/main.c, complete blink with read-back' },
       `**You should see** \`wrote 1, pin reads 1\` and \`wrote 0, pin reads 0\` alternating.
 
-Now a deliberate fault: with the program running, briefly connect GPIO18 to GND **through the 100 Ω resistor** (not a bare wire). Touch it for a second only: up to 3.3 V / 100 Ω = 33 mA can flow, which is inside the datasheet's *typical* source capability but far more than you would design for. Predict the log line first. With the LED path and a 100 Ω path to ground in parallel, the pin is pulled down somewhat while high; whether it reads 0 depends on the pin's output resistance and the input thresholds. Measure the pin voltage during the fault and compare it with the thresholds in the datasheet's Table 5-3: a level above 0.75 × VDD (about 2.5 V) is guaranteed to read 1, a level below 0.25 × VDD (about 0.8 V) is guaranteed to read 0, and in between the datasheet promises nothing.`,
+Now load the pin on purpose: with the program running, connect GPIO18 to GND **through the 1 kΩ resistor** (never a bare wire, and not the 100 Ω part: that would draw about 33 mA from one pin, far more than a design should ask of it). About 3.3 V / 1 kΩ = 3.3 mA flows in addition to the LED current. Predict two things first: the log line, and whether your meter will see the pin voltage change. Then measure the pin voltage with and without the extra load. You should see it fall by a few tens of millivolts: the output stage has some resistance, so more current means a slightly lower high level. Compare the loaded level with the thresholds in the datasheet's Table 5-3: a level above 0.75 × VDD (about 2.5 V) is guaranteed to read 1, a level below 0.25 × VDD (about 0.8 V) is guaranteed to read 0, and in between the datasheet promises nothing. The read-back stays 1, which is the point: reading an output pin back tells you the voltage at the pin, not whether the load behind it is healthy. From your two voltage readings and the 3.3 mA, estimate the output resistance of the pin (ΔV / ΔI) and write it in your notebook.`,
     ] },
     { title: 'Go underneath the driver: write the registers yourself', blocks: [
       `The driver's \`gpio_set_level\` ends in a single register write. Do that write yourself.
@@ -394,7 +394,7 @@ Then delete the \`gpio_config\` call, rebuild and flash. **You should see** the 
 
 It is chosen when a pin can sink more than it can source (true of some chips; check the datasheet), when the pin is open-drain, or when the LED runs from a different rail than the logic. In firmware, hide the polarity behind one function such as \`led_set(bool on)\` so the rest of the code never needs to know.` },
       { t: 'exercise', prompt: `**Debugging exercise D.** Someone moves the LED to the pin labelled \`D34\` because it was closer, and changes \`LED_GPIO\` to \`GPIO_NUM_34\`. The program builds. What happens at run time on an original ESP32, and where would you have found this out before wiring?`,
-        hints: ['Look at the list of pins to avoid in the background section.'],
+        hints: ['What does a pad need in order to drive a level, and does every pad have it?', 'Look at the list of pins to avoid in the background section.'],
         solution: `GPIO34–39 on the original ESP32 are **input-only**: the pads have no output driver. \`gpio_config\` refuses an output mode on these pins: in ESP-IDF v6.1 it logs \`gpio: GPIO can only be used as input mode\` and returns \`ESP_ERR_INVALID_ARG\` (\`ESP_ERROR_CHECK\` then aborts and reboots, so you would see a reboot loop with that line in it). The LED never lights. The place to check is the pin table in the datasheet or the ESP-IDF GPIO documentation for your chip, before choosing a pin.` },
     ] },
   ],
@@ -715,7 +715,7 @@ const P2_FIG = sch.open(540, 250, 'Schematic: push-button from GPIO19 to ground 
   + sch.rail(210, 50, '3V3 (inside the chip)') + sch.wire('210,50 210,55') + `<g stroke-dasharray="4 3">` + sch.resV(210, 55, '', 12) + `</g>` + sch.txt(222, 78, 'internal pull-up', 'start', 'font-size="10"') + sch.txt(222, 90, 'enabled in software', 'start', 'font-size="10"')
   + sch.wire('210,105 210,110') + sch.dot(210, 110)
   + sch.wire('162,110 300,110', 'stroke="var(--sig2)"') + sch.dot(300, 110)
-  + sch.sw(300, 110, 'SW1') + `<g stroke-dasharray="4 3">` + sch.resV(300, 150, '', 12) + `</g>` + sch.txt(240, 166, 'R2 1 kΩ', 'start', 'font-size="10"') + sch.txt(240, 178, '(optional;', 'start', 'font-size="10"') + sch.txt(240, 190, 'else a wire)', 'start', 'font-size="10"')
+  + sch.sw(300, 110, 'SW1') + `<g stroke-dasharray="4 3">` + sch.resV(300, 150, '', 12) + `</g>` + sch.txt(288, 166, 'R2 1 kΩ', 'end', 'font-size="10"') + sch.txt(288, 178, '(optional;', 'end', 'font-size="10"') + sch.txt(288, 190, 'else a wire)', 'end', 'font-size="10"')
   + sch.wire('300,110 390,110', 'stroke="var(--sig2)" stroke-dasharray="4 3"') + `<g stroke-dasharray="4 3">` + sch.capV(390, 110, 90, 'C1 100 nF') + `</g>` + sch.txt(403, 172, '(optional, step 6)', 'start', 'font-size="10"')
   + sch.wire('162,200 390,200') + sch.dot(300, 200) + sch.gnd(300, 200)
   + sch.close;
@@ -830,7 +830,7 @@ Try to write the filter yourself first. You need three variables: the accepted s
       { t: 'code', lang: 'c', status: 'idf-built', code: P2_POLL, caption: 'main/main.c, version 3: polling with a counting filter' },
       `**You should see** exactly one \`press N\` line and one LED toggle per press, for 50 presses in a row. If you get that, compute the response time: a press is accepted between 30 and 40 ms after contact. Nobody can feel that.`,
       { t: 'exercise', prompt: 'With `POLL_MS = 10` and `STABLE_POLLS = 3`, a noise spike pulls the line low for 12 ms. Can it be accepted as a press? Answer yes or no and explain.',
-        hints: ['How many consecutive polls can fall inside a 12 ms window?'],
+        hints: ['What exactly must the filter see before it accepts a new state?', 'How many consecutive polls can fall inside a 12 ms window?'],
         answer: { type: 'text', accept: ['^\\s*no'], nudge: 'Count the polls that can land inside 12 ms and compare with what the filter needs.' },
         solution: `**No.** At most two polls (10 ms apart) can fall inside a 12 ms low pulse. The first low sample changes the candidate and sets the count to 0; the second raises it to 1; the next sample is high again and resets the candidate. The count never reaches 3. A pulse must be low at four consecutive sampling instants, that is for more than 30 ms, to be accepted.` },
     ] },
@@ -1119,7 +1119,7 @@ const P3_FIG = sch.open(580, 260, 'Schematic: GPIO23 drives the gate of an N-cha
   + sch.wire('304,104 304,85') + sch.dot(304, 85) + sch.motor(304, 40, 'M1') + sch.wire('304,85 304,80') + sch.wire('304,40 304,30') + sch.dot(304, 30)
   + sch.wire('304,85 402,85 402,78') + sch.diode(402, 38, 'up', 'D1') + sch.wire('402,38 402,30') + sch.dot(402, 30)
   + sch.dot(348, 30) + sch.capV(348, 30, 55, '') + sch.dot(348, 85) + sch.txt(361, 54, 'C2', 'start', 'font-size="10"') + sch.txt(361, 66, '100 n', 'start', 'font-size="10"')
-  + sch.wire('304,30 530,30', 'stroke="var(--sig3)"') + sch.dot(450, 30) + sch.capV(450, 30, 180, 'C1 220 µF') + sch.dot(450, 210)
+  + sch.wire('304,30 530,30', 'stroke="var(--sig3)"') + sch.dot(438, 30) + sch.capV(438, 30, 180, 'C1 220 µF') + sch.dot(438, 210)
   + sch.wire('530,30 530,142') + sch.wire('518,142 542,142') + sch.wire('524,150 536,150', 'stroke-width="3"') + sch.wire('518,158 542,158') + sch.wire('524,166 536,166', 'stroke-width="3"') + sch.wire('530,166 530,210')
   + sch.txt(546, 140, '+', 'start') + sch.txt(512, 152, 'BT1', 'end') + sch.txt(512, 165, 'motor supply', 'end', 'font-size="10"')
   + sch.wire('162,210 530,210') + sch.gnd(240, 210) + sch.txt(330, 232, 'common ground: logic GND and motor supply −', 'start', 'font-size="10"')
@@ -1266,7 +1266,7 @@ Now a test with no firmware involved. Leave the R1 lead that goes to GPIO23 unco
       { t: 'exercise', prompt: `**Debugging exercise C.** To get finer speed control, someone changes the motor timer to 13 bits and keeps 20 kHz. The board now reboots in a loop, printing an LEDC error and then \`abort()\`. Explain, and give the largest resolution that works at 20 kHz from an 80 MHz clock.`,
         code: String.raw`.duty_resolution = LEDC_TIMER_13_BIT,
 .freq_hz         = 20000,`,
-        hints: ['Apply f_pwm × 2ⁿ ≤ f_clock.'],
+        hints: ['How many counter steps must fit into one PWM period, and how many clock ticks does a period contain?', 'Apply f_pwm × 2ⁿ ≤ f_clock.'],
         answer: { type: 'number', value: 11, tol: 0, unit: 'bits' },
         solution: `20 000 × 8192 = 163.84 MHz, which is more than the 80 MHz source clock: the counter cannot count 8192 steps in 50 µs. \`ledc_timer_config\` returns an error saying the requested frequency and resolution cannot be achieved, and \`ESP_ERROR_CHECK\` aborts. 80 000 000 / 20 000 = 4000 ticks per period, so 2¹¹ = 2048 fits and 2¹² does not: **11 bits** at most. For a motor, 10 bits (0.1 % steps) is already far finer than the mechanics can resolve.` },
     ] },
@@ -1619,7 +1619,7 @@ NTC lead B                   DevKit GND               bottom of the divider
     { title: 'Check the sensor with a multimeter before any code', blocks: [
       `Wire variant A with the Vout wire **not yet** connected to GPIO34. Power the board. Measure DC volts from TMP36 Vout to GND.`,
       { t: 'exercise', prompt: 'The room is at 22 °C. What voltage should the multimeter show on Vout, in mV?',
-        hints: ['500 mV at 0 °C, plus 10 mV for each degree.'],
+        hints: ['Which two numbers describe a linear sensor: where it starts, and how fast it rises?', '500 mV at 0 °C, plus 10 mV for each degree.'],
         answer: { type: 'number', value: 720, tol: 5, unit: 'mV' },
         solution: `500 + 22 × 10 = **720 mV**. Allow for the sensor's stated accuracy and your meter's: anything from roughly 700 to 740 mV is believable. Pinch the sensor between two fingers and the reading should climb towards 0.8 V over half a minute.` },
       `**You should see** a voltage between about 0.68 and 0.78 V at ordinary room temperatures, rising when you warm the sensor. Write it down: this number is the reference for everything the firmware reports. Then connect Vout to GPIO34.`,
@@ -1676,7 +1676,7 @@ If you see the warning that no calibration is available, the chip has no calibra
         code: String.raw`uint32_t mv = (uint32_t)read_millivolts();     /* 450 mV at -5 C */
 uint32_t t10 = mv - 500;                        /* tenths of a degree */
 printf("%u.%u C\n", (unsigned)(t10 / 10), (unsigned)(t10 % 10));`,
-        hints: ['What is 450 − 500 in unsigned 32-bit arithmetic?'],
+        hints: ['Which temperatures did the bench test never produce?', 'What is 450 − 500 in unsigned 32-bit arithmetic?'],
         answer: { type: 'text', accept: ['unsigned', 'underflow', 'wrap', 'signed'], nudge: 'Think about the type of the subtraction result when the sensor is below 0 °C.' },
         solution: `Below 0 °C the output is under 500 mV, and \`450u − 500u\` **wraps** to 4 294 967 246 in unsigned arithmetic; divided by 10 that prints as roughly 429 496 724. Temperatures can be negative, so the value must be a signed type. The final program uses \`int\` and also handles the display of values between −0.9 and −0.1, where integer division gives 0 and would lose the minus sign. Test conversions at the edges of the range on a PC, not only at room temperature on the bench.` },
     ] },
@@ -2124,7 +2124,7 @@ Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups
         ],
         reveal: 'Checking the idle levels takes ten seconds and rules out the most common I2C fault before any code runs.' },
       { t: 'exercise', prompt: 'With VDD = 3.3 V and a 4.7 kΩ pull-up, how much current flows through the resistor while a device holds the line low (assume the low level is 0 V)? Answer in mA.',
-        hints: ['Ohm\'s law across the pull-up.'],
+        hints: ['What is the voltage across the resistor while the line is held low?', 'Ohm\'s law across the pull-up.'],
         answer: { type: 'number', value: 0.70, tol: 0.03, unit: 'mA' },
         solution: `3.3 V / 4700 Ω ≈ **0.70 mA**. The I2C specification requires every device to sink at least 3 mA in standard mode, so 4.7 kΩ is comfortably within reach. It also explains the lower bound on pull-ups: about (3.3 − 0.4) V / 3 mA ≈ 1 kΩ. The upper bound is set by speed: the pull-up must charge the bus capacitance within the allowed rise time.` },
     ] },
@@ -2133,7 +2133,7 @@ Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups
       { t: 'code', lang: 'c', status: 'idf-built', code: P5_SCAN, caption: 'main/main.c, version 1: bus scan' },
       `**You should see** \`device answers at 0x76\` (or \`0x77\`) and \`scan complete: 1 device(s)\`, repeated every three seconds. Note the address. Unplug the SDA jumper: the next scan should find nothing, and the driver may log timeout errors. Plug it back in.`,
       { t: 'exercise', prompt: `**Debugging exercise A.** A scan finds no devices. The multimeter shows VIN = 3.3 V, SDA idle at 3.3 V, SCL idle at 3.3 V, and continuity from each DevKit pin to the breakout header. A logic analyser shows clock pulses on the wire connected to the breakout's **SDA** pin and data on the wire to its **SCL** pin. What is wrong?`,
-        hints: ['Which signal should have regular pulses?'],
+        hints: ['What can a multimeter not tell apart about two lines that both idle high?', 'Which signal should have regular pulses?'],
         answer: { type: 'text', accept: ['swap', 'cross', 'revers', 'exchang'], nudge: 'Compare which signal is on which sensor pin with the wiring table.' },
         solution: `SDA and SCL are **swapped**. Everything a multimeter can check is fine, since both lines idle high and are continuous, which is why this fault survives a static inspection. The sensor sees a "clock" that changes at irregular times and never recognises its address. Swap the two jumpers at one end. Without an analyser, swapping the wires is a legitimate 20-second experiment once the static checks pass.` },
     ] },
@@ -2353,6 +2353,8 @@ const refs = [
   idfRef('docs/en/api-reference/peripherals/gpio.rst', 'ESP-IDF: GPIO driver reference'),
   idfRef('docs/en/api-reference/peripherals/ledc.rst', 'ESP-IDF: LED control (LEDC) reference', 'Frequency and resolution ranges per chip, fade functions.'),
   idfRef('docs/en/api-reference/peripherals/adc/adc_oneshot.rst', 'ESP-IDF: ADC oneshot mode driver'),
+  idfRef('docs/en/api-reference/peripherals/adc/adc_calibration.rst', 'ESP-IDF: ADC calibration driver', 'Calibration schemes per chip; design reference voltage of 1100 mV on the ESP32.'),
+  { title: 'ESP32 Series Datasheet (v5.3)', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'Table 5-3 DC characteristics (input thresholds, typical drive capability, 45 kΩ pull resistors) and Table 4-4 ADC effective measurement ranges.' },
   idfRef('docs/en/api-reference/peripherals/i2c.rst', 'ESP-IDF: I2C driver (i2c_master.h)'),
   { org: 'Espressif', title: 'ESP-IDF peripheral examples (v6.1)', url: 'https://github.com/espressif/esp-idf/tree/v6.1/examples/peripherals', note: 'Reference programs for gpio, ledc, adc and i2c to compare your code against.' },
   { org: 'Bosch Sensortec', title: 'BME280 sensor API (reference driver source)', url: 'https://github.com/boschsensortec/BME280_SensorAPI', note: 'The manufacturer\'s own driver. Use it to check your register addresses and compensation code; the datasheet is linked from its README.' },

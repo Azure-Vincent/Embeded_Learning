@@ -870,7 +870,7 @@ Prefer the last row. The best critical section is the one a design made unnecess
 
 Make the main loop's update indivisible with \`irq_disable()\` / \`irq_enable()\`. Keep the protected region as short as possible — only the three statements that touch \`shared\`. The program must print \`lost=0\`.
 
-Keep the update as three statements. They stand for the three machine instructions (load, add, store) that a real compiler emits for \`shared = shared + 1\`. Bench-MCU only lets an interrupt in *between statements*, so writing the update as one statement would hide the bug in this simulator without fixing it on any real processor.`,
+The three statements stand for the three machine instructions (load, add, store) that a real compiler emits for \`shared = shared + 1\`. Writing the update as that one statement, or as \`shared++\`, does not fix it: Bench-MCU, like a real processor, can take the interrupt between the load and the store, and updates are still lost.`,
           starter: C`#include <stdint.h>
 #include <stdio.h>
 

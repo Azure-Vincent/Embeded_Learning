@@ -472,7 +472,8 @@ IBRO 7.3728 MHz (the baud-rate-friendly one), ERTCO 32.768 kHz crystal for the R
 low-power timing. Peripheral clocks are gated through the global control block's peripheral clock-disable
 registers; MSDK drivers open the gate in their \`_Init\` functions.
 
-**MSPM0L2228.** The 2026 eCTF reference design runs the CPU at 32 MHz from the internal oscillator. MSPM0
+**MSPM0L2228.** The 2026 eCTF reference design runs the CPU at 32 MHz from the internal oscillator, which is also
+the part's maximum CPU frequency (datasheet SLASF94A, Features: "frequency up to 32MHz"). MSPM0
 peripherals go a step further than a clock gate: each has its own power-enable register, and reads or writes before
 power is enabled do not take effect. TI's driver library calls this \`DL_<peripheral>_enablePower()\`, and generated
 code calls it first.

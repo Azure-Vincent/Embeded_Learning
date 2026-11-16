@@ -86,7 +86,7 @@ The six questions:
 
 - **ESP32**: the ESP32 datasheet, the ESP32 Technical Reference Manual, and the datasheet of the module you would use (for example an ESP32-WROOM-32E). They are on Espressif's documentation site.
 - **MAX78000**: the MAX78000 datasheet and the MAX78000 user guide from Analog Devices, and the MAX78000FTHR board data sheet with schematic.
-- **MSPM0L2228**: the MSPM0L222x datasheet, the MSPM0 L-series technical reference manual, and the LP-MSPM0L2228 user's guide from TI.
+- **MSPM0L2228**: the MSPM0L222x datasheet (SLASF94), the MSPM0 L-series technical reference manual (SLAU847), and the LP-MSPM0L2228 LaunchPad user's guide from TI. The 2026 eCTF board is a different, custom board (MSP-LITO-L2228, not sold); the 2026 rules link a user manual for the near-identical MSP-LITO-G3507, which this course has not read.
 - **Architecture**: the Cortex-M4 and Cortex-M0+ Devices Generic User Guides from Arm.
 
 Record each document's title, revision and date in the notebook. Documents are revised; a page number without a revision is not a citation.
@@ -99,14 +99,15 @@ Then open, in a browser or a local clone, the SDK sources listed in this section
 | Item | Value | Source |
 |---|---|---|
 | Core | Arm Cortex-M0+ (ARMv6-M), 1 core, no FPU, MPU present, VTOR present, 2 priority bits | SDK device header |
-| Max clock | **look up** (the 2026 eCTF reference design runs it at 32 MHz; that is a configuration, not a limit) | datasheet |
-| Flash | base \`0x0000_0000\`, 256 KB | SDK linker command file |
-| SRAM | base \`0x2020_0000\`, 32 KB | SDK linker command file |
+| Max clock | 32 MHz ("frequency up to 32MHz"). The 2026 eCTF reference design configures 32 MHz; that the configured value is also the limit is something only the datasheet can tell you | datasheet SLASF94A, Features, p.1 |
+| Supply | 1.62 V to 3.6 V | datasheet SLASF94A, Features, p.1 |
+| Flash | base \`0x0000_0000\`, 256 KB, in two 128 KB banks (bank 1 from \`0x0002_0000\`) with address swap; no data-flash region is listed for this part | SDK linker command file; datasheet SLASF94A, Table 8-4 |
+| SRAM | 32 KB, one memory visible at three addresses: \`0x2000_0000\` (ECC-checked), \`0x2010_0000\` (parity-checked), \`0x2020_0000\` (unchecked). The SDK linker command file and the eCTF reference design use \`0x2020_0000\` | datasheet SLASF94A, Table 8-4; SDK linker command file |
 | Config memory | NONMAIN: \`BCR_CONFIG\` at \`0x41C0_0000\`, \`BSL_CONFIG\` at \`0x41C0_0100\` | SDK linker command file |
-| Flash erase unit | **look up** (the eCTF reference code uses a 1 KB page constant) | TRM, flash chapter |
+| Flash erase unit | 1 KB sectors (the eCTF reference code uses the same 1 KB page constant). Endurance differs between the lower 32 KB and the rest: **look up** both figures | datasheet SLASF94A, section 8.10 |
 | Clock sources | **look up**: internal oscillators, low-frequency source, crystal options, default after reset | TRM, clock chapter |
-| Boot path | reset → boot ROM reads NONMAIN (debug policy, bootloader invocation, optional integrity check) → application at start of main flash | TRM boot chapter; SDK \`boot_config.h\` lists the options |
-| Debug | SWD; XDS110 probe; debug access can be enabled, password-protected or disabled in NONMAIN | SDK docs and \`boot_config.h\`; pins from the datasheet |
+| Boot path | reset → boot configuration routine (BCR) in ROM reads NONMAIN (debug policy, static write protection, optional 32-bit CRC check of the application, optional start of the bootstrap loader, which uses UART or I2C and requires a 256-bit password) → application at start of main flash | TRM SLAU847F, sections 1.4.2 and 1.4.3; SDK \`boot_config.h\` lists the options |
+| Debug | SWD; XDS110 probe (on board on the LP-MSPM0L2228 LaunchPad; external, on eight jumper wires, for the 2026 eCTF MSP-LITO-L2228 board). NONMAIN selects one of three SWD security levels: no restrictions, custom (debug, mass erase and factory reset each enabled, password-protected or disabled), or SWD fully disabled | TRM SLAU847F, section 1.4.2.1; 2026 eCTF rules; pins from the datasheet |
 | Vector table | start of main flash (\`0x0000_0000\`) at reset; relocatable through VTOR | device header, Cortex-M0+ guide |
 
 Fill the summary sheet. For each **look up** row, find the value in the datasheet or TRM and write the section and page next to it.`,
@@ -142,9 +143,9 @@ Add one line for the eCTF 2024/2025 layout: bootloader at \`0x1000_0000\` (lengt
 
 | Item | Value | Source |
 |---|---|---|
-| Cores | Xtensa, 2 cores, up to 240 MHz | ESP-IDF Kconfig / SoC capability files |
+| Cores | Xtensa LX6, 2 cores, up to 240 MHz (the ESP32-S3 uses Xtensa LX7) | ESP32 Series Datasheet v5.3, Product Overview; ESP-IDF Kconfig / SoC capability files |
 | Mask ROM | \`0x4000_0000\`–\`0x4007_0000\` | ESP-IDF \`soc.h\` |
-| Flash | external SPI flash on the module; size depends on the module (**look up** in the module datasheet). Mapped through the cache: read-only data at \`0x3F40_0000\`, code at \`0x400D_0000\` | \`soc.h\` |
+| Flash | external SPI flash on the module; size depends on the module (an ESP32-WROOM-32E is offered with 4, 8 or 16 MB: module datasheet v2.1, section 1 and Table 1; **look up** the ordering code of yours). Mapped through the cache: read-only data at \`0x3F40_0000\`, code at \`0x400D_0000\` | \`soc.h\` |
 | RAM | data RAM \`0x3FFA_E000\`–\`0x4000_0000\`; instruction RAM \`0x4008_0000\`–\`0x400A_A000\`; RTC memories at \`0x3FF8_0000\`, \`0x400C_0000\`, \`0x5000_0000\` | \`soc.h\` |
 | Config / OTP | eFuses (keys, security configuration) | ESP-IDF security docs; TRM eFuse chapter |
 | Clock sources | **look up**: main crystal, PLL, internal oscillators, 32 kHz options | TRM, reset and clock chapter |
@@ -197,7 +198,9 @@ Afterwards, note which of the six questions took longest. That is the one to pra
 - **Cores** fix the instruction set your compiler must target, what the exception frame looks like, whether floating
   point is done in hardware, and how many interrupt priority levels you have to share out.
 - **The memory map** is the linker script. Every address in your image is derived from it. One wrong region (a 128 KB RAM
-  at \`0x2000_0000\` copied from another chip onto an MSPM0L2228 with 32 KB at \`0x2020_0000\`) and the first stack push faults.
+  length copied from another chip onto an MSPM0L2228, which has 32 KB) and the first stack push faults. The map also
+  holds surprises that only the document shows: that chip's one 32 KB RAM appears at \`0x2000_0000\`, \`0x2010_0000\` and
+  \`0x2020_0000\` with different error checking, and the linker script chooses which view the program uses.
 - **Clock sources** determine every time-dependent number: baud divisors, timer periods, ADC sample times, flash
   timing. The default after reset tells you what the chip is doing before your clock setup runs.
 - **The boot path** tells you which code runs before yours, what it trusts, and where your image must be placed for
@@ -247,12 +250,12 @@ provided; a good answer is one a sceptical reviewer cannot poke holes in.`,
     quiz: [
       { q: 'You need the base address of SRAM for a linker script. Which source is the most direct and least likely to be out of date for your exact part?', kind: 'arch', choices: [
         { t: 'The reference manual\'s memory map, cross-checked with the vendor linker script', ok: true, why: 'Two independent primary sources that agree are as good as documentation gets.' },
-        { t: 'A linker script from another chip in the same family, which shares the map', why: 'Bases and sizes vary within families; the MSPM0 SRAM base differing from the common 0x2000_0000 is an example of why copying is risky.' },
+        { t: 'A linker script from another chip in the same family, which shares the map', why: 'Bases and sizes vary within families, and a script also encodes choices the map alone does not force: TI\'s MSPM0L2228 file links RAM at 0x2020_0000, one of three views of the same 32 KB. A copied script carries another part\'s sizes and another author\'s choices.' },
         { t: 'The feature list on the first page of the datasheet', why: 'It gives sizes, not addresses.' },
       ] },
       { q: 'An SDK example configures the CPU clock to 32 MHz. What can you conclude about the chip\'s maximum CPU frequency?', kind: 'concept', choices: [
-        { t: 'Only that 32 MHz is a supported setting', ok: true, why: 'A configuration in example code is a choice, not a limit.' },
-        { t: 'That 32 MHz is the maximum, since examples run the chip at full speed', why: 'Examples often run below the maximum to save power or to avoid needing a crystal.' },
+        { t: 'Only that 32 MHz is a supported setting', ok: true, why: 'A configuration in example code is a choice, not a limit. For the MSPM0L2228 the datasheet does give 32 MHz as the maximum, but you learn that from the datasheet\'s first page, not from the example.' },
+        { t: 'That 32 MHz is the maximum, since examples run the chip at full speed', why: 'Examples often run below the maximum to save power or to avoid needing a crystal. An example cannot tell you which case you are looking at.' },
         { t: 'That the chip has no PLL', why: 'The clock source used by one example says nothing about which sources exist.' },
       ] },
       { q: 'On which of the three course platforms is address `0x0000_0000` the start of the user\'s program flash?', kind: 'arch', choices: [

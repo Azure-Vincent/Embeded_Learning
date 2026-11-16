@@ -669,7 +669,7 @@ W1TS means "write 1 to set", W1TC "write 1 to clear". Bits written as 0 are left
 
     `## gpio_config_t, field by field`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'LED output and button input', code: R`#include <stdio.h>
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'LED output and button input', code: R`#include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
@@ -707,8 +707,10 @@ void app_main(void)
       { lines: '13', md: '`mode` controls the output driver and input buffer. `GPIO_MODE_OUTPUT` enables the driver only; reading the pin back then returns 0. Use `GPIO_MODE_INPUT_OUTPUT` if you need to read what you drive, and `GPIO_MODE_OUTPUT_OD` for open-drain.' },
       { lines: '14-15', md: 'The pull resistors. Both off for a push-pull output, which always drives the pin itself.' },
       { lines: '16', md: 'No interrupt. The next lesson uses this field.' },
+      { lines: '18', md: 'What `gpio_config` does to the hardware, for each pin in the mask: it selects the plain-GPIO function in that pad\'s IO MUX register and sets or clears the input-enable, pull-up and pull-down bits there; it sets or clears the pin\'s bit in the output-enable register (`GPIO_ENABLE`); and it writes the interrupt type into the pin\'s `GPIO_PINn` register. Nothing is installed: no task, no interrupt handler.' },
       { lines: '23', md: 'Internal pull-up on: with the button open the pad is pulled to 3.3 V and reads 1. Pressing connects it to ground, which easily overpowers the weak pull-up, and it reads 0.' },
       { lines: '30', md: 'The button is **active low**: pressed is 0. Converting to a named boolean here keeps the inversion in one place.' },
+      { lines: '31', md: '`gpio_set_level` writes the pin\'s bit to `GPIO_OUT_W1TS` or `GPIO_OUT_W1TC`. `gpio_get_level` on the line above reads the pin\'s bit from `GPIO_IN`.' },
       { lines: '32', md: 'Polling every 10 ms is fast enough for a human and lets other tasks run.' },
     ] },
 
@@ -716,13 +718,13 @@ void app_main(void)
 
     `## Electrical limits
 
-A GPIO is a small transistor pair, not a power supply. Each pin can source or sink a limited current, and all pins together share a limit; both are in the datasheet's "DC characteristics" table. An LED with a series resistor of a few hundred ohms is fine. A motor, relay or LED strip needs a transistor.
+A GPIO is a small transistor pair, not a power supply. The ESP32 datasheet's DC characteristics table gives the output current at maximum drive strength as typically 40 mA sourcing and 28 mA sinking, and its absolute-maximum table limits the total over all pins. Those figures say what a pad can deliver, not what you should ask of it: the output voltage sags as the current rises, and the datasheet gives no "recommended" per-pin current. Keeping each pin to a few milliamps is conservative practice, and plenty for an LED with a series resistor of a few hundred ohms. A motor, relay or LED strip needs a transistor.
 
-The pins are **3.3 V logic and are not 5 V tolerant**. A 5 V signal into a GPIO must go through a divider or level shifter.
+The pins are **3.3 V logic**. An input is guaranteed to read 1 above 0.75 × VDD and 0 below 0.25 × VDD (about 2.5 V and 0.8 V on a 3.3 V supply); in between, the result is undefined. The highest input voltage the datasheet allows is VDD + 0.3 V, and it makes no 5 V-tolerance statement, so treat every pin as **not 5 V tolerant**: a 5 V signal must go through a divider or level shifter.
 
-The internal pull resistors are weak (tens of kilohms; check the datasheet for the range). They are adequate for a button on a short wire. For long wires, noisy environments or I2C, fit external resistors.`,
+The internal pull resistors are weak (typically 45 kΩ according to the datasheet). They are adequate for a button on a short wire. For long wires, noisy environments or I2C, fit external resistors.`,
 
-    { t: 'callout', kind: 'mistake', md: `**Enabling the pull-up on GPIO34–39.** \`gpio_config\` on an input-only ESP32 pin with \`GPIO_PULLUP_ENABLE\` does not give you a pull-up, because the pad has none. Depending on the IDF version you get an error log or nothing at all, and the input floats exactly as in the opening problem. On those pins, add an external resistor.` },
+    { t: 'callout', kind: 'mistake', md: `**Enabling the pull-up on GPIO34–39.** \`gpio_config\` on an input-only ESP32 pin with \`GPIO_PULLUP_ENABLE\` does not give you a pull-up, because the pad has none. In ESP-IDF v6.1 the call still returns \`ESP_OK\`: the only sign is one error line in the log from \`gpio_pullup_en\` ("input-only pad has no internal PU"), and the input floats exactly as in the opening problem. On those pins, add an external resistor.` },
 
     { t: 'callout', kind: 'note', md: `**Old tutorials.** You will see \`gpio_pad_select_gpio(pin)\` followed by \`gpio_set_direction\`. The first function was removed from the public API in ESP-IDF v5; \`gpio_reset_pin\` or \`gpio_config\` replaces it. The \`gpio_config_t\` structure itself is unchanged since v4.` },
 
@@ -741,7 +743,7 @@ while (1) {
         { t: 'A steady 0, because the button goes to ground', why: 'Nothing connects the pin to ground while the button is open, so there is no reason for it to sit at 0.' },
         { t: 'An unpredictable mix of 0 and 1', ok: true, why: 'GPIO34 has no internal pull resistors, so the request is ineffective and the open input floats.' },
       ],
-      reveal: `GPIO34–39 have no pull-up or pull-down. The return value of \`gpio_config\` was also ignored, so any complaint from the driver went unseen. Two fixes: move the button to a pin with pull resistors, or add an external 10 kΩ from GPIO34 to 3.3 V.` },
+      reveal: `GPIO34–39 have no pull-up or pull-down. Checking the return value would not have helped here: in v6.1 \`gpio_config\` returns \`ESP_OK\` and the only complaint is one error line in the log saying that an input-only pad has no internal pull-up. Read the log when a pin misbehaves. Two fixes: move the button to a pin with pull resistors, or add an external 10 kΩ from GPIO34 to 3.3 V.` },
 
     { t: 'exercise', prompt: `Modify the worked example so that each **press** of the button toggles the LED (press once: on; press again: off), instead of the LED following the button. Keep polling every 10 ms; do not use interrupts yet.`,
       hints: [
@@ -775,6 +777,7 @@ The answer is open-drain (\`GPIO_MODE_INPUT_OUTPUT_OD\`) on both boards with a s
     { t: 'refs', items: [
       { title: 'ESP-IDF GPIO & RTC GPIO', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/gpio.html' },
       { title: 'ESP32 Technical Reference Manual', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf', note: 'Chapter "IO MUX and GPIO Matrix"' },
+      { title: 'ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'Section 5: absolute maximum ratings and DC characteristics (VIH, VIL, IOH, IOL, pull resistors)' },
     ] },
   ],
   quiz: [
@@ -794,7 +797,7 @@ The answer is open-drain (\`GPIO_MODE_INPUT_OUTPUT_OD\`) on both boards with a s
       { t: 'Pin masks start at bit 1 for GPIO0, so GPIO33 needs `1 << 34`', why: 'Bit n of the mask corresponds to GPIO n. The numbering is not the problem.' },
     ] },
     { q: 'A 5 V sensor output is wired directly to an ESP32 GPIO and "works". What is the right assessment?', kind: 'circuit', choices: [
-      { t: 'It exceeds the pin\'s rated input voltage and needs a divider or level shifter', ok: true, why: 'ESP32 GPIOs are 3.3 V and not 5 V tolerant. Overstress may damage the pad gradually rather than at once.' },
+      { t: 'It exceeds the pin\'s rated input voltage and needs a divider or level shifter', ok: true, why: 'The datasheet limits a pin\'s input to VDD + 0.3 V and makes no 5 V-tolerance statement. Overstress may damage the pad gradually rather than at once.' },
       { t: 'It is fine, because enabling the internal pull-down limits the voltage at the pad', why: 'A weak pull resistor cannot hold down a low-impedance 5 V driver, and it is not a protection device.' },
       { t: 'It is fine as long as the pin stays configured as an input and never drives', why: 'The voltage limit applies to the pad whatever its mode. Configuration does not change what the silicon can withstand.' },
     ] },
@@ -848,7 +851,7 @@ If an IRAM-registered handler reaches code in flash while the cache is off, the 
 
     `## Worked example: a button interrupt with a queue`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'GPIO interrupt deferred to a task', code: R`#include <stdio.h>
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'GPIO interrupt deferred to a task', code: R`#include <stdio.h>
 #include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -910,8 +913,9 @@ void app_main(void)
       { lines: '31-35', md: 'Debounce in the task: ignore events closer than 50 ms to the last accepted one. Logging is safe here because this is task context.' },
       { lines: '42-43', md: 'Create the queue and the task **before** enabling the interrupt. An interrupt that fires first would post to a NULL queue.' },
       { lines: '49', md: 'Falling edge: the pin is pulled up and the button pulls it low.' },
-      { lines: '52', md: '`gpio_install_isr_service` installs one shared GPIO interrupt that dispatches to per-pin handlers. The argument is the interrupt flags; 0 is the default. Call it once in the whole program.' },
-      { lines: '53', md: 'Attaches the handler to this pin and enables its interrupt.' },
+      { lines: '49', md: '`gpio_config` writes the edge type into the pin\'s `GPIO_PINn` register. From now on a falling edge sets the pin\'s bit in `GPIO_STATUS`, but no CPU interrupt is connected to it yet.' },
+      { lines: '52', md: '`gpio_install_isr_service` allocates one CPU interrupt (with `esp_intr_alloc`, on the core that calls it) for the GPIO peripheral\'s interrupt source and attaches the driver\'s own dispatcher to it. On each interrupt the dispatcher reads `GPIO_STATUS`, clears the bits it is handling through `GPIO_STATUS_W1TC`, and calls the handler registered for each pin. The argument is the interrupt flags; 0 is the default. Call it once in the whole program.' },
+      { lines: '53', md: 'Stores the handler and its argument in the dispatcher\'s table and sets this pin\'s interrupt-enable bits in `GPIO_PINn`, so its status bit now reaches the CPU.' },
     ] },
 
     `## Debounce
@@ -1015,7 +1019,7 @@ lessons.push({
 
 You measure a battery through a divider. Board A reports 3.71 V, board B reports 3.94 V, and a multimeter says both are at 3.80 V. The code computes \`raw * 3.3 / 4095\`. The last digit also flickers by twenty counts between readings.
 
-That formula assumes an ideal converter with a 3.3 V reference. The ESP32's ADC has neither property. Its reference is an internal voltage of about 1.1 V that differs from chip to chip, its input range is set by a programmable attenuator, and its transfer curve bends near the ends. Getting volts out takes the driver's calibration, and getting stable volts takes averaging.`,
+That formula assumes an ideal converter with a 3.3 V reference. The ESP32's ADC has neither property. Its reference is an internal voltage that is 1100 mV by design and differs from chip to chip, its input range is set by a programmable attenuator, and its transfer curve bends near the ends. Getting volts out takes the driver's calibration, and getting stable volts takes averaging.`,
 
     `## How the ESP32 ADC is arranged
 
@@ -1023,13 +1027,14 @@ That formula assumes an ideal converter with a 3.3 V reference. The ESP32's ADC 
 - There are two units. On the ESP32, **ADC1** is on GPIO32–39 and **ADC2** shares pins with other functions and is used by Wi-Fi. Use ADC1 unless you have a reason not to. On the ESP32-C3, ADC2 oneshot reads are not supported at all.
 - The converter itself measures up to roughly its reference voltage. An **attenuator** in front scales larger inputs down:
 
-| Attenuation | Use |
-|---|---|
-| \`ADC_ATTEN_DB_0\` | Smallest range, about up to the reference voltage |
-| \`ADC_ATTEN_DB_2_5\`, \`ADC_ATTEN_DB_6\` | Intermediate ranges |
-| \`ADC_ATTEN_DB_12\` | Widest range, for signals approaching the supply |
+| Attenuation | Effective measurement range on the ESP32 | Use |
+|---|---|---|
+| \`ADC_ATTEN_DB_0\` | 100–950 mV | Small signals; finest resolution in mV per count |
+| \`ADC_ATTEN_DB_2_5\` | 100–1250 mV | |
+| \`ADC_ATTEN_DB_6\` | 150–1750 mV | |
+| \`ADC_ATTEN_DB_12\` | 150–2450 mV | Widest range |
 
-The usable range for each setting is tabulated in the datasheet's ADC characteristics and in the ADC documentation. Even at the widest setting the top of the range is **below 3.3 V** and the response flattens there, so design dividers to keep the signal in the middle of the range.
+These are the ranges over which the ESP32 datasheet (ADC characteristics table) specifies the calibrated error; other chips have their own table. Two things follow. Even at the widest setting the top of the range is **well below 3.3 V** and the response flattens beyond it, and the converter cannot measure down to 0 V either. Design dividers to keep the signal in the middle of the range.
 
 - Each chip's reference error is measured at the factory and stored in eFuse. The **calibration** driver uses it to convert raw codes to millivolts.`,
 
@@ -1037,7 +1042,7 @@ The usable range for each setting is tabulated in the datasheet's ADC characteri
 
     `## Worked example: calibrated voltage on one channel`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Oneshot read with calibration (classic ESP32: line fitting)', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'Oneshot read with calibration (classic ESP32: line fitting)', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
@@ -1094,14 +1099,15 @@ void app_main(void)
     }
 }`, explain: [
       { lines: '8', md: 'Channels are numbered per ADC unit, not by GPIO. The mapping is chip-specific; `adc_oneshot_io_to_channel()` converts a GPIO number for you.' },
-      { lines: '15-19', md: 'Creates a handle for ADC unit 1. One handle per unit; channels are configured on it.' },
-      { lines: '21-25', md: 'Attenuation and width are per channel. Configuring the channel also switches the pad to its analog function.' },
+      { lines: '15-19', md: 'Creates a handle for ADC unit 1 and enables the SAR ADC\'s clock and power. One handle per unit; channels are configured on it. No interrupt or task is installed: a oneshot conversion is started and polled by the calling task.' },
+      { lines: '21-25', md: 'Attenuation and width are per channel. Configuring the channel also hands the pad to the analog (RTC IO) side: its digital input and pull resistors are switched off so they cannot load the signal.' },
+      { lines: '43', md: '`adc_oneshot_read` takes the driver\'s lock for the unit, writes the channel\'s attenuation, starts one conversion, waits for the done flag and returns the 12-bit code. It blocks for tens of microseconds and must not be called from an ISR.' },
       { lines: '28-37', md: 'Calibration schemes are chip-specific. The ESP32 and S2 use **line fitting**; the S3, C3 and C6 use **curve fitting** (`adc_cali_curve_fitting_config_t` and `adc_cali_create_scheme_curve_fitting`, guarded by `ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED`). Creation can fail if the eFuse values are absent, so the code carries on uncalibrated and says so.' },
       { lines: '40-46', md: 'Sixteen conversions summed and divided. Averaging N readings of random noise reduces it by about the square root of N.' },
       { lines: '49', md: 'Converts a raw code to millivolts **at the pin** using the per-chip reference value. If there is an external divider, scale by its ratio afterwards.' },
     ] },
 
-    { t: 'callout', kind: 'note', md: `**Old tutorials.** Before ESP-IDF v5 the calls were \`adc1_config_width\`, \`adc1_config_channel_atten\`, \`adc1_get_raw\` from \`driver/adc.h\`, with calibration in \`esp_adc_cal.h\`. That legacy driver was deprecated in v5 and is not the API to learn; the migration guide for your IDF version states whether it still exists. Also, \`ADC_ATTEN_DB_11\` was renamed \`ADC_ATTEN_DB_12\` during v5; they select the same setting.` },
+    { t: 'callout', kind: 'note', md: `**Old tutorials.** Before ESP-IDF v5 the calls were \`adc1_config_width\`, \`adc1_config_channel_atten\`, \`adc1_get_raw\` from \`driver/adc.h\`, with calibration in \`esp_adc_cal.h\`. That legacy driver was deprecated in v5.0 and **removed in v6.0**, so such code no longer builds. Also, \`ADC_ATTEN_DB_11\` was renamed \`ADC_ATTEN_DB_12\` during v5 (the same setting); v6.1 has only the new name.` },
 
     `## Noise and source impedance
 
@@ -1129,12 +1135,35 @@ esp_err_t err = adc_oneshot_read(adc2, chan, &raw);`,
         `\`adc_cali_raw_to_voltage\` reports the voltage at the pin, after the divider.`,
         `Equal resistors divide by two, so multiply back by two.`,
       ],
-      solution: `1880 mV × 2 = **3760 mV**. The divider also keeps the pin at 2.1 V when the cell is full, inside the usable range for 12 dB attenuation. Two practical points: a divider permanently connected across a battery draws current forever (use high values plus the capacitor from this lesson, or switch the divider with a transistor), and resistor tolerance adds directly to the error (two 1 % parts can be nearly 2 % out in ratio).`,
+      solution: `1880 mV × 2 = **3760 mV**. The divider also keeps the pin at 2.1 V when the cell is full, inside the 150–2450 mV range for 12 dB attenuation. Two practical points: a divider permanently connected across a battery draws current forever (use high values plus the capacitor from this lesson, or switch the divider with a transistor), and resistor tolerance adds directly to the error (two 1 % parts can be nearly 2 % out in ratio).`,
       answer: { type: 'number', value: 3760, tol: 5, unit: 'mV' } },
+
+    { t: 'exercise', prompt: `**Find the bug.** This fragment replaces the set-up in the worked example. It builds and runs with no error, yet 2.00 V at the pin is logged as roughly 0.6 V. One line is wrong. Which configuration field is it, and in which structure?`,
+      code: R`const adc_oneshot_chan_cfg_t chan_cfg = {
+    .atten    = ADC_ATTEN_DB_12,
+    .bitwidth = ADC_BITWIDTH_DEFAULT,
+};
+ESP_ERROR_CHECK(adc_oneshot_config_channel(adc, ADC_CHANNEL_6, &chan_cfg));
+
+const adc_cali_line_fitting_config_t cali_cfg = {
+    .unit_id  = ADC_UNIT_1,
+    .atten    = ADC_ATTEN_DB_0,
+    .bitwidth = ADC_BITWIDTH_DEFAULT,
+};
+ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_cfg, &cali));`,
+      hints: [
+        `Every call succeeds, so the mistake is two settings that disagree, not one that is invalid. Which settings appear twice?`,
+        `The raw code is produced by the hardware with one attenuation and converted to millivolts by a formula built for another.`,
+        `Compare \`.atten\` in the two structures. A raw code of about 2300 means about 2 V at 12 dB, but only about 0.6 V on the 0 dB line.`,
+      ],
+      solution: `The **\`.atten\` field of \`cali_cfg\`** says 0 dB while the channel is configured for 12 dB. The attenuator really is at 12 dB, so 2.00 V produces a mid-scale raw code; the calibration handle then converts that code with the 0 dB line, whose full scale is about 1 V. Neither driver knows about the other, so nothing reports an error.
+
+The worked example avoids this by using one \`#define ADC_ATTEN\` in both places. That is the general repair for "two settings that must agree": make them one setting. The same rule gives you the answer to the question below about sharing a calibration handle.`,
+      answer: { type: 'text', accept: ['atten'], nudge: 'Which setting is given twice, with two different values?' } },
 
     `## Harder: choosing attenuation for resolution
 
-A temperature sensor outputs 0.1 V to 0.9 V. You could read it at 12 dB attenuation with everything else, or at 0 dB. Reason about which gives finer resolution in millivolts per count and why, and what you must check in the datasheet before committing to 0 dB (the upper limit of that range for your chip, with margin for chip-to-chip variation). Then decide whether one calibration handle can serve both this channel and a battery channel at 12 dB. (It cannot: the calibration scheme is created for a specific attenuation, so each attenuation in use needs its own handle.)`,
+A temperature sensor outputs 0.1 V to 0.9 V. You could read it at 12 dB attenuation with everything else, or at 0 dB. Reason about which gives finer resolution in millivolts per count and why, and what you must check in the datasheet before committing to 0 dB (on the ESP32 the specified range at 0 dB is 100–950 mV, so this sensor uses all of it and its lowest readings sit on the edge; allow margin for chip-to-chip variation). Then decide whether one calibration handle can serve both this channel and a battery channel at 12 dB. (It cannot: the calibration scheme is created for a specific attenuation, so each attenuation in use needs its own handle.)`,
 
     { t: 'refs', items: [
       { title: 'ESP-IDF ADC Oneshot Mode Driver', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/peripherals/adc_oneshot.html' },
@@ -1144,7 +1173,7 @@ A temperature sensor outputs 0.1 V to 0.9 V. You could read it at 12 dB attenuat
   ],
   quiz: [
     { q: 'Two ESP32 boards give different raw codes for the same input voltage. What mainly explains it?', kind: 'arch', choices: [
-      { t: 'The internal ADC reference voltage varies from chip to chip', ok: true, why: 'The reference is nominally about 1.1 V but differs per device; factory-measured values in eFuse let the calibration driver correct for it.' },
+      { t: 'The internal ADC reference voltage varies from chip to chip', ok: true, why: 'The reference is 1100 mV by design but differs per device; factory-measured values in eFuse let the calibration driver correct for it.' },
       { t: 'The boards have different amounts of flash', why: 'Flash size has no connection to the analog front end or its reference.' },
       { t: 'One board is running the ADC at a different bit width by default', why: 'The same firmware configures the same width on both. The difference is analog, inside the chip.' },
     ] },
@@ -1155,7 +1184,7 @@ A temperature sensor outputs 0.1 V to 0.9 V. You could read it at 12 dB attenuat
     ] },
     { q: 'Firmware written for an ESP32 uses `adc_cali_create_scheme_line_fitting`. On an ESP32-S3 the build fails at that call. Why?', kind: 'code', choices: [
       { t: 'The S3 supports curve-fitting calibration, not line fitting', ok: true, why: 'Calibration schemes are chip-specific, which is why code guards them with the ADC_CALI_SCHEME_..._SUPPORTED macros.' },
-      { t: 'The S3 has no ADC calibration data in eFuse at all', why: 'The S3 does have ADCs. What differs is how the calibration data is modelled.' },
+      { t: 'The S3 has no ADC calibration data in eFuse at all', why: 'S3 chips carry factory ADC calibration data in eFuse as well. Note that the failure is at build time, before any eFuse is read.' },
       { t: 'Calibration requires Wi-Fi to be initialised first on the S3', why: 'Calibration only reads eFuse values and has no dependency on the radio.' },
     ] },
     { q: 'You average 64 readings instead of 16. Roughly how does random noise in the result change?', kind: 'concept', choices: [

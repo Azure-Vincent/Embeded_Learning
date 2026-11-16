@@ -166,7 +166,7 @@ Move to a preemptive RTOS when: a job must block waiting for something (a networ
 
 The loop also counts how many times it went round (\`spins\`). The timer period is 50 simulated ticks, so a loop that is really paced by the timer goes round many times with nothing to do between two events. The last line of output reports whether that happened; a loop that toggles without waiting for the flag, or an ISR that never acknowledges the timer, finishes far too soon and prints \`paced=no\`.
 
-The interrupt model here is preemption between statements, not cycle-accurate hardware.`,
+The interrupt model here is not cycle-accurate hardware: an interrupt is taken between statements, or between the load and the store of a statement that updates a variable in place.`,
           starter: C`#include <stdint.h>
 #include <stdio.h>
 
@@ -231,7 +231,7 @@ int main(void) {
 }
 `,
           tests: [
-            { name: 'five timer events counted, each paced by the timer, pin 0 toggled five times', stdout: 'ticks=5\npaced=yes\n', regs: { GPIO_OUT: 1 } },
+            { name: 'five timer events counted, each paced by the timer, pin 0 toggled five times', stdout: 'ticks=5\npaced=yes\n', regs: { GPIO_OUT: 1 }, noWarning: ['write-1-to-clear', 'write-only'] },
           ],
           hints: [
             'Two questions. What keeps the timer interrupt pending after the handler has run? And how does the loop find out that the handler ran at all?',

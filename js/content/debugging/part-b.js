@@ -119,7 +119,7 @@ That is the whole trick. The processor's debug control registers are themselves 
 Cortex-M3 and larger cores can have a third, optional pin: **SWO** (Serial Wire Output), a one-way trace output. Firmware writes to the Instrumentation Trace Macrocell and the bytes come out on SWO with almost no timing cost, which makes a \`printf\` channel that needs no UART. SWO shares the pin used for JTAG's TDO, so it is available with SWD only. Cortex-M0 and M0+ cores do not have it.`,
       `## On real hardware
 
-**Arm Cortex-M (MAX78000's Arm core, MSPM0L2228).** Debug is through a DAP. The MSPM0L2228 is a Cortex-M0+, and its debug port can be enabled, password-protected or disabled, and its SWD port switched off, through the device's NONMAIN boot configuration (see the BCR options in TI's SDK). The MAX78000 also contains a RISC-V core, which is debugged over a separate JTAG port according to the MSDK user guide.
+**Arm Cortex-M (MAX78000's Arm core, MSPM0L2228).** Debug is through a DAP. The MSPM0L2228 is a Cortex-M0+, and its NONMAIN boot configuration selects one of three SWD security levels (TRM SLAU847F, section 1.4.2.1): level 0, no restrictions (the factory default); level 1, custom, where application debug, mass erase and factory reset are each enabled, password-protected or disabled; level 2, the SW-DP fully disabled. The MAX78000 also contains a RISC-V core, which is debugged over a separate JTAG port according to the MSDK user guide.
 
 **Original ESP32.** JTAG on GPIO12–GPIO15 (MTDI, MTCK, MTMS, MTDO in the chip's naming), which needs an external probe. Two of those pins are also strapping pins, so check the board's schematic before attaching anything that pulls them at reset.
 
@@ -181,7 +181,7 @@ For each defence below, state what it stops and what it does not.
 | Password or challenge-protected debug | Access without the secret | Leakage of the secret; one shared password for all units | Confirm the password is per-device and never stored in firmware |
 | Not storing long-term secrets where the debug port can reach them | Key extraction even if debug is opened | Abuse of the key while the device is running | Dump a development unit and search for the key |
 
-The settings are chip-specific and some are irreversible. For the MSPM0L2228 the relevant options (debug access enabled / with password / disabled, SWD port enable, mass erase and factory reset policy) are in the NONMAIN boot configuration. For Espressif chips they are eFuses described in the ESP-IDF security guides. For the MAX78000, check the user guide and datasheet for what debug locking the part provides. Always read the vendor's description of what a locked state still allows, and test it on a unit you can afford to lose.`,
+The settings are chip-specific and some are irreversible. For the MSPM0L2228 the relevant options (debug access enabled / with password / disabled, SWD port enable, mass erase and factory reset policy) are in the NONMAIN boot configuration, described in TI's TRM (SLAU847F, section 1.4.2). The SWD mass-erase and factory-reset passwords are 128-bit. For Espressif chips they are eFuses described in the ESP-IDF security guides. For the MAX78000, check the user guide and datasheet for what debug locking the part provides; this course has not verified it, because Analog Devices' documents could not be read when the facts were checked. Always read the vendor's description of what a locked state still allows, and test it on a unit you can afford to lose.`,
       { t: 'refs', items: [
         { title: 'TI MSPM0 SDK: L2228 boot configuration options (boot_config.h)', url: 'https://github.com/TexasInstruments/mspm0-sdk/blob/main/examples/nortos/LP_MSPM0L2228/boot_manager/customer_secure_image_with_bootloader/boot_config.h' },
         { title: 'ESP-IDF: USB Serial/JTAG controller', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/api-guides/usb-serial-jtag-console.rst' },
@@ -262,7 +262,7 @@ Probes differ in three ways:
 
 **MAX78000FTHR.** The board has an integrated **MAX32625PICO** debug adapter. It runs DAPLink firmware, so it enumerates as a CMSIS-DAP probe, a serial port and a drive named DAPLINK. Copying a binary to the drive programs the target, and according to Analog Devices' board documentation, dropping a file named \`erase.act\` on the drive mass-erases the target. Holding SW5 while plugging in puts the *adapter* into MAINTENANCE mode for updating its own firmware. The 2024 eCTF reference flow used this drag-and-drop path to install the competition bootloader; the 2025 flow likewise required the MITRE bootloader to be on the board before team firmware could be flashed through it.
 
-**MSPM0L2228.** TI's debug-probe documentation for the MSPM0 SDK lists the XDS110 alongside SEGGER, PEmicro and Lauterbach probes. Upstream OpenOCD has a board file that pairs \`interface/xds110.cfg\` with the MSPM0 target. Which probe is physically on your evaluation board is something to confirm from that board's user guide.
+**MSPM0L2228.** TI's debug-probe documentation for the MSPM0 SDK lists the XDS110 alongside SEGGER, PEmicro and Lauterbach probes. Upstream OpenOCD has a board file that pairs \`interface/xds110.cfg\` with the MSPM0 target. Which probe you have depends on the board. TI's LP-MSPM0L2228 LaunchPad has an XDS110 on board, with a back-channel UART over the same USB cable. The 2026 eCTF board is not the LaunchPad: it is the custom MSP-LITO-L2228, which is not sold and has no probe on it. Per the 2026 rules you connect an **external XDS110** with eight female-to-female jumper wires, matching the silkscreen labels on both ends, and it enumerates as a serial device. The rules describe the LaunchPad as "largely interchangeable" for teams that buy extra boards. Development boards arrive without a bootloader: the 2026 flow flashes MITRE's insecure bootloader with **TI UniFlash** through the XDS110 (a separate image exists for LaunchPad boards), and team firmware then goes in through that bootloader with the eCTF tools.
 
 **Original ESP32.** No on-chip USB. Use an external JTAG probe on GPIO12–15, such as an FT2232H-based ESP-Prog, or a development board that has one built in.
 
@@ -410,14 +410,14 @@ OpenOCD exists as the upstream project and as vendor forks that carry support no
 
 ### MSPM0L2228: upstream OpenOCD
 
-Upstream OpenOCD contains a flash driver for the MSPM0L and MSPM0G families, with part-table entries for the MSPM0L2228, and a LaunchPad board file that uses the XDS110 interface.`,
-      { t: 'code', lang: 'sh', status: 'reviewed', caption: 'MSPM0 with an XDS110, upstream OpenOCD. Written against the files in the OpenOCD repository; not run on a board here. Requires an OpenOCD build recent enough to include the mspm0 driver.',
+Upstream OpenOCD contains a flash driver for the MSPM0L and MSPM0G families, with part-table entries for the MSPM0L2228, and a LaunchPad board file that uses the XDS110 interface. For the 2026 eCTF board (MSP-LITO-L2228 with an external XDS110) the 2026 rules give the two-file form, \`-f interface/xds110.cfg -f target/ti/mspm0.cfg\`, say a recent pre-release OpenOCD is needed, and document OpenOCD for **debugging only**. Flashing in that competition is not done with OpenOCD: the bootloader is installed with UniFlash, the board is put in update mode by holding S2 (PB21) during reset (LED D1 on PB14 flashes red), and firmware is loaded with \`uvx ectf hw <port> flash ...\`. The one-shot \`program\` line below is the general OpenOCD mechanism for a board with no bootloader in the way, such as a LaunchPad you are using alone; on a board that carries the eCTF bootloader it would overwrite that bootloader.`,
+      { t: 'code', lang: 'sh', status: 'reviewed', caption: 'MSPM0 with an XDS110, upstream OpenOCD. Written against the files in the OpenOCD repository and the 2026 eCTF rules; not run on a board here. Requires an OpenOCD build recent enough to include the mspm0 driver.',
         code: String.raw`openocd -f board/ti/mspm0-launchpad.cfg
 
-# One-shot programming without an interactive session:
+# One-shot programming without an interactive session (not the eCTF flashing path):
 openocd -f board/ti/mspm0-launchpad.cfg -c "program hsm.elf verify reset exit"`,
         explain: [
-          { lines: '1', md: 'The board file pulls in `interface/xds110.cfg` and `target/ti/mspm0.cfg`. OpenOCD then waits for GDB on 3333 and telnet on 4444.' },
+          { lines: '1', md: 'The board file pulls in `interface/xds110.cfg` and `target/ti/mspm0.cfg`, the same two files the 2026 eCTF rules name directly for an external XDS110. OpenOCD then waits for GDB on 3333 and telnet on 4444.' },
           { lines: '4', md: '`-c` runs a command after the configuration. `program` halts the chip, erases and writes the loadable segments of the ELF at the addresses in the file, reads them back to verify, resets and exits.' },
         ] },
       `### MAX78000: the MSDK's OpenOCD
@@ -487,7 +487,7 @@ pc (/32): 0x10000228
           'Method: bit 0 of a vector is the Thumb marker, not part of the address. Clear it to get the address the pc register will hold.',
         ],
         answer: { type: 'text', accept: ['^\\s*(0[xX])?0*[cC]0\\s*$'], nudge: 'Take the second word and clear its lowest bit.' },
-        solution: `The reset vector is \`0x000000C1\`. Clearing the Thumb bit gives **0x000000C0**. The first word, \`0x20208000\`, is the initial stack pointer: the top of a 32 KB RAM that starts at \`0x20200000\`, which is the MSPM0L2228's SRAM base.` },
+        solution: `The reset vector is \`0x000000C1\`. Clearing the Thumb bit gives **0x000000C0**. The first word, \`0x20208000\`, is the initial stack pointer: the top of a 32 KB RAM linked at \`0x20200000\`. That is where TI's linker file places the MSPM0L2228's SRAM. The datasheet's memory map (SLASF94A, Table 8-4) shows the same 32 KB at \`0x20000000\` (ECC-checked) and \`0x20100000\` (parity-checked) as well; \`0x20200000\` is the view without error checking. So an initial SP of \`0x20008000\` would also point at real RAM on this chip, and would tell you the image was linked with a different script.` },
       `## Harder application: dumping your own firmware, and what stops others doing it
 
 On a development board you own, with debug access open, reading the whole flash is one command. For a part with 512 KB of flash at \`0x1000_0000\`:

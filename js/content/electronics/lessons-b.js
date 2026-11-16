@@ -76,7 +76,8 @@ export default [
       and cost nothing, with three limits:
 
       - They are **weak and imprecise**: tens of kilohms, with a wide tolerance. The value and its range are in the
-        datasheet's DC characteristics.
+        datasheet's DC characteristics (the ESP32 datasheet v5.3, Table 5-3, gives 45 kΩ typical for both pull-up and
+        pull-down).
       - They do not exist until your firmware enables them. During reset and boot the pin floats. For anything that must be in
         a safe state from power-on (a MOSFET gate, a chip-select, a motor-enable), fit an external resistor.
       - Not every pin has them. On the original ESP32, GPIO34 to GPIO39 are input-only and have no internal pull-up or
@@ -272,7 +273,7 @@ export default [
       while the chip runs at 3.3 V. This is a property of a specific pin on a specific chip, stated in its datasheet, often
       with conditions (only in digital input mode, only while the chip is powered, not on analog-capable pins).`,
 
-      { t: 'callout', kind: 'warn', md: `**"5 V tolerant" must be verified per chip and per pin, in the datasheet.** Do not infer it from a product family, a forum post, or the fact that a board survived. For the ESP32 family this course quotes no pin voltage limit, because the datasheets could not be opened while it was written (see \`docs/FACTS.md\`). Until you have read the "Absolute Maximum Ratings" and "DC Characteristics" sections of the datasheet for your exact chip, design as if 5 V on any ESP32 GPIO is out of specification. That assumption costs two resistors; the opposite assumption can cost the chip.` },
+      { t: 'callout', kind: 'warn', md: `**"5 V tolerant" must be verified per chip and per pin, in the datasheet.** Do not infer it from a product family, a forum post, or the fact that a board survived. For the original ESP32 the datasheet (v5.3) settles it: it contains **no 5 V-tolerance statement**. The DC characteristics (Table 5-3) give the highest input level as VDD + 0.3 V, and the absolute maximum on the supply pins (Table 5-1) is 3.6 V. So 5 V on an ESP32 GPIO is out of specification, whatever a forum post or a surviving board suggests. For any other chip, read the same two tables in its own datasheet before deciding. Assuming "not tolerant" costs two resistors; the opposite assumption can cost the chip.` },
 
       { t: 'predict', q: `A 5 V sensor output is connected directly to a GPIO of a 3.3 V microcontroller whose pins are not 5 V tolerant. The board appears to work. Where does current flow when the sensor output is high?`,
         reveal: `From the sensor output, into the pin, up through the pin's internal protection diode and into the microcontroller's 3.3 V rail. The pin is clamped at roughly 3.3 V plus a diode drop, around 3.9 V, and the only thing limiting the current is the sensor's output resistance. It "works" because the pin still reads a 1. Meanwhile the diode carries a current it was never rated for, the 3.3 V rail is being pushed upward by an outside source, and if the microcontroller is unpowered while the sensor is on, the chip is partially powered through a signal pin. Failures from this tend to appear weeks later as a dead pin or an erratic chip.` },
@@ -318,11 +319,11 @@ export default [
       circuit is what the small "bidirectional logic level converter" breakout boards contain. It is too slow for fast
       push-pull signals, because the high level is produced only by the pull-ups.`,
 
-      { t: 'widget', name: 'voltage-divider', props: { challenge: 'level-shift-5v-3v3' }, caption: 'Choose R1 and R2 so a 5 V output is safe for a 3.3 V input and is still read as a 1. The thresholds the tool checks against (0.7 × VDD for a high, VDD + 0.3 V as the damage limit) are typical CMOS figures, not those of a particular chip.' },
+      { t: 'widget', name: 'voltage-divider', props: { challenge: 'level-shift-5v-3v3' }, caption: 'Choose R1 and R2 so a 5 V output is safe for a 3.3 V input and is still read as a 1. The thresholds the tool checks against (0.7 × VDD for a high, VDD + 0.3 V as the damage limit) are typical CMOS figures, not those of a particular chip. The ESP32 datasheet (v5.3, Table 5-3) is slightly stricter on the first: a high needs at least 0.75 × VDD, and a low at most 0.25 × VDD.' },
 
       { t: 'exercise', prompt: `You have a 3.3 kΩ resistor for the lower leg (R2) and choose 1.8 kΩ for the upper leg (R1). What voltage does a 5 V signal produce at the divider output?`,
         hints: [`Which of the two resistors is the output taken across? Its share of the total resistance is the share of the voltage you get.`, `Vout = Vin × R2 / (R1 + R2).`, `5 × 3.3 / (1.8 + 3.3).`],
-        solution: `Vout = 5 × 3.3 / 5.1 = **3.24 V**. That is below 3.3 V, so it is within the supply of a 3.3 V part, and far above a 3.3 V CMOS VIH of about 2.3 V. Check the tolerance too: with 5 % resistors at their worst (R1 low, R2 high) and the 5 V rail at 5.25 V, the output reaches about 3.5 V. Use 1 % resistors or a slightly larger R1 if the limit matters.`,
+        solution: `Vout = 5 × 3.3 / 5.1 = **3.24 V**. That is below 3.3 V, so it is within the supply of a 3.3 V part, and far above a typical 3.3 V CMOS VIH of about 2.3 V (0.7 × VDD) and the ESP32's 0.75 × VDD = 2.48 V (datasheet v5.3, Table 5-3). Check the tolerance too: with 5 % resistors at their worst (R1 low, R2 high) and the 5 V rail at 5.25 V, the output reaches about 3.5 V, uncomfortably close to the ESP32's VDD + 0.3 V = 3.6 V input maximum. Use 1 % resistors or a slightly larger R1 if the limit matters.`,
         answer: { type: 'number', value: 3.235, tol: 0.03, unit: 'V' } },
 
       { t: 'callout', kind: 'mistake', md: `**Using a resistor divider on a bidirectional or open-drain line such as I2C SDA.** A divider only scales a signal travelling from its top to its tap. When the 3.3 V device tries to drive the tap, it is fighting the divider and the 5 V device sees a level set by the resistors, not a valid logic level. Bidirectional lines need the MOSFET circuit or a translator IC.` },
@@ -341,7 +342,7 @@ export default [
       { t: 'refs', items: [
         { title: 'NXP AN10441: Level shifting techniques in I2C-bus design', url: 'https://www.nxp.com/docs/en/application-note/AN10441.pdf', note: 'the MOSFET bidirectional shifter, analysed state by state' },
         { title: 'Texas Instruments: Logic Guide / Voltage translation selection', url: 'https://www.ti.com/lit/sg/sdyu001ab/sdyu001ab.pdf', note: 'logic family thresholds and 5 V tolerant families' },
-        { title: 'Espressif: ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'absolute maximum ratings and DC characteristics; URL not load-tested from this environment' },
+        { title: 'Espressif: ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'v5.3: absolute maximum ratings (Table 5-1) and DC characteristics (Table 5-3): VIH ≥ 0.75 × VDD, VIL ≤ 0.25 × VDD, input maximum VDD + 0.3 V; no 5 V-tolerance statement' },
         { title: 'Texas Instruments: Latch-Up, ESD, and Other Phenomena (SLYA014)', url: 'https://www.ti.com/lit/an/slya014a/slya014a.pdf', note: 'what the input protection diodes do when over-driven' },
       ] },
     ],
@@ -479,10 +480,12 @@ export default [
       The ESP32 family has SAR ADCs that are convenient but need care. What follows is the general picture from Espressif's
       documentation; the numbers for your chip are in its datasheet and the ESP-IDF ADC documentation.
 
-      - **Limited native range, extended by attenuation.** The converter measures against an internal reference of roughly
-        1.1 V. To measure larger voltages, an input **attenuation** setting is selected in software. Each setting has a
-        *recommended* input range in which results are reasonably accurate; it is narrower than 0 to 3.3 V, and the upper
-        limit differs between chips. Choose the smallest attenuation that covers your signal.
+      - **Limited native range, extended by attenuation.** The converter measures against an internal reference that is
+        1100 mV by design (ESP-IDF v6.1, ADC calibration guide). To measure larger voltages, an input **attenuation**
+        setting is selected in software. Each setting has an *effective measurement range* in which results are reasonably
+        accurate. For the original ESP32's 12-bit ADC (datasheet v5.3, Table 4-4) these are 100–950 mV, 100–1250 mV,
+        150–1750 mV and 150–2450 mV for attenuation 0 to 3: never down to 0 V and never up to 3.3 V. Other chips in the
+        family have different ranges. Choose the smallest attenuation that covers your signal.
       - **Non-linearity near the ends.** Readings close to 0 V and close to the top of the range are compressed or do not
         respond. Design the signal to sit in the middle of the recommended range.
       - **Chip-to-chip reference variation.** The internal reference differs between individual chips. Espressif stores

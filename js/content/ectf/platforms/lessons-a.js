@@ -130,7 +130,7 @@ Suppose next year's kit is announced with only a part number you have never seen
   quiz: [
     { kind: 'concept', q: `A classmate says "eCTF is an Arm Cortex-M competition". Which evidence from the reference repositories best tests that claim?`,
       choices: [
-        { t: 'The 2017 bootloader Makefile sets `MCU = atmega1284p`, an 8-bit AVR', ok: true, why: 'A universal claim is tested by looking for a counter-example. An AVR is outside the Cortex-M family, and the 2019–2020 Zynq boards running Linux are too.' },
+        { t: 'The 2017 bootloader Makefile sets `MCU = atmega1284p`, an 8-bit AVR, not an Arm part', ok: true, why: 'A universal claim is tested by looking for a counter-example. An AVR is outside the Cortex-M family, and the 2019–2020 Zynq boards running Linux are too.' },
         { t: 'The 2023 README recommends the Arm GNU toolchain and OpenOCD for development', why: 'One year recommending an Arm toolchain supports the claim for that year only; a general claim needs a check against every year.' },
         { t: 'The 2021 design runs its controller under `qemu-system-arm` rather than on a board', why: 'That shows an Arm target was emulated in one year; it says nothing about the years that used other families.' },
         { t: 'The 2026 Makefile passes `-mcpu=cortex-m0plus` to the TI Arm Clang compiler', why: 'This confirms the claim for one year. A universal statement is tested by looking for counter-examples, not confirming instances.' },
@@ -139,7 +139,7 @@ Suppose next year's kit is announced with only a part number you have never seen
       choices: [
         { t: 'Something else owns the first 0xE000 bytes and is what receives and starts your image', ok: true, why: 'The linker scripts name that region BOOTLOADER: the MITRE bootloader lives there, and team images are transferred through it rather than written from the base of flash.' },
         { t: 'The first 0xE000 bytes of flash are factory test data on that part and must be skipped by every application', why: 'Linker regions express ownership decisions made by a design, not properties of the silicon; look at what the region is called in the script.' },
-        { t: 'The vector table of every Cortex-M4 must sit 0xE000 above the flash base for the core to find it', why: 'The architecture does not fix such an offset; where the table sits is a property of the particular boot arrangement.' },
+        { t: 'The vector table of every Cortex-M4 must sit 0xE000 above the flash base', why: 'The architecture does not fix such an offset; where the table sits is a property of the particular boot arrangement.' },
         { t: 'The RISC-V core boots from the first 0xE000 bytes, so the Arm core’s code has to start after it', why: 'Nothing in the linker script assigns that region to the second core; the region’s name says what it is for.' },
       ] },
     { kind: 'concept', q: `Before the 2026 kit arrives, a teammate orders spare boards. The reference Makefile says \`-D__MSPM0L2228__\`, so they buy TI’s LP-MSPM0L2228 LaunchPad and assume it *is* the competition board. What does the evidence support?`,
@@ -151,8 +151,8 @@ Suppose next year's kit is announced with only a part number you have never seen
       ] },
     { kind: 'security', q: `You are asked to practise for an upcoming eCTF by attacking the 2023 PARED reference design. Which framing is correct?`,
       choices: [
-        { t: 'Attack your own build of it, on hardware or emulation you control, to practise method', ok: true, why: 'Reference designs are intentionally vulnerable and public, which makes them legitimate practice targets when you run them yourself. Expect next year’s platform and system to differ.' },
-        { t: 'Its vulnerabilities are the ones that will appear in this year’s designs, so memorise the list', why: 'Each year has a new system and new requirements; the transferable part is the method of finding weaknesses, not the list.' },
+        { t: 'Attack your own build of it, on hardware or emulation you control, to practise the method', ok: true, why: 'Reference designs are intentionally vulnerable and public, which makes them legitimate practice targets when you run them yourself. Expect next year’s platform and system to differ.' },
+        { t: 'Its vulnerabilities will reappear in this year’s designs, so memorise the list', why: 'Each year has a new system and new requirements; the transferable part is the method of finding weaknesses, not the list.' },
         { t: 'It is representative of how production car key fobs are built, so findings apply to real vehicles', why: 'It is a teaching design built to be insecure; drawing conclusions about commercial products from it is unsupported.' },
         { t: 'Because the code is public, any device running similar firmware is a fair target for the same attacks', why: 'Authorisation comes from owning the target or having permission, never from the availability of example code.' },
       ] },
@@ -165,7 +165,7 @@ Suppose next year's kit is announced with only a part number you have never seen
       ] },
     { kind: 'security', q: `eCTF 2025 SR2 says a Decoder decodes only genuine frames from its own Satellite System; SR3 says it decodes only frames with strictly increasing timestamps. An attacker records a genuine frame and sends it again an hour later. Which requirement is the one that forbids decoding it?`,
       choices: [
-        { t: 'SR3: the frame is authentic, but it is not fresh', ok: true, why: 'A replayed frame carries a valid proof of origin, so an authenticity check passes. Only a freshness rule — here, timestamps that must increase — rejects it.' },
+        { t: 'SR3: the replayed frame is authentic, but its timestamp does not increase', ok: true, why: 'A replayed frame carries a valid proof of origin, so an authenticity check passes. Only a freshness rule — here, timestamps that must increase — rejects it.' },
         { t: 'SR2: a frame that has been sent before is no longer a genuine frame from the satellite', why: 'Genuineness concerns who produced the frame. A bit-for-bit copy of a real frame was produced by the real system.' },
         { t: 'Neither: both requirements are met, because the frame was valid when it was first transmitted', why: 'SR3 is evaluated when the frame arrives at the decoder, against the timestamps it has already seen.' },
         { t: 'Both equally: authenticity and freshness are two names for the same property', why: 'They are separate properties with separate mechanisms; a design can have either one without the other.' },
@@ -248,9 +248,9 @@ Defence, and how to check it: treat physical access as a threat-model decision, 
     { t: 'predict', q: `You have a working flashing script for an original ESP32 that writes the second-stage bootloader at offset 0x1000, the partition table at 0x8000 and the app at 0x10000. You point the same script, unchanged, at an ESP32-C3 board with a bootloader built for the C3. What happens at reset, and why?`,
       choices: [
         { t: 'The ROM finds no valid bootloader where it looks, so the board does not start the app', ok: true, why: 'The C3 ROM expects the second-stage bootloader at flash offset 0x0. The image written at 0x1000 is intact but the ROM never looks there.' },
-        { t: 'It boots normally; the ROM scans flash for the bootloader header', why: 'The ROM does not search. The bootloader offset is a fixed property of each chip’s ROM.' },
-        { t: 'It boots but with the partition table ignored', why: 'The partition table is read by the second-stage bootloader, which has to be found and started first.' },
-        { t: 'The C3 refuses the image because it was signed for Xtensa', why: 'No signing is involved in this scenario, and the bootloader was built for the right chip; think about where the ROM reads from.' },
+        { t: 'It boots normally, because the ROM scans the flash for a valid bootloader header and starts it', why: 'The ROM does not search. The bootloader offset is a fixed property of each chip’s ROM.' },
+        { t: 'The bootloader starts, but it ignores the partition table and so cannot find the app', why: 'The partition table is read by the second-stage bootloader, which has to be found and started first.' },
+        { t: 'The C3’s ROM rejects the image, because the script was written for an Xtensa chip', why: 'The bootloader was built for the right chip, and a flashing script has no instruction set; think about where the ROM reads from.' },
       ],
       reveal: `The ROM-fixed bootloader offset is \`0x1000\` on the original ESP32 and \`0x0\` on the S3, C3 and C6${src('ROM caps, ESP32', S.idfRom32, 'ROM caps, C3', S.idfRomC3)}. Same vendor, same SDK, same word "ESP32" on the box — different offset. If two members of one family differ in where the first-stage loader looks, assume nothing about a chip from a different vendor.` },
 
@@ -423,14 +423,14 @@ Take the table "why it is not a substitute" and turn each row into a question yo
       ] },
     { kind: 'security', q: `A datasheet for a module says it contains an ESP32-D0WD-V3. A colleague concludes: "V3 fixed the fault-injection attacks, so with Secure Boot V2 and flash encryption a stolen device keeps its keys." Which reply matches Espressif’s advisories?`,
       choices: [
-        { t: 'V3’s ROM checks block the 2019 attacks; AR2023-005 is a later attack on v3.0/v3.1', ok: true, why: 'CVE-2019-17391 and CVE-2019-15894 are addressed in the V3 ROM. CVE-2023-35818 then showed an EMFI bypass on v3.0 and v3.1 with no immediate mitigation, so physical access stays in the threat model.' },
+        { t: 'V3’s ROM checks block the two 2019 attacks; AR2023-005 is a later attack on revisions v3.0/v3.1 themselves', ok: true, why: 'CVE-2019-17391 and CVE-2019-15894 are addressed in the V3 ROM. CVE-2023-35818 then showed an EMFI bypass on v3.0 and v3.1 with no immediate mitigation, so physical access stays in the threat model.' },
         { t: 'Correct: revision 3 added ROM checks, and no fault-injection advisory applies to revision 3 parts', why: 'Espressif’s own vulnerability list records an advisory that names chip revisions v3.0 and v3.1 specifically.' },
         { t: 'Wrong, because V3 changed nothing: the 2019 eFuse read-out attack works unchanged on every revision', why: 'The advisory for that attack states that the D0WD-V3 has checks in ROM which prevent it. The remaining exposure is a different, later attack.' },
         { t: 'Correct, provided the device also runs the latest ESP-IDF release, which patches the remaining issue', why: 'The 2023 advisory states there is no immediate mitigation; a fault injected into the boot ROM’s execution is not repaired by application software.' },
       ] },
     { kind: 'circuit', q: `A 5 V sensor output is wired straight to an ESP32 GPIO because "a forum says the pins are 5 V tolerant". What does the ESP32 datasheet (v5.3) actually give you to decide with?`,
       choices: [
-        { t: 'An input maximum of VDD + 0.3 V, and no 5 V-tolerance statement', ok: true, why: 'With VDD at 3.3 V the stated limit is 3.6 V. A 5 V signal exceeds it, so it needs a divider or a level shifter whatever a forum reports.' },
+        { t: 'An input maximum of VDD + 0.3 V, which is 3.6 V here, and no 5 V-tolerance statement', ok: true, why: 'With VDD at 3.3 V the stated limit is 3.6 V. A 5 V signal exceeds it, so it needs a divider or a level shifter whatever a forum reports.' },
         { t: 'A statement that all digital inputs tolerate 5 V as long as the pin is configured as an input', why: 'No such statement appears in the datasheet’s electrical characteristics; the only input limit given is tied to VDD.' },
         { t: 'A 12 mA recommended input current, which a series resistor can be sized to respect', why: 'That figure is widely quoted but does not appear in the datasheet, and a current figure would not replace a voltage limit anyway.' },
         { t: 'An absolute maximum of 3.6 V on the supply pins only, which places no limit on signal pins', why: 'The supply limit is one row; the DC characteristics separately bound the input voltage relative to VDD.' },
@@ -673,7 +673,7 @@ In 2024, an Application Processor and two Components were three separate MAX7800
   quiz: [
     { kind: 'arch', q: `An MSDK example built with the stock \`max78000.ld\` runs when programmed directly with the debug adapter on a bare board, but not when sent through the eCTF 2025 bootloader. What is the most likely cause?`,
       choices: [
-        { t: 'It is linked for 0x10000000, but team images must be linked at 0x1000E000', ok: true, why: 'The stock script uses flash from its base; the competition layout reserves the first 0xE000 bytes for the bootloader, so the image’s absolute addresses are wrong.' },
+        { t: 'It is linked to run at 0x10000000, but team images must be linked at 0x1000E000', ok: true, why: 'The stock script uses flash from its base; the competition layout reserves the first 0xE000 bytes for the bootloader, so the image’s absolute addresses are wrong.' },
         { t: 'The example uses the FPU, which the bootloader leaves disabled when it starts an image', why: 'Nothing in the sources says the bootloader changes FPU state; look at what differs between the two linker scripts.' },
         { t: 'Images built inside Docker are big-endian, while the bare board expects little-endian', why: 'Byte order is a property of the target and toolchain configuration, not of building in a container.' },
         { t: 'The SRAM base address differs between the stock script and the eCTF script', why: 'Both linker scripts place SRAM at 0x20000000 with the same length; the difference is in flash.' },
@@ -701,14 +701,14 @@ In 2024, an Application Processor and two Components were three separate MAX7800
       ] },
     { kind: 'arch', q: `Your 2025 practice design uses AES-192 through the MAX78000’s hardware engine. You are now planning the same design for the MSPM0L2228. What do the sources tell you?`,
       choices: [
-        { t: 'It does not carry over: the MAX78000 driver offers 128/192/256, TI’s AESADV 128/256', ok: true, why: 'Two blocks both called "AES" differ in supported key sizes. The MSDK header and the TI datasheet each state their own list, and 192 appears in only one.' },
+        { t: 'It does not carry over: the MAX78000 driver offers 128/192/256-bit keys, TI’s AESADV only 128 and 256', ok: true, why: 'Two blocks both called "AES" differ in supported key sizes. The MSDK header and the TI datasheet each state their own list, and 192 appears in only one.' },
         { t: 'It carries over unchanged, because every hardware AES engine implements all three standard key sizes', why: 'The AES standard defines three key sizes; a given hardware block need not implement all of them. Read each vendor’s list.' },
         { t: 'Neither chip supports AES-192, since low-power microcontrollers only implement the 128-bit variant', why: 'Power class does not determine key size; that is a guess, and the MSDK driver header lists 192.' },
         { t: 'It cannot be decided, because neither vendor documents key sizes outside the datasheet', why: 'The MAX78000 key sizes are in the public MSDK driver header, and the TI ones are in its datasheet.' },
       ] },
     { kind: 'code', q: `The 2025 flasher uses \`PAGE_SIZE = 8192\` and \`APP_PAGES = 28\`; the linker gives the team region length \`0x38000\`. A teammate edits the linker script to make the team region \`0x3A000\` long to fit a larger image. What happens?`,
       choices: [
-        { t: 'The link succeeds, but the flasher still transfers only 28 pages', ok: true, why: 'The last 0x2000 bytes are never written, and that page belongs to another region. A linker script describes where you intend code to go; it grants no ownership.' },
+        { t: 'The link succeeds, but the flasher still transfers only 28 pages of 8192 bytes', ok: true, why: 'The last 0x2000 bytes are never written, and that page belongs to another region. A linker script describes where you intend code to go; it grants no ownership.' },
         { t: 'The flasher adapts automatically, because it reads the region size from the ELF file', why: 'The flasher works from fixed constants and a binary file; it does not derive the region size from your link.' },
         { t: 'The linker rejects the script, because a region length must be a power of two', why: 'Region lengths need not be powers of two; the existing length 0x38000 is not one either.' },
         { t: 'The extra page is taken from the top of SRAM, reducing the space left for the stack', why: 'Flash and SRAM are separate address ranges; enlarging a flash region cannot consume RAM.' },

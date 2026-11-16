@@ -354,7 +354,7 @@ The MAX78000 design you might be porting from had 128 KB of RAM, a hardware FPU,
   quiz: [
     { kind: 'arch', q: `A generic Cortex-M linker script with \`RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 32K\` is used unchanged for the MSPM0L2228, with start-up code that initialises all of \`.data\` and \`.bss\`. What does that script actually select on this chip?`,
       choices: [
-        { t: 'The ECC-checked view of the same 32 KB that TI’s linker file reaches at 0x20200000', ok: true, why: 'The datasheet maps one SRAM at three ranges. 0x20000000 is the default, ECC-checked view: valid RAM, with slower writes and faults on detected errors.' },
+        { t: 'The ECC-checked view of the same 32 KB of RAM that TI’s linker file reaches through 0x20200000', ok: true, why: 'The datasheet maps one SRAM at three ranges. 0x20000000 is the default, ECC-checked view: valid RAM, with slower writes and faults on detected errors.' },
         { t: 'Nothing: the part has no memory there, so the first stack push raises a bus fault before main', why: 'That is true of some chips, but this part’s memory-map table lists 0x20000000 as SRAM. Check the table before assuming a hole.' },
         { t: 'A second, separate 32 KB of RAM, so the chip effectively has 64 KB if both ranges are used', why: 'The ranges are aliases of the same cells. Using two of them for different data would make the data overlap, not double the memory.' },
         { t: 'The parity-checked view, because parity is the default integrity check on Cortex-M0+ parts', why: 'The core does not define RAM checking at all; the device does. On this part the default range is ECC-checked and parity has its own range.' },
@@ -368,7 +368,7 @@ The MAX78000 design you might be porting from had 128 KB of RAM, a hardware FPU,
       ] },
     { kind: 'security', q: `A team sets static write protection on the flash sectors holding their key material and leaves the SWD policy at its factory default. Against which attacker does this protect the sectors?`,
       choices: [
-        { t: 'Against a bug in their own firmware, but not against someone with a debug probe', ok: true, why: 'Application code and the BSL cannot modify protected sectors, but an SWD mass erase or factory reset overrides the protection unless those commands are password-protected or disabled.' },
+        { t: 'Against a bug in their own firmware, but not against someone holding a debug probe', ok: true, why: 'Application code and the BSL cannot modify protected sectors, but an SWD mass erase or factory reset overrides the protection unless those commands are password-protected or disabled.' },
         { t: 'Against anyone, since protected sectors cannot be changed until the chip is replaced', why: 'The protection is policy stored in NONMAIN, and the TRM describes debug-port commands that override it when they are left enabled.' },
         { t: 'Against a debug probe, but not against the team’s own firmware writing by mistake', why: 'It is the other way round: static write protection stops code running on the chip, and at the default level the debug port is unrestricted.' },
         { t: 'Against reading the key, because write protection also blocks read access to the sector', why: 'Write protection concerns modification. Whether data can be read out is governed by other mechanisms, such as the debug policy.' },
@@ -516,7 +516,7 @@ Pick one defence from the security section of this course — a constant-time PI
   quiz: [
     { kind: 'arch', q: `Two boards both carry "an Arm Cortex-M microcontroller with 256 KB or more of flash and a UART". Which additional fact is the *most* important to obtain before reusing a linker script between them?`,
       choices: [
-        { t: 'Flash and RAM bases and sizes, and any bootloader-reserved region', ok: true, why: 'A linker script is nothing but those numbers. The MAX78000 and MSPM0L2228 differ in every one of them despite fitting the description.' },
+        { t: 'Flash and RAM base addresses and sizes, and any region reserved for a bootloader', ok: true, why: 'A linker script is nothing but those numbers. The MAX78000 and MSPM0L2228 differ in every one of them despite fitting the description.' },
         { t: 'The maximum CPU frequency of each part, and the oscillator that provides it', why: 'Clock speed affects timing and baud divisors, not where code and data are placed.' },
         { t: 'Whether each part has a hardware AES engine and which key sizes it accepts', why: 'Peripheral availability affects drivers; it has no effect on memory placement.' },
         { t: 'Which debug probe each board uses and whether it is on the board or external', why: 'The probe determines how you connect, not what addresses the image must be linked for.' },
@@ -537,7 +537,7 @@ Pick one defence from the security section of this course — a constant-time PI
       ] },
     { kind: 'arch', q: `Firmware written for the MAX78000 uses six distinct interrupt priority levels to guarantee that a watchdog-feeding timer preempts everything except a tamper handler. On the MSPM0L2228 the device header reports 2 NVIC priority bits. What must happen?`,
       choices: [
-        { t: 'The scheme must be redesigned for four levels', ok: true, why: 'Two bits give four levels. Six distinct levels cannot be represented, so some handlers must share a level, some preemption relationships disappear, and the guarantee has to be argued again.' },
+        { t: 'The priority scheme has to be redesigned around four levels, not six', ok: true, why: 'Two bits give four levels. Six distinct levels cannot be represented, so some handlers must share a level, some preemption relationships disappear, and the guarantee has to be argued again.' },
         { t: 'Nothing: the NVIC silently extends to as many levels as the software requests', why: 'Unimplemented priority bits are ignored by the hardware, which collapses distinct values onto the same level rather than extending.' },
         { t: 'Interrupts must be replaced by polling, since the Cortex-M0+ has no NVIC', why: 'The M0+ has a full NVIC; only the number of levels is smaller.' },
         { t: 'The two missing levels can be supplied by configuring the MPU', why: 'The MPU controls memory access permissions, not interrupt preemption.' },
@@ -551,7 +551,7 @@ Pick one defence from the security section of this course — a constant-time PI
       ] },
     { kind: 'security', q: `On the MAX78000 your design kept a flag \`pin_ok\` in RAM and argued "an attacker cannot change RAM". On the MSPM0L2228 you may link that variable into the ECC-checked SRAM view. What does that choice add to the argument?`,
       choices: [
-        { t: 'Bit flips in the stored flag are corrected or reported, if the fault handler fails closed', ok: true, why: 'ECC covers the stored copy: one flipped bit is corrected, two are detected. It does not cover the CPU register holding the value or the branch that tests it, and it helps only if a reported error stops the operation.' },
+        { t: 'Bit flips in the stored flag are corrected or reported — if the fault handler fails closed', ok: true, why: 'ECC covers the stored copy: one flipped bit is corrected, two are detected. It does not cover the CPU register holding the value or the branch that tests it, and it helps only if a reported error stops the operation.' },
         { t: 'Nothing: the three views reach the same cells, so they cannot differ in any observable way', why: 'The cells are shared, but each view applies a different integrity check to the access; that difference is observable when a bit is wrong.' },
         { t: 'Complete protection against fault injection, because glitches only ever affect memory contents', why: 'Glitches also corrupt instruction fetches, registers and comparisons, none of which SRAM checking sees.' },
         { t: 'Confidentiality of the flag, because ECC-checked memory cannot be read through the debug port', why: 'Error checking concerns integrity. Who may read memory is decided by the debug policy, not by the SRAM view.' },
@@ -722,14 +722,14 @@ Choose a reference repository from a year you have *not* studied in this track �
   quiz: [
     { kind: 'concept', q: `The reference firmware accepts file names up to 32 bytes. Your design would be simpler with a 16-byte limit. How do you decide whether that is allowed?`,
       choices: [
-        { t: 'Find the name-length statement in the detailed specification', ok: true, why: 'A reference implementation shows one compliant behaviour. Only the specification says which of its properties are mandatory — and for 2026 it does state a 32-byte maximum.' },
+        { t: 'Find the name-length statement in the 2026 detailed specification page', ok: true, why: 'A reference implementation shows one compliant behaviour. Only the specification says which of its properties are mandatory — and for 2026 it does state a 32-byte maximum.' },
         { t: 'It is allowed, because the reference design is only an example and its constants are suggestions', why: 'The reference design may well reflect a mandatory limit; "example" does not mean every constant is optional.' },
         { t: 'It is forbidden, because every constant in the reference design is a requirement', why: 'Reference code contains many incidental choices; treating all of them as requirements imports its insecure behaviour too.' },
         { t: 'Test whether the host tools still work when your firmware uses 16', why: 'Host tools passing on your inputs shows nothing about the cases the organisers’ tests will use.' },
       ] },
     { kind: 'security', q: `While mapping requirements to operations you find a command in the reference firmware that no security requirement appears to constrain. What is the best next step?`,
       choices: [
-        { t: 'Treat it as a likely entry point and examine what it reveals', ok: true, why: 'An operation with no guard is either covered by a requirement you overlooked or genuinely unprotected. Re-read the requirements, then look at what the command discloses or changes without authorisation.' },
+        { t: 'Treat it as a likely entry point and examine what it reveals or changes', ok: true, why: 'An operation with no guard is either covered by a requirement you overlooked or genuinely unprotected. Re-read the requirements, then look at what the command discloses or changes without authorisation.' },
         { t: 'Remove the command from your design to reduce the attack surface', why: 'If the functional specification requires it, removing it fails functional tests; check before deleting.' },
         { t: 'Ignore it, since an operation no requirement mentions is out of scope', why: 'Attackers are not limited to operations the requirements mention; unguarded paths are where they start.' },
         { t: 'Add a PIN check to it, since authentication can only make it safer', why: 'A guard not called for by the specification may break required behaviour, such as an operation that must work without the PIN.' },
@@ -750,14 +750,14 @@ Choose a reference repository from a year you have *not* studied in this track �
       ] },
     { kind: 'concept', q: `Which first-day checklist items can be completed before the hardware kit arrives?`,
       choices: [
-        { t: 'Sources, part, memory map, boot flow and the requirements table', ok: true, why: 'All of these are done from documents and the repository. Only flashing and exercising the host tools against a real board need the kit.' },
+        { t: 'Sources, part number, memory map, boot flow and the requirements table', ok: true, why: 'All of these are done from documents and the repository. Only flashing and exercising the host tools against a real board need the kit.' },
         { t: 'None of them, because nothing useful can be established without the board', why: 'Most of the early work is reading and recording, which needs no hardware at all.' },
         { t: 'Only installing the toolchain and building the unmodified reference design', why: 'Toolchain setup is one item, but the map, boot flow and requirements are equally document-based.' },
         { t: 'All twelve, by simulating the board’s responses to the host tools', why: 'Flashing the real image and capturing real host-tool exchanges cannot be signed off from documents; saying otherwise would overstate what was done.' },
       ] },
     { kind: 'security', q: `Before reading the 2026 rules, a team infers from the firmware headers that "the PIN protects every command". The functional requirements then say Listen takes no PIN and serves one request from a neighbouring HSM. What should change in their requirements table?`,
       choices: [
-        { t: 'Listen gets its own row: an unauthenticated entry point facing another device', ok: true, why: 'An operation that works without the user’s PIN, answering a peer that may be attacker-controlled, must be constrained by something other than the PIN — the permission and authenticity requirements.' },
+        { t: 'Listen gets its own row: an unauthenticated entry point that faces another device', ok: true, why: 'An operation that works without the user’s PIN, answering a peer that may be attacker-controlled, must be constrained by something other than the PIN — the permission and authenticity requirements.' },
         { t: 'Nothing: Listen only answers other HSMs, and other HSMs are trusted by definition', why: 'In the attack phase the neighbour may be modified or simulated by the attacker; the specification does not make it trustworthy.' },
         { t: 'Listen should be given a PIN check in their design, to match their original inference', why: 'The functional requirement says it takes no PIN. Adding one breaks required behaviour; the protection has to come from elsewhere.' },
         { t: 'The inference stands, because reference headers outrank the functional requirements', why: 'The order of authority is the reverse: the specification defines required behaviour, and the reference code is one implementation of it.' },

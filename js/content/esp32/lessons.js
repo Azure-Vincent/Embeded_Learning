@@ -165,7 +165,7 @@ SD card detect             GPIO8    input, internal pull-up`,
 - **GPIO8** is one of GPIO6–11, wired to the SPI flash inside the module.
 
 GPIO33 is fine: it is an ADC1 pin, so Wi-Fi does not block it. GPIO16 is fine on a module without PSRAM. A corrected plan moves the relay to GPIO25, the switch to GPIO27 and card detect to GPIO26.`,
-      answer: { type: 'text', accept: ['^(?=.*\\b35\\b)(?=.*\\b12\\b)(?=.*\\b8\\b)(?!.*\\b33\\b)(?!.*\\b16\\b).*$'], nudge: 'Three pins: one cannot drive, one is sampled at reset, one belongs to the flash.' } },
+      answer: { type: 'text', accept: ['^(?=.*(?<!\\d)35(?!\\d))(?=.*(?<!\\d)12(?!\\d))(?=.*(?<!\\d)8(?!\\d))(?!.*(?<!\\d)33(?!\\d))(?!.*(?<!\\d)16(?!\\d)).*$'], nudge: 'Three pins: one cannot drive, one is sampled at reset, one belongs to the flash.' } },
 
     `## Harder: choosing a chip
 
@@ -1159,7 +1159,7 @@ ESP_ERROR_CHECK(adc_cali_create_scheme_line_fitting(&cali_cfg, &cali));`,
       solution: `The **\`.atten\` field of \`cali_cfg\`** says 0 dB while the channel is configured for 12 dB. The attenuator really is at 12 dB, so 2.00 V produces a mid-scale raw code; the calibration handle then converts that code with the 0 dB line, whose full scale is about 1 V. Neither driver knows about the other, so nothing reports an error.
 
 The worked example avoids this by using one \`#define ADC_ATTEN\` in both places. That is the general repair for "two settings that must agree": make them one setting. The same rule gives you the answer to the question below about sharing a calibration handle.`,
-      answer: { type: 'text', accept: ['atten'], nudge: 'Which setting is given twice, with two different values?' } },
+      answer: { type: 'text', accept: ['.*atten.*'], nudge: 'Which setting is given twice, with two different values?' } },
 
     `## Harder: choosing attenuation for resolution
 
@@ -2630,7 +2630,7 @@ nvs_close(h);`,
 2. With the namespace present, \`nvs_set_u32\` on a read-only handle returns **\`ESP_ERR_NVS_READ_ONLY\`**.
 
 Open with \`NVS_READWRITE\`. Two more defects remain that abort nothing: there is no \`nvs_commit\`, so the new count is not guaranteed to be on flash before power is lost, and the result of \`nvs_get_u32\` is ignored, so a real read error is treated like "first boot". The worked example handles all four.`,
-      answer: { type: 'text', accept: ['read.?only'], nudge: 'How was the handle opened, and what is the code then trying to do with it?' } },
+      answer: { type: 'text', accept: ['.*read.?only.*'], nudge: 'How was the handle opened, and what is the code then trying to do with it?' } },
 
     `## Harder: power fails mid-update
 
@@ -2867,7 +2867,7 @@ The task blocks with no CPU use while offline and resumes by itself when the lin
       solution: `**\`WIFI_EVENT_STA_START\`.** The driver posts it shortly after \`esp_wifi_start()\`. With no handler registered yet, the event loop has nobody to call and drops it. The handler is registered half a second later and waits for an event that has already gone, so \`esp_wifi_connect()\` is never called; and since nothing ever connects, no disconnect event arrives to trigger a retry either.
 
 Register handlers **before** starting whatever produces the events. It is the same ordering rule as creating the queue before enabling the interrupt, and the delay "to let things settle" is what turned a narrow race into a certain failure.`,
-      answer: { type: 'text', accept: ['STA_?START'], nudge: 'Which event makes the handler call esp_wifi_connect() the first time?' } },
+      answer: { type: 'text', accept: ['.*sta.?start.*'], nudge: 'Which event makes the handler call esp_wifi_connect() the first time?' } },
 
     `## Harder: a battery budget
 

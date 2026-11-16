@@ -19,19 +19,27 @@ or https (WebCrypto is unavailable on plain http from another host).
 
 ### Standalone executables
 
-`dist/` holds single-file launchers that contain the whole course. They need no installation:
+`dist/` holds single-file builds that contain the whole course. They need no installation:
 
 | Platform | File | Start it |
 |---|---|---|
+| Linux (64-bit Intel/AMD) | `dist/Bench-x86_64.AppImage` | `chmod +x Bench-x86_64.AppImage`, then double-click it or run `./Bench-x86_64.AppImage` |
 | Windows (64-bit Intel/AMD) | `dist/bench-windows-x86_64.exe` | double-click it |
-| Linux (64-bit Intel/AMD) | `dist/bench-linux-x86_64` | `chmod +x bench-linux-x86_64 && ./bench-linux-x86_64` |
+| Linux, plain binary | `dist/bench-linux-x86_64` | `chmod +x bench-linux-x86_64 && ./bench-linux-x86_64` |
 
-The launcher serves the course on `http://localhost:47800/` (this computer only) and opens your default browser.
-Close its window, or press Ctrl+C, to stop. Progress is saved in the browser for that address, so keep using the
-same port; `--port N` changes it and `--no-browser` suppresses opening the browser. The executables are not
-code-signed, so Windows SmartScreen may ask for confirmation the first time ("More info" → "Run anyway").
+Each one serves the course on `http://localhost:47800/` (this computer only) and opens your default browser; the
+course runs in a browser tab, not its own window. To stop it, close its terminal window or press Ctrl+C. It also
+stops by itself ten minutes after the last course tab is closed, which is how an AppImage started by double-click
+ends. Progress is saved in the browser for that address, so keep using the same port. Options: `--port N`,
+`--no-browser`, `--idle-exit 0` (never stop by itself).
 
-To rebuild them, including ARM64 variants, install Go 1.22 or newer and run `./desktop/build.sh`.
+- The AppImage needs FUSE 2 (`libfuse2`; on Ubuntu 24.04 the package is `libfuse2t64`). Without it, run
+  `./Bench-x86_64.AppImage --appimage-extract-and-run`, or use the plain binary.
+- The executables are not code-signed, so Windows SmartScreen may ask for confirmation the first time
+  ("More info" → "Run anyway").
+
+To rebuild: install Go 1.22 or newer and run `./desktop/build.sh` (also produces ARM64 variants), then
+`./desktop/build-appimage.sh /path/to/runtime-x86_64` to package the AppImage (see the script header).
 
 ## What is in it
 

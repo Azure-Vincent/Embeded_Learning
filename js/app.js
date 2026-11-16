@@ -447,4 +447,10 @@ function route() {
 document.getElementById('search').addEventListener('submit', (e) => { e.preventDefault(); go('#/search/' + encodeURIComponent(e.target.q.value)); });
 document.getElementById('menu').addEventListener('click', () => document.body.classList.toggle('navopen'));
 window.addEventListener('hashchange', route);
+// When served by the desktop launcher, tell it a page is still open so it can stop itself after the tab closes.
+// On any other host the request simply fails and is ignored.
+if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+  const ping = () => fetch('/bench-ping', { cache: 'no-store' }).catch(() => {});
+  ping(); setInterval(ping, 60000);
+}
 applyTheme(); route();

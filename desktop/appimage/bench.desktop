@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Bench
+GenericName=Embedded systems course
+Comment=Interactive course in electronics, microcontrollers, firmware and hardware security
+Exec=bench
+Icon=bench
+Terminal=false
+Categories=Education;Development;Electronics;
+Keywords=embedded;ESP32;microcontroller;firmware;security;eCTF;

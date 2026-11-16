@@ -14,6 +14,7 @@ import (
 	"path"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -56,6 +57,7 @@ func alreadyRunning(url string) bool {
 func main() {
 	port := flag.Int("port", defaultPort, "port to listen on (localhost only)")
 	noOpen := flag.Bool("no-browser", false, "do not open the browser automatically")
+	idle := flag.Duration("idle-exit", 10*time.Minute, "stop when no course page has been open for this long (0 = never stop)")
 	flag.Parse()
 
 	root, err := fs.Sub(site, "site")
@@ -84,7 +86,22 @@ func main() {
 	}
 
 	files := http.FileServer(http.FS(root))
+	// An open course page pings once a minute. When started without a terminal (for example an AppImage
+	// opened from a file manager) there is no window to close, so stop once every page has been gone a while.
+	var lastSeen atomic.Int64
+	lastSeen.Store(time.Now().UnixNano())
+	if *idle > 0 {
+		go func() {
+			for range time.Tick(30 * time.Second) {
+				if time.Since(time.Unix(0, lastSeen.Load())) > *idle {
+					fmt.Println("No course page has been open for", *idle, "- stopping.")
+					os.Exit(0)
+				}
+			}
+		}()
+	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastSeen.Store(time.Now().UnixNano())
 		w.Header().Set("X-Bench", "1")
 		if r.URL.Path == "/bench-ping" {
 			w.WriteHeader(http.StatusNoContent)
@@ -100,7 +117,8 @@ func main() {
 	fmt.Println("Bench — embedded systems and hardware security course")
 	fmt.Println()
 	fmt.Println("  Open in your browser:  ", url)
-	fmt.Println("  Stop the course:        close this window (or press Ctrl+C)")
+	fmt.Println("  Stop the course:        close this window (or press Ctrl+C);")
+	fmt.Println("                          it also stops by itself", *idle, "after the last course tab is closed")
 	fmt.Println()
 	fmt.Println("Progress, notes and bookmarks are saved in your browser for this address.")
 	if !*noOpen {

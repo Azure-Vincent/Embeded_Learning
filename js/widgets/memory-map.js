@@ -58,7 +58,10 @@ export function checkAnswer(platformId, item, regionId) {
     const rel = r.size == null ? `${r.name} starts at ${hex(r.base)}` : `${r.name} covers ${rangeText(r)}`;
     return { ok: false, text: `${rel}, so ${hex(item.addr)} is not in it. Compare the top hex digits of the address with each region's base.` };
   }
-  if (r.holds.includes(item.role)) return { ok: true, text: item.why };
+  if (r.holds.includes(item.role)) {
+    const alias = r.aliasOf ? p.regions.find((x) => x.id === r.aliasOf) : null;
+    return { ok: true, text: item.why + (alias ? ` (This is one view of the chip's single RAM; the linker files address the same memory through ${alias.name.split(',')[0]} at ${hex(alias.base)}.)` : '') };
+  }
   const kind = r.kind === 'ram' ? 'ram' : (r.kind === 'flash' || r.kind === 'rom') ? 'flash' : r.kind;
   let text = item.wrong?.[kind];
   if (!text) {
@@ -123,9 +126,10 @@ export default function mount(el, props = {}, ctx) {
         side.append(h('h4', {}, r.name), h('dl', { class: 'w-kv' },
           h('dt', {}, 'Base'), h('dd', {}, hex(r.base)),
           h('dt', {}, 'Size'), h('dd', {}, r.size == null ? UNVERIFIED : `${fmtSize(r.size)} (${hex(r.size, 1)} bytes)`),
-          h('dt', {}, 'End'), h('dd', {}, r.size == null ? UNVERIFIED : hex(r.base + r.size - 1))),
+          h('dt', {}, 'End'), h('dd', {}, r.size == null ? UNVERIFIED : hex(r.base + r.size - 1)),
+          r.check ? h('dt', {}, 'Error checking') : null, r.check ? h('dd', {}, r.check) : null),
           h('p', {}, r.what),
-          h('p', { class: 'w-note' }, 'Source: ', h('a', { href: r.src, target: '_blank', rel: 'noopener' }, p.illustrative ? 'Arm CMSIS (architecture; sizes illustrative)' : r.src.replace('https://github.com/', ''))));
+          h('p', { class: 'w-note' }, 'Source: ', h('a', { href: r.src, target: '_blank', rel: 'noopener' }, p.illustrative ? 'Arm CMSIS (architecture; sizes illustrative)' : r.src.replace('https://github.com/', '').replace('https://www.', ''))));
       }
       if (p.regionNotes) side.append(h('ul', { class: 'w-note' }, p.regionNotes.map((n) => h('li', {}, show(n)))));
     } else if (last) {

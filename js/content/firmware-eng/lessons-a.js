@@ -379,7 +379,7 @@ UBaseType_t uxTaskGetStackHighWaterMark(TaskHandle_t task);   /* NULL = the call
 returns the smallest amount of free stack that task has ever had. In the reference FreeRTOS kernel the unit is **words** (4 bytes on a 32-bit port). ESP-IDF differs: its FreeRTOS takes task stack sizes in **bytes**, and its documentation (the *Minimizing RAM usage* guide, v6.1) states that \`uxTaskGetStackHighWaterMark\` also returns **bytes** there. Check which convention your port uses before you do arithmetic on the number.
 
 FreeRTOS can also check for overflow at each context switch (\`configCHECK_FOR_STACK_OVERFLOW\`, methods 1 and 2) and call a hook function you provide. It catches most overflows shortly after they happen, but not all, and by then memory may already be damaged: treat the hook as a reason to halt and report, not to continue.`,
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Logging stack headroom from a FreeRTOS task. Written against the FreeRTOS API; not run on a board here.',
+    { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Logging stack headroom from a FreeRTOS task. The FreeRTOS calls were compiled against the ESP-IDF v6.1 headers; `read_and_publish` and `log_warn` stand for your own code. Not run on a board.',
       code: C`void sensor_task(void *arg)
 {
     (void)arg;

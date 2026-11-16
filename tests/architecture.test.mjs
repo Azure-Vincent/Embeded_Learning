@@ -42,7 +42,17 @@ test('every fact carries a source URL and unverified facts never print a value',
 });
 test('regionAt, sizes, compare axes complete', () => {
   assert.equal(regionAt('mspm0l2228', 0x20200010).id, 'sram');
-  assert.equal(regionAt('mspm0l2228', 0x20000010), null);
+  // One 32 KB SRAM, three views (SLASF94A Table 8-4): ECC-checked, parity-checked, unchecked.
+  assert.equal(regionAt('mspm0l2228', 0x20000010).id, 'sram_ecc');
+  assert.equal(regionAt('mspm0l2228', 0x20100010).id, 'sram_par');
+  assert.equal(regionAt('mspm0l2228', 0x20008000), null);          // 32 KB only: nothing just past the end of a view
+  assert.equal(regionAt('mspm0l2228', 0x20208000), null);
+  for (const id of ['sram_ecc', 'sram_par']) {
+    const a = PLATFORMS.mspm0l2228.regions.find((x) => x.id === id);
+    assert.equal(a.size, 32 * 1024); assert.equal(a.aliasOf, 'sram'); assert.match(a.src, /ti\.com/); assert.match(a.what, /same (physical memory|32 KB)/);
+  }
+  assert.deepEqual(PLATFORMS.mspm0l2228.regions.filter((x) => x.check).map((x) => [x.base, x.check]),
+    [[0x20000000, 'ECC-checked'], [0x20100000, 'parity-checked'], [0x20200000, 'unchecked']]);
   assert.equal(regionAt('max78000', 0x1007FFFF).id, 'flash');
   assert.equal(regionAt('max78000', 0x10080000), null);
   assert.equal(regionAt('esp32', 0x40000400).id, 'rom');

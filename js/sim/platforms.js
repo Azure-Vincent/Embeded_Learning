@@ -310,8 +310,12 @@ const mspm0l2228 = {
   regions: [
     reg('flash', 'Main flash', 0x00000000, 256 * KB, 'flash', ['vector', 'code', 'rodata'],
       '256 KB of program flash starting at address 0: vector table, code and constants. In the eCTF 2026 design the first 0x6000 bytes are the bootloader and team firmware starts at 0x00006000.', S.mspCmd),
-    reg('sram', 'SRAM', 0x20200000, 32 * KB, 'ram', ['data', 'bss', 'heap', 'stack'],
-      '32 KB of RAM. TI\'s linker file and the eCTF design place it at 0x20200000, which the datasheet calls the un-checked alias. The same 32 KB also appears at 0x20000000 (ECC-checked) and 0x20100000 (parity-checked) (SLASF94A Table 8-4); this map shows only the alias the linker uses.', S.tiDs),
+    reg('sram_ecc', 'SRAM, ECC-checked view', 0x20000000, 32 * KB, 'ram', ['data', 'bss', 'heap', 'stack'],
+      'View 1 of 3 onto the one 32 KB SRAM. Accesses through this address range are checked with an error-correcting code (ECC). It is the same physical memory as the views at 0x20100000 and 0x20200000, not extra RAM: the chip has 32 KB in total. Datasheet SLASF94A, Table 8-4.', S.tiDs, { aliasOf: 'sram', check: 'ECC-checked' }),
+    reg('sram_par', 'SRAM, parity-checked view', 0x20100000, 32 * KB, 'ram', ['data', 'bss', 'heap', 'stack'],
+      'View 2 of 3 onto the same 32 KB SRAM. Accesses through this address range are parity-checked: an error is detected but cannot be corrected. Datasheet SLASF94A, Table 8-4.', S.tiDs, { aliasOf: 'sram', check: 'parity-checked' }),
+    reg('sram', 'SRAM, unchecked view (used by the linker files)', 0x20200000, 32 * KB, 'ram', ['data', 'bss', 'heap', 'stack'],
+      'View 3 of 3 onto the same 32 KB SRAM, with no error checking on the access. TI\'s linker file and the eCTF 2026 firmware.ld place .data, .bss, heap and stack through this view, so these are the addresses you see in a map file or debugger. A fourth range at 0x20300000 exposes the ECC/parity code bits themselves. Datasheet SLASF94A, Table 8-4.', S.tiDs, { check: 'unchecked' }),
     reg('periphgap', 'Peripheral registers', 0x40000000, null, 'periph', ['periph'],
       'Peripheral registers are in the Cortex-M peripheral region, but their base addresses were not confirmed for this fact sheet — read them from the device header mspm0l222x.h.', S.mspH),
     reg('nonmain', 'NONMAIN configuration flash', 0x41C00000, 0x400, 'config', ['config'],
@@ -324,7 +328,7 @@ const mspm0l2228 = {
   blocks: {
     cpu: f('One Arm Cortex-M0+ with MPU and VTOR. Only 4 interrupt priority levels (2 NVIC priority bits).', S.mspH),
     flash: f('256 KB main flash with ECC in two 128 KB banks (bank 1 starts at 0x00020000) with address swap; 1 KB sectors. No data-flash region is listed for this part.', S.tiDs, { reach: '0x00000000–0x0003FFFF' }),
-    sram: f('32 KB SRAM with ECC or parity. Linked at 0x20200000 (un-checked alias); the same memory is also at 0x20000000 (ECC-checked) and 0x20100000 (parity-checked).', S.tiDs, { reach: '0x20200000–0x20207FFF (aliases at 0x20000000 and 0x20100000)' }),
+    sram: f('One 32 KB SRAM seen through three address ranges: 0x20000000 (ECC-checked), 0x20100000 (parity-checked) and 0x20200000 (unchecked; the one the linker files use).', S.tiDs, { reach: '0x20200000–0x20207FFF as linked; same memory at 0x20000000 and 0x20100000' }),
     rom: f('Boot configuration lives in NONMAIN flash. The ROM bootstrap loader (BSL) works over UART or I2C, always requires a 256-bit password, is enabled by default and can be disabled; it starts on the BSL_invoke pin, on a blank device, or on request from software.', S.tiDs, { reach: 'NONMAIN 0x41C00000–0x41C003FF (BCR_CONFIG 0x41C00000, BSL_CONFIG 0x41C00100)' }),
     clock: f('Internal 4–32 MHz oscillator (SYSOSC) and 32 kHz LFOSC; 32 MHz is the maximum CPU frequency, and the eCTF 2026 reference design runs at it.', S.tiDs),
     intc: f('NVIC with 2 priority bits (4 levels), at 0xE000E100 as defined by Arm.', S.mspH, { reach: '0xE000E100' }),
@@ -459,7 +463,7 @@ export const COMPARE = {
   },
   mspm0l2228: {
     cpu: mspm0l2228.cores, isa: mspm0l2228.isa,
-    memory: [...regionFacts(mspm0l2228), f('SRAM is linked at 0x20200000 (un-checked alias; the same 32 KB is also at 0x20000000 ECC-checked and 0x20100000 parity-checked); boot configuration lives in a separate NONMAIN flash region', S.tiDs)],
+    memory: [...regionFacts(mspm0l2228), f('One 32 KB SRAM, three views: 0x20000000 ECC-checked, 0x20100000 parity-checked, 0x20200000 unchecked (the view TI\'s linker file and the eCTF design use). Boot configuration lives in a separate NONMAIN flash region', S.tiDs)],
     peripherals: mspm0l2228.peripherals, debug: mspm0l2228.debug,
     devenv: [
       f('TI MSPM0 SDK with driverlib; Code Composer Studio, SysConfig (pin and clock configuration generator), UniFlash; compilers TI Arm Clang, GCC, IAR, Keil', S.mspTools),

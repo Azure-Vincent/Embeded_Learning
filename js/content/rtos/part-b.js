@@ -215,7 +215,7 @@ Kernel functions that are safe in an ISR have names ending in \`FromISR\`. They 
 #include "esp_attr.h"
 
 #define BUTTON_GPIO 27
-
+static void handle_press(void) { /* your application code: may block, log, take a mutex */ }
 static TaskHandle_t s_button_task;
 
 static void IRAM_ATTR button_isr(void *arg)

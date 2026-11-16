@@ -433,7 +433,7 @@ Tick an item only if you could do it today without help. Each line names the par
 **Platform**
 - State, for the year you are preparing for, the microcontroller, the toolchain and how firmware gets onto the board, and say which of those facts you have personally confirmed from the official documentation. *(Platform lessons in this section)*`,
     { t: 'callout', kind: 'warn', title: 'Check the current year yourself',
-      md: `The hardware has changed between years (a MAX78000 board in 2024 and 2025; a TI MSPM0L2228 in 2026) and so has the tooling. Several details, including the exact 2026 board name and the behaviour of the supplied bootloaders, could not be verified for this course. Before planning around any platform detail, read the current year's official material.` },
+      md: `The hardware has changed between years (a MAX78000 board in 2024 and 2025; a TI MSPM0L2228 in 2026) and so has the tooling. For 2026 the rules site names the board as TI's MSP-LITO-L2228, a custom board that is not sold commercially (it describes the LP-MSPM0L2228 LaunchPad as largely interchangeable), debugged through an external XDS110 probe, with the MITRE bootloader installed using TI UniFlash and firmware then loaded with the \`uvx ectf hw\` tools. Some things remain unverified for this course, among them several MAX78000 datasheet figures. Before planning around any platform detail, read the current year's official material; the platform lessons list what was and was not confirmed.` },
     `## Planning the weeks
 
 The durations below are a template for a design phase of about six weeks; scale them to the real schedule, which you take from the official rules.

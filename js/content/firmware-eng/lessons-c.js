@@ -701,7 +701,7 @@ Two practical points:
 
 - **Find the actual compiler commands.** Every one of these can print them (\`idf.py -v build\`, \`make V=1\` or \`make VERBOSE=1\` depending on the makefiles). When a build misbehaves, the command line with its \`-mcpu\`, \`-I\`, \`-D\` and \`-T\` flags is the ground truth.
 - **Your portable modules do not care.** \`ringbuf.c\`, \`line_rx.c\` and \`lock.c\` from this section are added to an IDF component's source list or an MSDK Makefile's source variable unchanged. Only the HAL file is per target.`,
-    { t: 'code', lang: 'cmake', status: 'idf-built', caption: 'The two CMake files of an ESP-IDF project that pulls in the portable modules. With this section\'s port files (port/main_esp32.c, port/hal_esp32.c) this project was built for the esp32 target with ESP-IDF v6.1 in this repository\'s environment. Not run on a board.',
+    { t: 'code', lang: 'cmake', status: 'idf-checked', caption: 'The two CMake files of an ESP-IDF project that pulls in the portable modules. Checked by building this project by hand, with this section\'s port files (port/main_esp32.c, port/hal_esp32.c), for the esp32 target with ESP-IDF v6.1 (`idf.py build` exited 0). Not run on a board.',
       code: C`# CMakeLists.txt  (project root)
 cmake_minimum_required(VERSION 3.22)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

@@ -1,6 +1,8 @@
 // ESP32 projects 6-10: SPI, UART link, Wi-Fi, FreeRTOS, and a learner-specified device.
-// Firmware targets ESP-IDF v6.1 and is status `reviewed`: it was written against the ESP-IDF
-// documentation and was not compiled or run on a board. The pure-C helpers (shift-register model,
+// Firmware targets ESP-IDF v6.1. The complete programs are status `idf-built`: each was compiled for the
+// esp32 target with tools/idf-check (0 warnings). Fragments ("additions to main.c") are `idf-checked`:
+// each was compiled merged into its program, but is not a program on its own. Nothing was run on a
+// board. The pure-C helpers (shift-register model,
 // frame codec, network helpers, moving average, application logic) are `host-tested`: each was
 // compiled with gcc -Wall -Wextra -std=c11 and run with the test main shown beside it.
 
@@ -292,7 +294,7 @@ int main(void)
     { title: 'Send bytes from the ESP32', blocks: [
       CMAKE_NOTE({ srcs: '"main.c"', req: 'esp_driver_spi' }),
       `Connect the three signal wires (GPIO23 → pin 14, GPIO18 → pin 11, GPIO4 → pin 12), then flash this program.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c', code: String.raw`/* Project 6: 74HC595 on SPI. ESP-IDF, original ESP32 DevKit. */
+      { t: 'code', lang: 'c', status: 'idf-built', caption: 'main/main.c', code: String.raw`/* Project 6: 74HC595 on SPI. ESP-IDF, original ESP32 DevKit. */
 #include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -381,7 +383,7 @@ Measure these with the cursors and write them down:
 Wire the flash breakout: VCC to 3V3, GND to GND, CLK to GPIO18, DI (MOSI) to GPIO23, DO (MISO) to GPIO19, CS to GPIO27. If the breakout exposes WP and HOLD pins, tie both to 3V3 so they are inactive. Confirm on the breakout's documentation that it is a 3.3 V part before connecting it.
 
 Add the code below, call \`flash_attach()\` after the shift register is added, then read and log the ID once.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Additions to main.c', code: String.raw`/* Extension: read the JEDEC ID of an external SPI NOR flash chip that
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Additions to main.c', code: String.raw`/* Extension: read the JEDEC ID of an external SPI NOR flash chip that
  * shares SCLK/MOSI/MISO with the shift register and has its own CS. */
 #define PIN_FLASH_CS  27
 
@@ -620,8 +622,8 @@ Two ESP32 boards are both 3.3 V, so they connect directly. Before connecting any
 
 For a 5 V microcontroller talking to an ESP32:
 
-- **5 V TX into ESP32 RX fails check 3.** The ESP32's pins are not specified as 5 V tolerant; the limit is in the absolute maximum ratings table of its datasheet. Reduce the voltage with a divider (1 kΩ on top, 2 kΩ to ground gives 5 V × 2/3 ≈ 3.3 V) or a level shifter.
-- **ESP32 TX into 5 V RX is check 1.** The ESP32 drives close to 3.3 V. A 5 V CMOS input often requires 0.6 or 0.7 × VCC, that is 3.0 V or 3.5 V. At 3.0 V it works with little margin; at 3.5 V it does not, and you need a level shifter. Read the VIH line of that part's DC characteristics; do not guess from the family name.`,
+- **5 V TX into ESP32 RX fails check 3.** The ESP32 datasheet has no 5 V-tolerance statement; the only input limit it gives is VIH max = VDD + 0.3 V, that is 3.6 V on a 3.3 V supply (datasheet v5.3, Table 5-3). Reduce the voltage with a divider (1 kΩ on top, 2 kΩ to ground gives 5 V × 2/3 ≈ 3.3 V) or a level shifter.
+- **ESP32 TX into 5 V RX is check 1.** The ESP32 drives close to 3.3 V (VOH min is 0.8 × VDD, 2.64 V, in the same table). A 5 V CMOS input often requires 0.6 or 0.7 × VCC, that is 3.0 V or 3.5 V. At 3.0 V it works with little margin; at 3.5 V it does not, and you need a level shifter. Read the VIH line of that part's DC characteristics; do not guess from the family name.`,
     { t: 'widget', name: 'voltage-divider', props: { challenge: 'level-shift-5v-3v3' }, caption: 'Design the divider for a 5 V TX driving a 3.3 V RX, then consider what its resistance does to edge speed at high baud rates.' },
     `### Why bytes are not messages
 
@@ -928,7 +930,7 @@ int main(void)
       `Copy \`frame.h\` and \`frame.c\` into the project's \`main\` folder. Start from the full program in step 4, but for now replace the body of the \`while (1)\` loop in \`app_main\` with the raw test below and do not create \`rx_task\` yet.
 
 On **one** board, connect a single jumper from GPIO25 to GPIO26: its own TX to its own RX.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Raw send and receive, for bring-up only', code: String.raw`/* Step 2: prove the UART and the wire before adding any protocol.
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Raw send and receive, for bring-up only', code: String.raw`/* Step 2: prove the UART and the wire before adding any protocol.
  * Replace the body of app_main's while loop with this. */
 const char msg[] = "hello\n";
 uart_write_bytes(LINK_UART, msg, sizeof msg - 1);
@@ -954,7 +956,7 @@ vTaskDelay(pdMS_TO_TICKS(1000));` },
     ] },
     { title: 'Run the framed protocol', blocks: [
       `Replace the test with the full program. Flash it to both boards, with \`NODE_ID\` set to 1 on one and 2 on the other.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c — same file on both boards except NODE_ID', code: String.raw`/* Project 7: framed UART link between two ESP32 boards. Flash the same
+      { t: 'code', lang: 'c', status: 'idf-built', caption: 'main/main.c — same file on both boards except NODE_ID', code: String.raw`/* Project 7: framed UART link between two ESP32 boards. Flash the same
  * program to both; set NODE_ID to 1 on one board and 2 on the other. */
 #include <stdint.h>
 #include <string.h>
@@ -1072,13 +1074,14 @@ void feed(uint8_t byte)
 {
     switch (state) {
     case WAIT_SOF: if (byte == 0xA5) state = LEN;  break;
-    case LEN:      len = byte; idx = 0; state = PAYLOAD; break;
+    case LEN:      len = byte; idx = 0;
+                   state = (len == 0) ? CRC_HI : PAYLOAD; break;
     case PAYLOAD:  payload[idx++] = byte;
                    if (idx == len) state = CRC_HI;
                    break;
     /* ... CRC states check the CRC and reject bad frames ... */
     }
-}`, hints: ['Which field is used before the CRC has been checked?', 'What is the largest value `len` can take, and how big is `payload`?', 'There is a second bug for `len == 0`.'], answer: { type: 'text', accept: ['len', 'length', 'bound', 'overflow', 'range', '32'], nudge: 'Follow one byte of noise into the LEN state.' }, solution: `\`len\` is taken from the wire and never compared with the buffer size. One noise byte interpreted as SOF, followed by any byte above 32, makes the parser write up to 255 bytes into a 32-byte array, overwriting whatever the linker placed after it. The CRC check comes too late: the damage is done while the payload is being stored. On a link an attacker can reach, this is a remotely triggerable memory corruption. The fix is the check in \`frame.c\`: reject \`byte > FRAME_MAX_PAYLOAD\` in the LEN state. Second bug: with \`len == 0\`, \`idx == len\` is tested only after one byte has been stored and \`idx\` is 1, so the parser runs on until \`idx\` wraps. A zero-length frame must skip the payload state.` },
+}`, hints: ['Which value from the wire is acted on before the CRC has had a chance to vouch for it?', 'What is the largest value `len` can take, and how big is `payload`?', 'Follow a noise byte of 0xA5 followed by 0xF0 through the states and count the writes.'], answer: { type: 'text', accept: ['len', 'length', 'bound', 'overflow', 'range', '32'], nudge: 'Follow one byte of noise into the LEN state.' }, solution: `\`len\` is taken from the wire and never compared with the buffer size. One noise byte interpreted as SOF, followed by any byte above 32, makes the parser write up to 255 bytes into a 32-byte array, overwriting whatever the linker placed after it. The CRC check comes too late: the damage is done while the payload is being stored. On a link an attacker can reach, this is a remotely triggerable memory corruption. The fix is the check in \`frame.c\`: reject \`byte > FRAME_MAX_PAYLOAD\` in the LEN state, before the value is stored or used.` },
       { t: 'widget', name: 'packet-explorer', props: { challenge: 'find-length-bug' }, caption: 'The same class of bug in a simulated frame parser.' },
       { t: 'widget', name: 'protocol-debug', props: { scenario: 'no-common-ground' }, caption: 'Diagnose a simulated link from its capture. Also try the tx-rx-swapped and level-mismatch scenarios in the Workbench.' },
     ] },
@@ -1371,7 +1374,7 @@ int main(void)
     ] },
     { title: 'Declare the configuration and keep it out of the repository', blocks: [
       `Create \`main/Kconfig.projbuild\` (the file name matters; the build system looks for it):`,
-      { t: 'code', lang: 'text', status: 'reviewed', caption: 'main/Kconfig.projbuild', code: String.raw`menu "Bench project 8"
+      { t: 'code', lang: 'text', status: 'idf-built', caption: 'main/Kconfig.projbuild', code: String.raw`menu "Bench project 8"
 
     config BENCH_WIFI_SSID
         string "Wi-Fi SSID"
@@ -1404,7 +1407,7 @@ Check your work: \`grep BENCH sdkconfig\` should show your values, and \`git sta
     { title: 'Connect, with reconnect, and print the address', blocks: [
       CMAKE_NOTE({ srcs: '"main.c" "net_util.c"', req: 'esp_wifi esp_netif esp_event nvs_flash esp_http_server esp_timer' }),
       `This is the complete program for steps 3 to 5. Read \`on_event\` before flashing.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c', code: String.raw`/* Project 8: Wi-Fi station with reconnect and a small status server. */
+      { t: 'code', lang: 'c', status: 'idf-built', caption: 'main/main.c', code: String.raw`/* Project 8: Wi-Fi station with reconnect and a small status server. */
 #include <stdint.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -1570,7 +1573,7 @@ You should see \`HTTP/1.1 200 OK\`, a \`Content-Type: application/json\` header 
     ] },
     { title: 'Report over HTTPS with certificate verification', blocks: [
       `Now the device becomes a client. Set *HTTPS URL to POST readings to* in menuconfig to an endpoint **you own or are permitted to use**, starting with \`https://\`. Add \`esp_http_client\` and \`mbedtls\` to \`PRIV_REQUIRES\` (the certificate bundle is part of the mbedtls component), then add this code.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'Additions to main.c', code: String.raw`/* Step 6: push a reading to your own HTTPS endpoint.
+      { t: 'code', lang: 'c', status: 'idf-checked', caption: 'Additions to main.c', code: String.raw`/* Step 6: push a reading to your own HTTPS endpoint.
  * Extra includes: "esp_http_client.h" and "esp_crt_bundle.h". */
 static esp_err_t report_post(const char *json, int len)
 {
@@ -1619,7 +1622,9 @@ static void report_task(void *arg)
       `You should see \`POST -> HTTP 200\` (or whatever status your endpoint returns) once a minute, and the request arriving at your server.
 
 Then test that verification is real. Change the URL to an HTTPS host with a known-bad certificate that you control, such as a local server with a self-signed certificate, and rebuild. You should see \`POST failed\` with a TLS or connection error and **no** request arriving at that server. A device that still posts in this test is not verifying anything.`,
-      { t: 'callout', kind: 'mistake', title: '"It only works if I turn verification off"', md: `When a TLS connection fails, the quick fix found in forum posts is to skip the certificate check. The connection then succeeds — with anyone. The actual causes are usually: the server uses a private or self-signed certificate (embed that certificate, or its root, in the firmware and point the client configuration at it), the root is not in the bundle, or certificate dates are being checked and the device does not know the time (run SNTP first). Check the ESP-TLS documentation for how validity dates are handled in your configuration. Fix the cause; verification is the property you were using TLS for.` },
+      { t: 'callout', kind: 'mistake', title: '"It only works if I turn verification off"', md: `When a TLS connection fails, the quick fix found in forum posts is to skip the certificate check. The connection then succeeds — with anyone. The actual causes are usually: the server uses a private or self-signed certificate (embed that certificate, or its root, in the firmware and point the client configuration at it), the root is not in the bundle, or certificate dates are being checked and the device does not know the time (run SNTP first). Fix the cause; verification is the property you were using TLS for.
+
+Two ESP-IDF v6.1 defaults are worth knowing. First, the TLS client refuses to connect at all when no verification method is configured; skipping verification needs two menuconfig options to be switched on deliberately (\`CONFIG_ESP_TLS_INSECURE\` and \`CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY\`), so if you find them set in a project, someone chose that. Second, \`CONFIG_MBEDTLS_HAVE_TIME_DATE\` is **off** by default, which means the "valid from" and "valid to" dates of certificates are ignored: an expired certificate is accepted. A product should set the clock by SNTP and turn that option on.` },
     ] },
     { title: 'Debugging exercises', blocks: [
       { t: 'exercise', prompt: `**Exercise A.** A device takes over a minute to notice it is back online after a short Wi-Fi drop, and during that time other parts of the firmware that use the default event loop also stop responding. The handler is below. What is wrong, and what should it do instead?`, code: String.raw`static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data)
@@ -1652,7 +1657,7 @@ Then test that verification is real. Change the URL to an HTTPS host with a know
 
 **\`esp_wifi_init(&init)\`** allocates the driver's buffers and starts the Wi-Fi task. The radio is still off. **\`esp_wifi_set_config\`** stores the SSID, passphrase and the minimum security level; \`threshold.authmode = WIFI_AUTH_WPA2_PSK\` makes the station ignore any access point offering only open, WEP or WPA1 security, so someone who sets up a fake open network with the same name does not get your device to join it. **\`esp_wifi_start()\`** powers the radio and causes \`WIFI_EVENT_STA_START\`.
 
-### Three tasks, one flag
+### Four contexts, one flag
 
 After start-up your code runs in four places, and it matters which is which:
 
@@ -1669,7 +1674,7 @@ They are coordinated by a single bit in an **event group**. \`xEventGroupWaitBit
 
 ### What TLS adds to the POST
 
-Before the HTTP request, the client and server perform a handshake. The server sends a certificate chain; the client checks that the chain leads to a root it already trusts (the bundle), that the certificate names the host it meant to reach, and that the server holds the private key matching the certificate. Only then are session keys agreed and the request sent, encrypted and integrity-protected. The handshake needs tens of kilobytes of heap and a deep stack, which is why \`report_task\` is given 8192 bytes; measure the real requirement with the stack high-water mark from project 9.`,
+Before the HTTP request, the client and server perform a handshake. The server sends a certificate chain; the client checks that the chain leads to a root it already trusts (the bundle), that the certificate names the host it meant to reach, and that the server holds the private key matching the certificate. (Validity dates are checked only if \`CONFIG_MBEDTLS_HAVE_TIME_DATE\` is enabled and the clock is set; it is off by default in v6.1.) Only then are session keys agreed and the request sent, encrypted and integrity-protected. The handshake needs tens of kilobytes of heap and a deep stack, which is why \`report_task\` is given 8192 bytes; measure the real requirement with the stack high-water mark from project 9.`,
   ],
   testing: [
     `| Test | How | You should see |
@@ -1694,7 +1699,7 @@ Before the HTTP request, the client and server perform a handshake. The server s
     { symptom: 'Connects, but never logs `got ip`', cause: 'DHCP is not answering: address pool exhausted, MAC filtering, or a guest network that isolates clients', fix: 'Check the access point\'s client list and DHCP settings.' },
     { symptom: 'Device has an IP but the page does not open', cause: 'Client isolation on the access point, the phone is on mobile data or another network, or the browser forced `https://`', fix: 'Ping the address from a PC on the same network. Type `http://` explicitly.' },
     { symptom: 'ADC readings fail once Wi-Fi is started', cause: 'The pin is on ADC2, which the Wi-Fi driver uses on the original ESP32', fix: 'Move the signal to an ADC1 pin (GPIO32–39).' },
-    { symptom: 'HTTPS POST fails with a certificate or handshake error', cause: 'Root not in the bundle, private or self-signed server certificate, wrong host name in the URL, or date checks without a valid clock', fix: 'Embed the right root certificate, fix the URL, or set the time by SNTP first. Do not disable verification.' },
+    { symptom: 'HTTPS POST fails with a certificate or handshake error', cause: 'Root not in the bundle, private or self-signed server certificate, wrong host name in the URL, or date checks enabled (`CONFIG_MBEDTLS_HAVE_TIME_DATE`) without a valid clock', fix: 'Embed the right root certificate, fix the URL, or set the time by SNTP first. Do not disable verification.' },
     { symptom: 'Stack overflow panic in the task that does the POST', cause: 'TLS handshakes need far more stack than ordinary code', fix: 'Raise the task\'s stack size, then measure the high-water mark and trim.' },
     { symptom: 'Device goes offline after hours and never returns', cause: 'A blocking call inside an event handler, a handler that ignores the disconnected event, or a retry timer that is not re-armed', fix: 'Review every handler for calls that wait. Test with a deliberate five-minute access point outage.' },
   ],
@@ -1927,8 +1932,8 @@ int main(void)
     { title: 'Wire the potentiometer and the button', md: `Wire the circuit from the table. Before flashing anything, measure the wiper with a multimeter against ground while turning the knob. You should see the voltage sweep smoothly between 0 V and about 3.3 V. If it reaches 5 V, an end of the potentiometer is on the wrong rail; fix that before connecting it to GPIO34.` },
     { title: 'Build and run the three tasks', blocks: [
       CMAKE_NOTE({ srcs: '"main.c" "movavg.c"', req: 'esp_adc esp_driver_gpio esp_system' }),
-      `If the build cannot find \`esp_task_wdt.h\`, look up that header's component in the watchdog documentation and add it to \`PRIV_REQUIRES\`.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c', code: String.raw`/* Project 9: three tasks, a queue, a mutex, an ISR-given semaphore,
+      `\`esp_task_wdt.h\` belongs to the \`esp_system\` component, which is why it is in the list. The task watchdog is initialised at start-up by default (\`CONFIG_ESP_TASK_WDT_INIT\`), so the tasks only have to subscribe.`,
+      { t: 'code', lang: 'c', status: 'idf-built', caption: 'main/main.c', code: String.raw`/* Project 9: three tasks, a queue, a mutex, an ISR-given semaphore,
  * stack monitoring and the task watchdog. */
 #include <limits.h>
 #include <stdint.h>
@@ -2087,7 +2092,7 @@ void app_main(void)
     { title: 'React to the button from an interrupt', blocks: [
       `Press the button. You should see a \`[reset]\` line immediately, without waiting for the 2 s tick, and \`min\` and \`max\` restarting from the current reading.`,
       { t: 'predict', q: 'A mechanical button bounces: one press produces several falling edges within a few milliseconds, so the ISR runs several times. How many times is the report task woken?', reveal: 'The semaphore is binary: giving it when it is already available changes nothing. Edges that arrive before the task has taken it collapse into one. Edges that arrive after the task has taken it and gone back to wait cause another wake-up, and the 200 ms check in the task discards those. So you should see one `[reset]` line per press. Notice where the debounce lives: the ISR stays three lines long and all timing logic is in the task.' },
-      `If you have an analyser, toggle a spare GPIO at the point where \`report_task\` returns from \`xSemaphoreTake\`, and measure from the falling edge on GPIO27 to that toggle. You should see a delay far below a millisecond: that is the interrupt latency plus one context switch, and it does not depend on the 2 s report period or the 100 ms sample period.`,
+      `If you have an analyser, toggle a spare GPIO at the point where \`report_task\` returns from \`xSemaphoreTake\`, and measure from the falling edge on GPIO27 to that toggle. You should see a delay far below a millisecond: that is the interrupt latency plus one context switch, and it does not depend on the 2 s report period, the 100 ms sample period or the 10 ms tick (the default tick rate is 100 Hz).`,
     ] },
     { title: 'Read the stack numbers and size the stacks', blocks: [
       `Let the program run for a few minutes, press the button several times and turn the knob. Write down the smallest \`stack free\` value you see for each task. That value is the least headroom the task has ever had since it started.`,
@@ -2099,7 +2104,7 @@ void app_main(void)
     ] },
     { title: 'Make the watchdog fire on purpose', blocks: [
       `The sensor and process tasks are subscribed to the task watchdog and reset it every loop. Simulate a hang: in \`process_task\`, add a counter and, after 50 samples, enter \`while (1) { }\`.`,
-      { t: 'predict', q: 'After `process_task` enters the infinite loop, what do you expect to see, and what happens to `report_task`, which has lower priority?', reveal: 'About one watchdog timeout later (the period is set in menuconfig under the ESP System Settings; look up the default there) you should see a task-watchdog message naming `process` as the task that did not reset in time, with a backtrace of where it is stuck. Whether the chip then resets depends on the watchdog\'s panic option. Meanwhile the busy loop never blocks, so on the core it occupies nothing of lower priority runs: `report_task` may stop printing if it shares that core. On a two-core chip it may carry on from the other core, which is a reminder that "it still prints" does not mean "it still works". `dropped` starts rising as the queue fills. Remove the loop afterwards.' },
+      { t: 'predict', q: 'After `process_task` enters the infinite loop, what do you expect to see, and what happens to `report_task`, which has lower priority?', reveal: 'About one watchdog timeout later (`CONFIG_ESP_TASK_WDT_TIMEOUT_S` under *ESP System Settings* in menuconfig, 5 s by default) you should see a task-watchdog message naming `process` as a task that did not reset in time, with a backtrace of where it is stuck. The idle task of the core the loop runs on is watched too by default and is starved by the loop, so expect it in the list as well. With the default settings the watchdog only prints, and prints again every timeout; the chip resets only if `CONFIG_ESP_TASK_WDT_PANIC` is enabled. Meanwhile the busy loop never blocks, so on the core it occupies nothing of lower priority runs: `report_task` may stop printing if it shares that core. On a two-core chip it may carry on from the other core, which is a reminder that "it still prints" does not mean "it still works". `dropped` starts rising as the queue fills. Remove the loop afterwards.' },
       `Decode the backtrace addresses: the IDF monitor does it for you if it was started with \`idf.py monitor\` from the project directory. You should see the file and line of your \`while (1)\`.`,
     ] },
     { title: 'Debugging exercises', blocks: [
@@ -2143,7 +2148,7 @@ void ui_task(void *arg) {
     for (int i = 0; i < HISTORY_LEN; i++)
         n += snprintf(line + n, sizeof line - n, "%d,", history[i]);
     ESP_LOGI(TAG, "%s", line);
-}`, hints: ['Where does `line` live?', 'Compare its size with the stack the task was given.', 'What lies below a task\'s stack in memory?'], answer: { type: 'text', accept: ['stack', 'overflow', '4096', '3072'], nudge: 'Add up what this function needs and compare with what the task has.' }, solution: `\`line\` is a 4096-byte local variable, so it is allocated **on the task's stack**, which is 3072 bytes in total. Entering the function moves the stack pointer below the bottom of the stack; writing the text then overwrites whatever the heap placed there: another task's stack, a control block, a driver's buffer. The victim crashes later, which is why the panics look unrelated. Fixes: make the buffer \`static\` (it moves to .bss; the function is then not re-entrant), allocate it from the heap and free it, format and log the readings in small chunks so that no large buffer is needed, or raise the task's stack size. Chunking is usually best. Enable stack overflow detection in menuconfig and watch the high-water mark: both would have pointed at \`report\` straight away. Note also that the \`snprintf\` loop trusts its return value: once \`n\` exceeds the buffer size, \`sizeof line - n\` wraps to a huge unsigned number.` },
+}`, hints: ['Where does `line` live?', 'Compare its size with the stack the task was given.', 'What lies below a task\'s stack in memory?'], answer: { type: 'text', accept: ['stack', 'overflow', '4096', '3072'], nudge: 'Add up what this function needs and compare with what the task has.' }, solution: `\`line\` is a 4096-byte local variable, so it is allocated **on the task's stack**, which is 3072 bytes in total. Entering the function moves the stack pointer below the bottom of the stack; writing the text then overwrites whatever the heap placed there: another task's stack, a control block, a driver's buffer. The victim crashes later, which is why the panics look unrelated. Fixes: make the buffer \`static\` (it moves to .bss; the function is then not re-entrant), allocate it from the heap and free it, format and log the readings in small chunks so that no large buffer is needed, or raise the task's stack size. Chunking is usually best. Enable stack overflow detection in menuconfig and watch the high-water mark: both would have pointed at \`report\` straight away. A side remark, not the fault you were asked for: the \`snprintf\` loop also trusts its return value: once \`n\` exceeds the buffer size, \`sizeof line - n\` wraps to a huge unsigned number.` },
       { t: 'widget', name: 'race-condition', props: { scenario: 'counter' }, caption: 'Why s_stats needs the mutex: interleave two tasks\' load, add and store steps by hand until an update disappears.' },
     ] },
   ],
@@ -2158,7 +2163,7 @@ void ui_task(void *arg) {
 
 The tick interrupt fires at the configured tick rate and advances the kernel's tick count. \`vTaskDelayUntil(&next, period)\` puts the task on the delayed list until tick \`next + period\` and updates \`next\`. Because the wake-up time is computed from the previous wake-up time and not from "now", the time spent reading the ADC does not accumulate as drift, as it would with plain \`vTaskDelay\`.
 
-\`adc_oneshot_read\` selects the channel in the ADC's multiplexer, starts one conversion, waits for the done flag and returns the raw code. With 12 dB attenuation the input range covers most of 0 to 3.3 V; the exact usable range and the ADC's non-linearity are described in the ADC documentation, and calibrated millivolts need the calibration driver.
+\`adc_oneshot_read\` selects the channel in the ADC's multiplexer, starts one conversion, waits for the done flag and returns the raw code. With 12 dB attenuation the ESP32 datasheet (v5.3, Table 4-4) gives an effective measurement range of 150 mV to 2450 mV: below and above that the raw code still moves but is not accurate, and it reaches 4095 before the input reaches 3.3 V. Calibrated millivolts need the calibration driver.
 
 \`xQueueSend(s_samples, &s, 0)\` enters a critical section, copies the 8 bytes of \`s\` into the next free slot, and, if \`process_task\` is blocked waiting on the queue, moves it to the ready list. The timeout of 0 means that a full queue returns failure at once. A sampler that waited for space would lose its timing; dropping and counting keeps the timing and makes the overload visible.
 
@@ -2179,7 +2184,7 @@ The falling edge on GPIO27 sets a bit in the GPIO interrupt status register. The
 |---|---|---|
 | Filter | \`./movavg_test\` on the PC | \`movavg: all checks passed\` |
 | Sample rate | Difference in \`n\` between two \`[tick]\` lines 2 s apart | 20, give or take one |
-| Range | Turn the knob end to end | \`last\` from near 0 to near 4095; no jumps with the knob still |
+| Range | Turn the knob end to end | \`last\` from near 0 to 4095, reaching 4095 a little before the end stop (the ADC saturates below 3.3 V); no jumps with the knob still |
 | Filter response | Turn the knob quickly and stop | \`avg\` reaches \`last\` within 8 samples (under a second) |
 | No loss | Run for 5 minutes | \`dropped=0\` |
 | Button | Press once | Exactly one \`[reset]\` line, at once; \`min\` and \`max\` restart |
@@ -2429,7 +2434,7 @@ Then answer three questions in writing:
 3. If this ran from a battery of capacity C mAh, how long would it last at the **average** current (typical currents weighted by duty)? What single change would extend that the most?
 
 Verify one number by measurement: put a multimeter in series with the 5 V supply, or use a USB power meter, and compare the average with your estimate. A meter will not show the short transmit peaks; that is what the datasheet figure and the bulk capacitor near the module are for.`,
-      { t: 'callout', kind: 'mistake', title: 'Powering the load from a GPIO', md: `A GPIO is a signal, not a supply. A buzzer, a relay, a motor or a strip of LEDs must take its current from a rail through a transistor that the GPIO only controls, with a flyback diode across anything inductive. Check the pin's maximum current in the ESP32 datasheet before connecting any load directly, and remember that the limit for all pins together is lower than the per-pin limit multiplied by the number of pins.` },
+      { t: 'callout', kind: 'mistake', title: 'Powering the load from a GPIO', md: `A GPIO is a signal, not a supply. A buzzer, a relay, a motor or a strip of LEDs must take its current from a rail through a transistor that the GPIO only controls, with a flyback diode across anything inductive. The ESP32 datasheet (v5.3, Table 5-3) gives typical figures of 40 mA sourcing and 28 mA sinking at maximum drive strength, and Table 5-1 a cumulative limit for all pins together; it gives no lower "recommended" figure. Those are what the pin can do, not what a design should ask of it: keeping each pin to a few milliamps is conservative practice, and anything more goes through a transistor.` },
     ] },
     { title: 'Assign owners and draw the task diagram', blocks: [
       `List every resource: each peripheral, each bus, each piece of state (current state, settings, latest reading). Give each exactly one owner task. Then draw the queues. For each queue decide: what type travels on it, how long it is, what the sender does when it is full, and whether old data should be kept (a normal queue) or replaced (\`xQueueOverwrite\` on a length-1 queue).
@@ -2589,7 +2594,7 @@ int main(void)
     { title: 'Bring up the skeleton, then one peripheral at a time', blocks: [
       CMAKE_NOTE({ srcs: '"main.c" "app_logic.c"', req: 'nvs_flash esp_driver_gpio esp_driver_i2c esp_driver_ledc' }),
       `Add further components (\`esp_wifi\`, \`esp_http_client\`, …) as you add the features that need them.`,
-      { t: 'code', lang: 'c', status: 'reviewed', caption: 'main/main.c — a skeleton, not a finished design', code: String.raw`/* Project 10 reference skeleton. It shows the SHAPE of the firmware:
+      { t: 'code', lang: 'c', status: 'idf-built', caption: 'main/main.c — a skeleton, not a finished design', code: String.raw`/* Project 10 reference skeleton. It shows the SHAPE of the firmware:
  * who owns which peripheral, what flows through which queue, where the
  * state machine runs. Every TODO is a design decision that is yours. */
 #include <stdbool.h>
@@ -2821,9 +2826,13 @@ A requirement with no test is untested; a test with no requirement is either unn
 | T10 | F9 | Switch the access point off for 10 minutes, repeat T3 and T5 during the outage | Alarm and button behave exactly as before; reporting resumes afterwards |
 | T11 | S1 | Search the repository and its history for the passphrase | Not present |
 | T12 | S2 | Point the report URL at a host with an untrusted certificate | Report refused; nothing received by that host |
-| T13 | robustness | Run for an hour; read the stack marks and free heap at start and end | Every stack keeps a margin; free heap is not falling steadily |
-| T14 | robustness | Hang one task deliberately | The task watchdog names it |
-| T15 | bus | Capture I2C during a display update and a sensor read | Complete, non-overlapping transactions; every address acknowledged |`,
+| T13 | F10 (margins) | Run for an hour; read the stack marks and free heap at start and end | Every stack keeps a margin; free heap is not falling steadily |
+| T14 | F10 | Hang one task deliberately | The task watchdog names it in the log within its timeout; with the panic option enabled the device resets and the reset reason read at start-up says so |
+| T15 | bus | Capture I2C during a display update and a sensor read | Complete, non-overlapping transactions; every address acknowledged |
+| T16 | S3 | Feed each input an out-of-range value: a sensor reading beyond the part's range (from the fake sensor), an over-long line on the serial settings command | Value rejected and logged; state and settings unchanged; no crash |
+| T17 | S4 | From another machine, scan the device's open ports and try every endpoint with a request that would change a setting | No endpoint changes a setting without authentication (or no such endpoint exists); settings read back unchanged |
+| T18 | S5 | Record the serial log from reset through a join, a report and a failed join; search it for the passphrase and any token | Not present |
+| T19 | S6 | List every password, key and token the device uses and where each comes from | None is a default; none is identical on two units, or the design document says which is shared and why that is accepted |`,
     { t: 'callout', kind: 'note', title: 'Evidence', md: `For each test keep something another person could inspect: a log extract with timestamps, a capture file, a photograph of the meter. "It worked when I tried it" is not a result. Nothing in this course's material was itself run on hardware, so your records are the first real measurements of your design — treat any expected value given here as a prediction to be checked.` },
   ],
   troubleshooting: [

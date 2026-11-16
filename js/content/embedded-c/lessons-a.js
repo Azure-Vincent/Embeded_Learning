@@ -464,7 +464,7 @@ printf("%d\n", x);`, kind: 'code', choices: [
       { t: 'The behaviour is undefined, because a negative index is compared', why: 'Signed-to-unsigned conversion is well defined (modulo 2ⁿ). It is surprising, not undefined.' },
     ] },
     { q: 'Which statement about undefined behaviour is correct?', kind: 'concept', choices: [
-      { t: 'The compiler may assume it never happens and optimise on that basis', ok: true, why: 'Optimisers reason "this cannot overflow / cannot be NULL here" and delete or reorder code on that basis.' },
+      { t: 'The compiler may assume it never happens, so the visible effect can change with optimisation level', ok: true, why: 'Optimisers reason "this cannot overflow / cannot be NULL here" and delete or reorder code on that basis.' },
       { t: 'It always causes a HardFault or a reset on a microcontroller', why: 'A fault is one possible outcome. Silent corruption or apparently correct operation are just as allowed and more common.' },
       { t: 'The compiler must document what it does in each case it meets', why: 'That obligation belongs to implementation-defined behaviour. For undefined behaviour there is no requirement at all.' },
       { t: 'It only matters on desktop compilers; embedded compilers generate what you wrote', why: 'Embedded toolchains are the same GCC and Clang with the same optimiser. `-O2` and `-Os` are the normal settings for firmware.' },
@@ -783,8 +783,8 @@ int main(void)
 `,
       tests: [{ name: 'results, divide by zero and NULL handling', stdout: '17 / 5: ok=1 q=3 r=2\n100 / 10: ok=1 q=10 r=0\n7 / 0: ok=0 q=-1 r=-1\nnull q: ok=0\nnull r: ok=0 only=-1\n' }],
       hints: [
-        'Do every check before the first store. If you write `*q` and then discover `r` is NULL, the caller sees a half-updated result.',
-        'Inside the function `q` is an address. `*q = a / b;` stores into the caller\'s variable.',
+        'What does the caller see if the function stores `*q` and only then discovers that `r` is NULL? In what order must the checks and the stores come?',
+        'Do every check before the first store. Inside the function `q` is an address; `*q = a / b;` stores into the caller\'s variable.',
         'The whole body is one `if` with three conditions joined by `||`, two stores, and `return true;`.',
       ],
       explain: `Validate, then commit. The \`7 / 0\` line shows \`q\` and \`r\` still at −1: a failed call left the caller's variables alone. The last line needs both NULL checks to happen before any store, otherwise \`only\` would have been overwritten with 4. Integer division by zero is undefined behaviour in C (so is \`INT_MIN / -1\`, whose result does not fit), and on a Cortex-M it can raise a UsageFault if the divide-by-zero trap is enabled. The last call is made in its own statement on purpose: written as \`printf("…", divmod(8, 2, &only, NULL), only)\`, the compiler would be free to read \`only\` before or after the call.`,
@@ -854,9 +854,9 @@ int main(void)
 `,
       tests: [{ name: 'three numbers are parsed', stdout: '12 345 6\n' }],
       hints: [
+        'Which variable does `cursor++` change: `main`\'s `p`, or something else? Check by printing `*p` in `main` right after the first call.',
         '`cursor++` inside the function advances a *copy* of `p`. The caller\'s `p` still points at the `1`.',
-        'To change a caller\'s `int` you pass `int *`. To change a caller\'s `const char *` you pass a pointer to it: `const char **`.',
-        'Inside the function, `*cursor` is the caller\'s pointer and `**cursor` is the current character. Copy `*cursor` to a local, walk the local, then store it back with `*cursor = s;`.',
+        'To change a caller\'s `int` you pass `int *`. To change a caller\'s `const char *` you pass a pointer to it: `const char **`. Inside the function, `*cursor` is the caller\'s pointer and `**cursor` is the current character. Copy `*cursor` to a local, walk the local, then store it back with `*cursor = s;`.',
       ],
       explain: `Pointers are passed by value like everything else. The fix is one more level of indirection: the function receives the address of the caller's cursor and stores the advanced position through it. Working on a local copy and writing back once is easier to read than \`(**cursor)\` everywhere. Standard-library \`strtoul(str, &end, 10)\` uses the same pattern.`,
     }),
@@ -901,7 +901,7 @@ void task(void)
       { t: 'Nothing; the argument type matches the parameter, so the call is correct', why: 'The types do match, which is why the compiler accepts it. Type correctness does not make the address valid.' },
     ] },
     { q: 'Firmware on a Cortex-M device reads `cfg->baud` where `cfg` is NULL and `baud` is the first field. The device does not crash. What is the most likely explanation?', kind: 'arch', choices: [
-      { t: 'Address 0 is readable on that chip, so the read returns whatever is stored there', ok: true, why: 'There is no operating system to unmap page zero. The read succeeds and returns the first vector-table word.' },
+      { t: 'Address 0 is readable on that chip (flash or the vector table), so the read returns what is stored there', ok: true, why: 'There is no operating system to unmap page zero. The read succeeds and returns the first vector-table word.' },
       { t: 'The compiler inserts a null check and substitutes a default value for the missing field', why: 'C compilers insert no run-time checks on pointer dereferences. If anything, the optimiser removes checks it considers redundant.' },
       { t: 'NULL is not address 0 on Arm, so the pointer refers to an ordinary variable', why: 'On all mainstream embedded toolchains the null pointer is represented as address 0.' },
       { t: 'The C standard defines reads through NULL to return 0', why: 'The C standard defines no result at all for this; what you get is the content of physical address 0.' },
@@ -1666,8 +1666,8 @@ int main(void)
 `,
       tests: [{ name: 'popcount and bit reversal', stdout: '0 2 8 32\n80 0F 65 FF\n' }],
       hints: [
-        '`x & 1u` is the lowest bit. `x >>= 1` discards it and brings the next one down.',
-        'For `popcount32`, loop while `x != 0`, adding the low bit each time. Because `x` is unsigned, zeros shift in at the top and the loop ends.',
+        'Which expression gives you only the lowest bit of `x`, and which operation brings the next bit down into that position? For the reversal: if you take bits from the bottom of `x`, at which end of the result must each one be inserted?',
+        '`x & 1u` is the lowest bit; `x >>= 1` discards it and brings the next one down. For `popcount32`, loop while `x != 0`, adding the low bit each time. Because `x` is unsigned, zeros shift in at the top and the loop ends.',
         'For `reverse8`, run exactly 8 times: shift `out` left by one, OR in the low bit of `x`, shift `x` right by one.',
       ],
       explain: `Both functions consume the input from the bottom with \`& 1\` and \`>> 1\`. \`reverse8\` builds its output from the other end, so the first bit taken ends up at the top after eight left shifts. The loop in \`popcount32\` terminates only because \`x\` is unsigned: with a negative signed value and an arithmetic shift, 1s would be shifted in for ever.`,
@@ -1739,8 +1739,8 @@ int main(void)
 `,
       tests: [{ name: 'flag and field are decoded', stdout: 'error mode=2\nok mode=1\nerror mode=3\nok mode=0\n' }],
       hints: [
-        'Insert the parentheses the compiler assumes. `==` has higher precedence than `&`; `>>` has higher precedence than `&`.',
-        'The `if` is really `status & (ST_ERROR == ST_ERROR)`, i.e. `status & 1`: it tests bit 0.',
+        'Where does the compiler put the implied parentheses in `status & ST_ERROR == ST_ERROR` and in `status & ST_MODE_MASK >> ST_MODE_SHIFT`? Look up the precedence of `==`, `>>` and `&` before answering.',
+        '`==` and `>>` both bind tighter than `&`. The `if` is really `status & (ST_ERROR == ST_ERROR)`, i.e. `status & 1`: it tests bit 0.',
         'The mode line is really `status & (0x30 >> 4)`, i.e. `status & 3`. Write `(status & ST_MODE_MASK) >> ST_MODE_SHIFT`.',
       ],
       explain: `Two precedence bugs. The flag test examined bit 0 instead of bit 2, and the field extraction masked the low two bits instead of bits 5:4. C's precedence for \`&\`, \`^\` and \`|\` is lower than for comparisons, a historical accident its designers later acknowledged. Parenthesise every mask operation and build with \`-Wall\`.`,

@@ -23,8 +23,8 @@ node tools/idf-check/extract.mjs              # only extract and list ids
 ```
 
 `build-all.sh` sources `$IDF_PATH/export.sh` itself if `idf.py` is not already on the `PATH`
-(`IDF_PATH` defaults to `/home/user/espressif/esp-idf`). A second build of an unchanged program takes a
-few seconds, because each project keeps its own `build/<id>/build/` directory. The full compiler output of
+(`IDF_PATH` defaults to `/home/user/espressif/esp-idf`). A second build of an unchanged program is faster (10 to 30 s here)
+because each project keeps its own `build/<id>/build/` directory. The full compiler output of
 a program is in `build/<id>/build.log`.
 
 To use the toolchain by hand:

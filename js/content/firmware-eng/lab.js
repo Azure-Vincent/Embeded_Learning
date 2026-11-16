@@ -155,7 +155,7 @@ idf_component_register(
                  "../shared/src/line_rx.c" "../shared/src/lock.c"
     INCLUDE_DIRS "../shared/include"
     PRIV_REQUIRES esp_driver_uart esp_driver_gpio esp_timer
-)`, lang: 'cmake', status: 'idf-built' },
+)`, lang: 'cmake', status: 'idf-checked' },
   ],
   walkthrough: [
     `What the important lines do at the level of memory and hardware.`,

@@ -51,6 +51,7 @@ export default {
     { org: 'MITRE', title: 'eCTF 2026 insecure example (ectfmitre)', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example' },
     { org: 'MITRE', title: 'eCTF 2025 insecure example', url: 'https://github.com/mitre-cyber-academy/2025-ectf-insecure-example' },
     { org: 'MITRE', title: 'eCTF 2024 insecure example', url: 'https://github.com/mitre-cyber-academy/2024-ectf-insecure-example' },
+    { org: 'MITRE', title: 'eCTF rules site (2026; 2024 and 2025 archived)', url: 'https://rules.ectf.mitre.org/', note: 'Functional and security requirements, detailed specifications, getting-started pages.' },
     { org: 'MITRE', title: 'Common Weakness Enumeration (CWE)', url: 'https://cwe.mitre.org/', note: 'Not load-tested from this environment.' },
     { org: 'NIST', title: 'SP 800-38D: Recommendation for Block Cipher Modes of Operation: Galois/Counter Mode (GCM) and GMAC', url: 'https://doi.org/10.6028/NIST.SP.800-38D', note: 'DOI not load-tested from this environment.' },
     { org: 'NIST', title: 'FIPS 180-4: Secure Hash Standard', url: 'https://doi.org/10.6028/NIST.FIPS.180-4', note: 'DOI not load-tested from this environment.' },

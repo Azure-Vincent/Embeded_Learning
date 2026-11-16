@@ -658,19 +658,19 @@ test-then-set itself.) The RTOS section extends this to tasks, where waiting *is
   ],
   quiz: [
     { q: 'Main executes `flags |= 0x01;` and an ISR executes `flags |= 0x80;` on the same `volatile uint8_t`. What can go wrong?', kind: 'concept', choices: [
-      { t: 'An ISR between main\'s load and store has its update overwritten', ok: true, why: 'Main\'s copy in a CPU register predates the ISR\'s change and overwrites it on the store.' },
+      { t: 'If the ISR runs between main\'s load and store, its update is overwritten', ok: true, why: 'Main\'s copy in a CPU register predates the ISR\'s change and overwrites it on the store.' },
       { t: 'Nothing: the two statements change different bits of the byte', why: 'They change different bits of the *same byte*, and each statement rewrites the whole byte.' },
       { t: 'Nothing: the variable is volatile, so each update is complete', why: 'Volatile forces the load and the store to happen. It does not stop an interrupt arriving between them.' },
       { t: 'The ISR\'s write is lost, but only if both run in the same millisecond', why: 'The window is the few instructions between load and store, not a unit of time you can reason about in milliseconds.' },
     ] },
     { q: 'Why should a critical-section helper restore the previous interrupt state instead of always enabling interrupts on exit?', kind: 'arch', choices: [
-      { t: 'The caller may already have interrupts disabled and still need them off', ok: true, why: 'Nested use is common. Unconditional enabling silently ends the outer critical section early.' },
+      { t: 'The caller may already have interrupts disabled, and enabling them would end its protection', ok: true, why: 'Nested use is common. Unconditional enabling silently ends the outer critical section early.' },
       { t: 'Enabling interrupts takes much longer than writing back a saved register value', why: 'Both are a single short instruction. The reason is correctness, not speed.' },
       { t: 'Interrupts cannot be re-enabled once disabled without a reset', why: 'Masking is fully reversible. The question is only which state to return to.' },
       { t: 'Restoring the saved state also clears any pending interrupt flags', why: 'Pending requests are kept and served as soon as interrupts are unmasked. Nothing is cleared.' },
     ] },
     { q: 'In a single-producer, single-consumer ring buffer, why must the producer store the data byte before it advances `head`?', kind: 'concept', choices: [
-      { t: 'Advancing `head` is what shows the slot to the consumer', ok: true, why: 'If `head` moved first, the consumer could run in between and read a byte that has not been written yet.' },
+      { t: 'Advancing `head` is what shows the slot to the consumer, so it must already be filled', ok: true, why: 'If `head` moved first, the consumer could run in between and read a byte that has not been written yet.' },
       { t: 'Because writing `head` first would overwrite the oldest byte in the buffer', why: 'The full check prevents overwriting. The ordering is about when the consumer may look at the new slot.' },
       { t: 'To keep the time spent inside the interrupt handler as short as possible', why: 'Both orders take the same time. Only one of them is correct.' },
       { t: 'It makes no difference as long as both index variables are declared volatile', why: 'Volatile preserves the order you wrote. It cannot repair an order that exposes an unfilled slot.' },
@@ -1151,10 +1151,16 @@ code and enforced by the toolchain.`,
   ],
   quiz: [
     { q: 'Code that executes `*(uint32_t *)(buf + 1)` works on a Cortex-M4 and HardFaults on a Cortex-M0+. Why?', kind: 'arch', choices: [
-      { t: 'Armv6-M (M0+) faults on unaligned word access; the M4 performs it', ok: true, why: 'The address is not a multiple of 4. One core completes the access in several bus cycles; the other raises a fault.' },
+      { t: 'Armv6-M (M0+) faults on an unaligned word access, while the M4 performs it', ok: true, why: 'The address is not a multiple of 4. One core completes the access in several bus cycles; the other raises a fault.' },
       { t: 'The M0+ has less RAM, so the address is outside its memory', why: 'The address is inside the same buffer on both. The difference is how each core handles its alignment.' },
       { t: 'The M0+ is big-endian, so the four bytes are read in the wrong order', why: 'Both are normally little-endian, and a byte-order difference would give a wrong value, not a fault.' },
       { t: 'The compiler for the M0+ has a bug in its load instruction', why: 'The compiler emitted the word load the source asked for. The cast promised an alignment that was not there.' },
+    ] },
+    { q: 'A parser holds `uint8_t rx[64]`, and `rx + 4` is known to be 4-byte aligned. It reads a counter with `uint32_t n = *(uint32_t *)(rx + 4);`. The value is right at -O0 and occasionally stale at -O2. Which change makes the read correct on every compiler?', kind: 'code', choices: [
+      { t: '`uint32_t n; memcpy(&n, rx + 4, sizeof n);` (or assemble it with shifts)', ok: true, why: '`memcpy` reads the bytes as bytes, which is allowed for any object, and compilers reduce a fixed 4-byte copy to a single load where the target permits. The original read a `uint8_t` array through a `uint32_t` lvalue, which the effective-type rule forbids, so the optimiser was free to reorder it against the byte stores.' },
+      { t: 'Declare the buffer `volatile uint8_t rx[64]` so that every access is really performed', why: '`volatile` governs accesses made through a volatile-qualified lvalue. The cast discards the qualifier, and the object is still an array of bytes being read as a `uint32_t`.' },
+      { t: 'Add `__attribute__((aligned(4)))` to `rx`, because the fault is an alignment problem', why: 'The address was already aligned and nothing faulted. The trouble is the *type* through which the bytes are read, not where they are.' },
+      { t: 'Cast through `void *` first: `*(uint32_t *)(void *)(rx + 4)`', why: 'The extra cast only silences a warning. The access is still a `uint32_t` read of memory declared as `uint8_t`.' },
     ] },
     { q: 'What does `__attribute__((packed))` change, and what does it leave unchanged?', kind: 'concept', choices: [
       { t: 'It removes padding; byte order is unchanged and fields may be misaligned', ok: true, why: 'Packing is only about layout gaps. Endianness is untouched, and alignment becomes the compiler\'s problem on direct accesses and yours through pointers.' },
@@ -1163,7 +1169,7 @@ code and enforced by the toolchain.`,
       { t: 'It makes accesses to the struct faster', why: 'Access to misaligned fields is slower, since the compiler must assemble them from bytes on cores that require alignment.' },
     ] },
     { q: 'Why is `memcmp(&a, &b, sizeof a) == 0` an unreliable way to compare two structs for equality?', kind: 'security', choices: [
-      { t: 'Padding bytes have unspecified contents and may differ between equal structs', ok: true, why: 'Assigning fields does not write the padding, so it holds whatever was in memory before.' },
+      { t: 'Padding bytes have unspecified contents and may differ even when all fields are equal', ok: true, why: 'Assigning fields does not write the padding, so it holds whatever was in memory before.' },
       { t: '`memcmp` stops at the first zero byte, so it may not compare every field', why: 'That is the behaviour of string functions such as `strcmp`. `memcmp` compares exactly the number of bytes requested.' },
       { t: '`sizeof` of a struct excludes its padding, so trailing fields are not compared', why: '`sizeof` includes internal and trailing padding, which is exactly why the padding gets compared.' },
       { t: 'A struct cannot be passed to a function that takes `void *` without a cast', why: 'A pointer to any object converts to `void *`. The call is valid; its result is the problem.' },
@@ -1652,7 +1658,7 @@ This is how a reviewer reads C, and how the security section will ask you to att
       { t: 'Fails to compile because the literal is too long for the array', why: 'The literal is passed as a function argument, not used as an initialiser, so no size check applies.' },
     ] },
     { q: '`int n = snprintf(buf, 16, "%s:%d", name, port);` returns 21. What does that tell you?', kind: 'concept', choices: [
-      { t: 'The output was truncated; the full text would need 21 characters', ok: true, why: 'The return value is the length the complete output would have had. Anything at or above the buffer size means truncation.' },
+      { t: 'The output was truncated; the full text would have needed 21 characters', ok: true, why: 'The return value is the length the complete output would have had. Anything at or above the buffer size means truncation.' },
       { t: '21 bytes were written, so the 16-byte buffer has overflowed', why: '`snprintf` never writes more than the size it was given. That is the purpose of the size argument.' },
       { t: 'An error occurred; errors are reported as values above the buffer size', why: 'Errors are reported as negative values. A large positive value is information about truncation.' },
       { t: 'The buffer contains 21 characters and no terminator', why: 'For a non-zero size the output is always terminated, within the given size.' },
@@ -1661,7 +1667,7 @@ This is how a reviewer reads C, and how the security section will ask you to att
       { t: '`if (off > cap || len > cap - off) reject();`', ok: true, why: 'No addition of untrusted values, and the subtraction is safe because `off <= cap` has been established first.' },
       { t: '`if (off + len > cap) reject();`', why: 'The sum can wrap past 2³² to a small number, which then passes the comparison.' },
       { t: '`if ((int)(off + len) > (int)cap) reject();`', why: 'Casting to signed makes a large wrapped sum negative, which is "less than" the capacity and is accepted.' },
-      { t: '`if (off + len > cap || len > cap) reject();`', why: 'This ignores the offset altogether: a small length at a large offset is still outside the buffer.' },
+      { t: '`if (off + len > cap || len > cap) reject();`', why: 'The extra test bounds `len`, but nothing bounds `off`: a large offset still makes the sum wrap past 2³² to a small number that passes.' },
     ] },
     { q: 'A function calls `i2c_read(SENSOR, buf, 2)` and ignores its return value. The sensor is disconnected. What does the caller most likely compute with?', kind: 'concept', choices: [
       { t: 'Whatever was already in `buf`: an old reading or stack garbage', ok: true, why: 'A failed read usually leaves the buffer untouched, so the code proceeds with stale or random data as if it were fresh.' },
@@ -1674,7 +1680,7 @@ bool authorised = true;
 if (check_pin(input) != PIN_OK) authorised = false;
 if (check_lockout() == LOCKED)  authorised = false;
 return authorised;`, kind: 'security', choices: [
-      { t: 'It fails open: any check that is skipped or returns an unexpected code grants access', ok: true, why: 'A safer structure starts from "not authorised" and sets success only after every check has positively passed.' },
+      { t: 'It fails open: any check that is skipped, forgotten or returns an unexpected code grants access', ok: true, why: 'A safer structure starts from "not authorised" and sets success only after every check has positively passed.' },
       { t: 'It evaluates both checks even when the first has already failed, which wastes time', why: 'Running both checks is not a flaw in itself, and can even help to keep timing uniform.' },
       { t: 'A `bool` cannot be returned from a function, so the result is converted unpredictably', why: 'Returning `bool` is ordinary C99. The problem is the initial value, not the type.' },
       { t: 'It should compare the PIN with `strcmp` instead of calling a helper function', why: 'How the PIN is compared is inside `check_pin`. The flaw asked about is in the structure of this function.' },

@@ -38,7 +38,7 @@ Rules of the laboratory:
 2. **Unknown is a valid answer.** If the primary source does not say, write "not established" and name the document that should. A confident guess is the only wrong answer.
 3. **Widgets are for exploring, documents are for citing.** The widgets show the same facts interactively and flag what is unverified. They are a simulation of a memory map, not the chip.`,
     { t: 'callout', kind: 'sim', title: 'Nothing here was run on real hardware', md: `Neither this course's authors nor this laboratory ran anything on a physical MSPM0L2228, MAX78000 or ESP32. The commands shown are transcribed from the reference repositories. If you have a board, the optional steps tell you what you *should* see and how to check; treat a mismatch as information about your setup or about this text, and trust the vendor's document.` },
-    { t: 'callout', kind: 'note', title: 'This is a course exercise', md: `The brief format, the rubric and the questions are this course's. They are not an eCTF deliverable and not official MITRE material. In a real competition, the required documents are defined by that year's rules (${N.rules}, not load-tested).` },
+    { t: 'callout', kind: 'note', title: 'This is a course exercise', md: `The brief format, the rubric and the questions are this course's. They are not an eCTF deliverable and not official MITRE material. In a real competition, the required documents are defined by that year's rules (${S.rules}, not load-tested).` },
   ],
   diagram: [
     { t: 'ascii', text: `Where each part of the brief comes from

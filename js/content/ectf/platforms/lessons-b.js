@@ -72,7 +72,7 @@ The 2026 reference \`firmware.ld\` divides the 256 KB of flash${src('2026 firmwa
 
     `Three things to notice.
 
-1. **You do not own address zero.** A Cortex-M0+ takes its initial stack pointer and reset vector from the vector table, which after reset is at address 0. That is inside the BOOTLOADER region, so something there runs first and then transfers control to the team image at \`0x6000\`; the core has a VTOR register that lets the vector table be moved${src('mspm0l222x.h', S.tiHdr)}. *How* the 2026 MITRE bootloader does this, how it is installed and how it is put into update mode are **not verified here** — confirm in the 2026 rules (${N.rules}, not load-tested).
+1. **You do not own address zero.** A Cortex-M0+ takes its initial stack pointer and reset vector from the vector table, which after reset is at address 0. That is inside the BOOTLOADER region, so something there runs first and then transfers control to the team image at \`0x6000\`; the core has a VTOR register that lets the vector table be moved${src('mspm0l222x.h', S.tiHdr)}. *How* the 2026 MITRE bootloader does this, how it is installed and how it is put into update mode are **not verified here** — confirm in the 2026 rules (${S.rules}, not load-tested).
 2. **The file allocation table has a fixed address,** \`0x0003A000\`, because, in the reference design's words, "the data structure location must be known by the secure bootloader"${src('2026 firmware.ld', S.y2026ld, 'filesystem.h', S.y2026fs)}. A layout constraint that comes from the functional specification is not yours to move.
 3. **The stack is small.** With 32 KB of RAM in total and a 256 setting for stack size in the reference linker script, deep call chains, large local buffers and recursion are design risks, not style issues. (Confirm the unit and how the script uses that value in \`firmware.ld\` itself.)`,
 
@@ -192,7 +192,7 @@ gdb-multiarch <output-dir>/hsm.elf -ex "target extended-remote :3333"`,
 | ROM bootstrap loader interfaces and how it is invoked | TRM, BSL chapter; BSL user guide in the SDK docs |
 | Static write protection semantics | TRM, NONMAIN / flash protection chapter |
 
-Candidate vendor pages (not load-tested): ${N.tiProduct} , ${N.tiLp} .` },
+Candidate vendor pages (not load-tested): ${S.tiProduct} , ${S.tiLp} .` },
 
     { t: 'exercise', prompt: `You are porting startup code to the 2026 platform. The linker script places the stack at the very top of SRAM, growing downward (the usual full-descending Cortex-M stack). What value must the first word of your image's vector table hold? Give it in hex.`,
       hints: [
@@ -235,8 +235,8 @@ The MAX78000 design you might be porting from had 128 KB of RAM, a hardware FPU,
       { title: 'MSPM0 SDK: Customer Secure Code user guide (source)', url: S.tiCsc },
       { title: 'OpenOCD: MSPM0 flash driver', url: S.oocdMspm0 },
       { title: 'OpenOCD: MSPM0 LaunchPad board configuration', url: S.oocdLp },
-      { title: 'TI MSPM0L2228 product page (datasheet, TRM)', url: N.tiProduct, note: 'Not load-tested.' },
-      { title: 'MITRE eCTF rules', url: N.rules, note: 'Not load-tested; the authority for the 2026 board, bootloader and requirements.' },
+      { title: 'TI MSPM0L2228 product page (datasheet, TRM)', url: S.tiProduct, note: 'Not load-tested.' },
+      { title: 'MITRE eCTF rules', url: S.rules, note: 'Not load-tested; the authority for the 2026 board, bootloader and requirements.' },
     ] },
   ],
   quiz: [
@@ -570,7 +570,7 @@ Choose a reference repository from a year you have *not* studied in this track �
       { title: 'MITRE eCTF 2025 insecure example', url: S.y2025 },
       { title: 'MITRE eCTF 2024 insecure example', url: S.y2024 },
       { title: 'MITRE eCTF 2023 insecure example', url: S.y2023 },
-      { title: 'MITRE eCTF rules site', url: N.rules, note: 'Not load-tested; the authority for requirements, hardware and procedures.' },
+      { title: 'MITRE eCTF rules site', url: S.rules, note: 'Not load-tested; the authority for requirements, hardware and procedures.' },
       { title: 'MITRE eCTF home page', url: N.ectf, note: 'Not load-tested.' },
     ] },
   ],

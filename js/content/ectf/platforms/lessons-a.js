@@ -21,7 +21,7 @@ MITRE's Embedded Capture the Flag (eCTF) is a competition in which teams are giv
 
 Two things this course cannot give you, and says so:
 
-- The **exact rules, scoring and named security requirements** for a year. Those live on MITRE's rules site, which was not reachable when this course's fact sheet was compiled. Candidate URL (not load-tested): ${N.rules}.
+- The **exact rules, scoring and named security requirements** for a year. Those live on MITRE's rules site, which was not reachable when this course's fact sheet was compiled. Candidate URL (not load-tested): ${S.rules}.
 - Anything official. The exercises and scenarios in this track are written for this course. They copy the *shape* of eCTF work, not its content.`,
 
     { t: 'callout', kind: 'warn', title: 'The repositories are not where you might guess', md: `MITRE's public reference designs for 2016–2025 are under [github.com/mitre-cyber-academy](${S.mcaOrg}). The 2026 reference design is under [github.com/ectfmitre](${S.y2026}). The account \`github.com/ectf\` is **not** MITRE's: it is an unrelated account with a single 2016 repository${src('account page', S.notEctf, 'MITRE org repository list', S.mcaRepos)}. Cloning the wrong repository is a cheap mistake to make and an expensive one to discover late.` },
@@ -99,7 +99,7 @@ Suppose next year's kit is announced with only a part number you have never seen
     { t: 'refs', items: [
       { title: 'MITRE eCTF reference designs, 2016–2025 (mitre-cyber-academy)', url: S.mcaRepos },
       { title: 'MITRE eCTF 2026 insecure example (ectfmitre)', url: S.y2026 },
-      { title: 'MITRE eCTF rules site', url: N.rules, note: 'Not load-tested when the fact sheet was written; the authority for any year’s rules.' },
+      { title: 'MITRE eCTF rules site', url: S.rules, note: 'Not load-tested when the fact sheet was written; the authority for any year’s rules.' },
     ] },
   ],
   quiz: [
@@ -165,7 +165,7 @@ The name covers chips with different instruction sets. From ESP-IDF v6.1's own c
 | ESP32-C3 | RISC-V | 1 | 160 MHz | USB Serial/JTAG |
 | ESP32-C6 | RISC-V | 1 | 160 MHz | Wi-Fi + Bluetooth + IEEE 802.15.4, USB Serial/JTAG |
 
-The specific Xtensa core names (often quoted as "LX6" and "LX7") are not stated in the configuration files that were read; confirm them in each chip's datasheet (candidate URL, not load-tested: ${N.esp32ds}).
+The specific Xtensa core names (often quoted as "LX6" and "LX7") are not stated in the configuration files that were read; confirm them in each chip's datasheet (candidate URL, not load-tested: ${S.esp32ds}).
 
 Neither Xtensa nor RISC-V is Arm. The eCTF 2024–2025 part (MAX78000) and the eCTF 2026 part (MSPM0L2228) both have an Arm Cortex-M core as their main processor (lessons 3 and 4). So the ESP32 already differs from those kits at the level of the instruction set, the exception model and the debugger.`,
 
@@ -259,7 +259,7 @@ Take the table "why it is not a substitute" and turn each row into a question yo
       { title: 'ESP-IDF v6.1: Security vulnerabilities list (includes AR2023-005 / CVE-2023-35818)', url: S.idfVuln },
       { title: 'ESP-IDF v6.1: ESP32 GPIO notes (strapping pins, input-only pins, ADC2)', url: S.idfGpio },
       { title: 'ESP-IDF v6.1: ESP32 memory map (soc.h)', url: S.idfSoc },
-      { title: 'ESP-IDF Programming Guide (rendered)', url: N.idfGuide, note: 'Not load-tested when the fact sheet was written.' },
+      { title: 'ESP-IDF Programming Guide (rendered)', url: S.idfGuide, note: 'Not load-tested when the fact sheet was written.' },
     ] },
   ],
   quiz: [
@@ -385,7 +385,7 @@ If they had *disagreed*, that would be a finding: either the tool can write beyo
     `## Boot process, as far as the sources go
 
 1. Reset. The chip has ROM at \`0x00000000\`${src('max78000.h', S.maxHdr)}. What that ROM does before handing control to flash — and whether a given part variant's ROM includes a bootloader or a secure-boot check — is **not verified here**; confirm in the MAX78000 user guide's bootloader chapter and the datasheet's ordering information. The reference linker script reserves a \`ROM_BL_PAGE\` at the top of flash, which tells you the ROM cares about that page, not what it does with it.
-2. In the 2024 and 2025 systems, the **MITRE eCTF bootloader** sits at the start of flash (\`0x10000000\`, \`0xE000\` bytes = 7 pages) and starts the team image at \`0x1000E000\`. Its internals — how it validates or protects images, how the design-phase and attack-phase variants differ — are **not verified here**. The READMEs point at documentation pages that were not load-tested: ${N.docs2024boot} (2024) and ${N.rules2025boot} (2025).
+2. In the 2024 and 2025 systems, the **MITRE eCTF bootloader** sits at the start of flash (\`0x10000000\`, \`0xE000\` bytes = 7 pages) and starts the team image at \`0x1000E000\`. Its internals — how it validates or protects images, how the design-phase and attack-phase variants differ — are **not verified here**. The READMEs point at documentation pages that were not load-tested: ${N.docs2024boot} (2024) and ${S.r25bootref} (2025).
 3. Your image's startup code runs, then \`main\`.`,
 
     { t: 'widget', name: 'boot-sequence', props: { platform: 'max78000' }, caption: 'Step the boot sequence. Mark each stage as "verified from a source" or "check the user guide" — the widget shows which is which.' },

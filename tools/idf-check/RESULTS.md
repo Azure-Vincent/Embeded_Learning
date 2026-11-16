@@ -37,6 +37,13 @@ rtos-interrupts-0/main/main.c:24:13: error: implicit declaration of function 'ha
 
 Full log: `tools/idf-check/build/rtos-interrupts-0/build.log` (after running the build locally).
 
+## Warnings in course code
+
+These programs build, but the compiler warns about the listing itself.
+
+- rtos-lab-multitask-2 (rtos / lab `rtos-lab-multitask` `.steps[4]`):
+  - `rtos-lab-multitask-2/main/main.c:57:13: warning: 'burn_ms' defined but not used [-Wunused-function]`
+
 ## All programs
 
 | id | result | declared status | block | lines | main/CMakeLists.txt | warnings in main/ | first error |

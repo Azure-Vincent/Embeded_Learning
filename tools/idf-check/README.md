@@ -9,13 +9,14 @@ The latest full run is recorded in [RESULTS.md](RESULTS.md).
 | `extract.mjs` | Walks every lesson and lab, writes one ESP-IDF project per program to `build/<id>/`, and writes `build/manifest.json` |
 | `build-all.sh` | Runs `extract.mjs`, builds each project, prints a pass/fail table, rewrites `RESULTS.md` after a full run |
 | `report.mjs` | Formats `RESULTS.md` (called by `build-all.sh`) |
+| `.gitignore` | Ignores `build/` |
 | `overrides/<id>/` | Optional. Files copied over the extracted project, for example an `sdkconfig.defaults` that the lesson prose asks for |
 | `build/` | Generated, git-ignored |
 
 ## Run it
 
 ```bash
-tools/idf-check/build-all.sh                  # everything; rewrites RESULTS.md (about 30 s per program)
+tools/idf-check/build-all.sh                  # everything; rewrites RESULTS.md (about 25 s per program, 17 min in all)
 tools/idf-check/build-all.sh esp-p8-5         # one program (or several ids); RESULTS.md is left alone
 tools/idf-check/build-all.sh --clean esp-p8-5 # delete that project's build output first
 node tools/idf-check/extract.mjs              # only extract and list ids
@@ -113,7 +114,7 @@ complete programs built by this tool.
 ## Installing the toolchain (as done on this machine, 2026-11-15)
 
 Everything lives outside the repo: the ESP-IDF tree in `/home/user/espressif/esp-idf`, tools and the
-Python environment in `~/.espressif` (about 2.6 GB together).
+Python environment in `~/.espressif` (about 2.5 GB together).
 
 ```bash
 git clone --depth 1 -b v6.1 https://github.com/espressif/esp-idf.git /home/user/espressif/esp-idf

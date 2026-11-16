@@ -1,4 +1,4 @@
-/* Bench — a datasheet-and-workbench look: cool paper, solder-mask green structure, copper for the learner's turn. */
+/* Mitre Prep Tool — a datasheet-and-workbench look: cool paper, solder-mask green structure, copper for the learner's turn. */
 :root {
   --bg: #f1f4f3; --surface: #ffffff; --sunk: #e7ecea; --ink: #15202b; --muted: #566472; --line: #d3dadb;
   --mask: #0b6e55; --mask-ink: #ffffff; --mask-soft: #e0f0ea; --copper: #a4551b; --copper-soft: #f8ebdf;

@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Bench
+Name=Mitre Prep Tool
 GenericName=Embedded systems course
 Comment=Interactive course in electronics, microcontrollers, firmware and hardware security
-Exec=bench
-Icon=bench
+Exec=mitre-prep-tool
+Icon=mitre-prep-tool
 Terminal=false
 Categories=Education;Development;Electronics;
 Keywords=embedded;ESP32;microcontroller;firmware;security;eCTF;

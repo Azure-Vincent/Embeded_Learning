@@ -1,7 +1,9 @@
-# Bench — embedded systems engineering and hardware security
+# Mitre Prep Tool — embedded systems engineering and hardware security
 
 An interactive course that takes a learner from Ohm's law to designing, debugging, analysing and securing a
 multi-device embedded system, with a dedicated track for MITRE eCTF-style competition work.
+
+An independent course; not affiliated with or endorsed by The MITRE Corporation. The practice scenarios are original to this course and are not MITRE eCTF material.
 
 It is a static web application: plain ES modules, no build step, no dependencies, no server-side code.
 Progress, notes and bookmarks are stored in the learner's browser.
@@ -23,9 +25,9 @@ or https (WebCrypto is unavailable on plain http from another host).
 
 | Platform | File | Start it |
 |---|---|---|
-| Linux (64-bit Intel/AMD) | `dist/Bench-x86_64.AppImage` | `chmod +x Bench-x86_64.AppImage`, then double-click it or run `./Bench-x86_64.AppImage` |
-| Windows (64-bit Intel/AMD) | `dist/bench-windows-x86_64.exe` | double-click it |
-| Linux, plain binary | `dist/bench-linux-x86_64` | `chmod +x bench-linux-x86_64 && ./bench-linux-x86_64` |
+| Linux (64-bit Intel/AMD) | `dist/Mitre_Prep_Tool-x86_64.AppImage` | `chmod +x Mitre_Prep_Tool-x86_64.AppImage`, then double-click it or run `./Mitre_Prep_Tool-x86_64.AppImage` |
+| Windows (64-bit Intel/AMD) | `dist/mitre-prep-tool-windows-x86_64.exe` | double-click it |
+| Linux, plain binary | `dist/mitre-prep-tool-linux-x86_64` | `chmod +x mitre-prep-tool-linux-x86_64 && ./mitre-prep-tool-linux-x86_64` |
 
 Each one serves the course on `http://localhost:47800/` (this computer only) and opens your default browser; the
 course runs in a browser tab, not its own window. To stop it, close its terminal window or press Ctrl+C. It also
@@ -34,7 +36,7 @@ ends. Progress is saved in the browser for that address, so keep using the same 
 `--no-browser`, `--idle-exit 0` (never stop by itself).
 
 - The AppImage needs FUSE 2 (`libfuse2`; on Ubuntu 24.04 the package is `libfuse2t64`). Without it, run
-  `./Bench-x86_64.AppImage --appimage-extract-and-run`, or use the plain binary.
+  `./Mitre_Prep_Tool-x86_64.AppImage --appimage-extract-and-run`, or use the plain binary.
 - The executables are not code-signed, so Windows SmartScreen may ask for confirmation the first time
   ("More info" → "Run anyway").
 

@@ -1,4 +1,4 @@
-// Bench desktop launcher: one executable that contains the whole course.
+// Mitre Prep Tool desktop launcher: one executable that contains the whole course.
 // It serves the embedded site on localhost and opens the default browser.
 package main
 
@@ -70,7 +70,7 @@ func main() {
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
 		if alreadyRunning(url) {
-			fmt.Println("Bench is already running; opening it at", url)
+			fmt.Println("Mitre Prep Tool is already running; opening it at", url)
 			if !*noOpen {
 				openBrowser(url)
 			}
@@ -114,7 +114,8 @@ func main() {
 		files.ServeHTTP(w, r)
 	})
 
-	fmt.Println("Bench — embedded systems and hardware security course")
+	fmt.Println("Mitre Prep Tool — embedded systems and hardware security course")
+	fmt.Println("An independent course; not affiliated with or endorsed by The MITRE Corporation.")
 	fmt.Println()
 	fmt.Println("  Open in your browser:  ", url)
 	fmt.Println("  Stop the course:        close this window (or press Ctrl+C);")

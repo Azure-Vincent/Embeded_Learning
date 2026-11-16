@@ -17,7 +17,7 @@ build() { # os arch output
   GOOS="$1" GOARCH="$2" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$repo/dist/$3" .
   echo "built dist/$3"
 }
-build linux   amd64 bench-linux-x86_64
-build linux   arm64 bench-linux-arm64
-build windows amd64 bench-windows-x86_64.exe
-build windows arm64 bench-windows-arm64.exe
+build linux   amd64 mitre-prep-tool-linux-x86_64
+build linux   arm64 mitre-prep-tool-linux-arm64
+build windows amd64 mitre-prep-tool-windows-x86_64.exe
+build windows arm64 mitre-prep-tool-windows-arm64.exe

@@ -1,3 +1,3 @@
-module bench
+module mitreprep
 
 go 1.22

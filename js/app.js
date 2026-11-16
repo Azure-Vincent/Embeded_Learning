@@ -29,7 +29,7 @@ function renderNav() {
         h('span', { class: 'pin' }, String(i + 1).padStart(2, '0')), h('span', { class: 'lbl' }, sec.title),
         h('span', { class: 'st' }, locked ? 'locked' : p.pct >= 1 ? 'done' : p.pct > 0 ? pct(p.pct) : ''));
     }),
-    h('div', { class: 'navhead' }, 'Bench'),
+    h('div', { class: 'navhead' }, 'Tools'),
     [['review', 'Review'], ['practice', 'Practice'], ['workbench', 'Workbench tools'], ['skills', 'Skills matrix'], ['notebook', 'Lab notebook'], ['bookmarks', 'Bookmarks'], ['glossary', 'Glossary'], ['troubleshooting', 'Troubleshooting'], ['references', 'Primary sources'], ['settings', 'Settings']]
       .map(([r, t]) => h('a', { class: 'navlink' + (location.hash.startsWith('#/' + r) ? ' on' : ''), href: '#/' + r }, t, r === 'review' && due ? h('span', { class: 'due-pill', title: 'questions due for review' }, due) : null)),
   ]);
@@ -37,7 +37,7 @@ function renderNav() {
 
 function page(title, lead, ...kids) {
   append(clear(main), [h('header', { class: 'pagehead' }, h('h1', {}, title), lead ? h('p', { class: 'lead', html: inline(lead) }) : null), kids]);
-  document.title = title + ' — Bench';
+  document.title = title + ' — Mitre Prep Tool';
   main.focus({ preventScroll: true }); window.scrollTo(0, 0);
 }
 const crumbs = (...items) => h('nav', { class: 'crumbs', 'aria-label': 'Breadcrumb' }, items.flatMap((it, i) => [i ? h('span', {}, '/') : null, it[1] ? h('a', { href: it[1] }, it[0]) : h('span', {}, it[0])]));
@@ -278,7 +278,7 @@ function practiceView(filter) {
     h('div', { class: 'w-tabs' }, h('a', { class: 'w-tab' + (!only ? ' on' : ''), href: '#/practice' }, 'Everything'), h('a', { class: 'w-tab' + (only ? ' on' : ''), href: '#/practice/c' }, 'C programming only')), ...secs);
 }
 
-// ---- Bench pages -----------------------------------------------------------
+// ---- Tool pages -----------------------------------------------------------
 function skillsView() {
   const skills = C.allSkills();
   const body = Object.entries(C.TRACKS).map(([tk, tname]) => {
@@ -399,7 +399,7 @@ function settingsView() {
     h('section', { class: 'panel' }, h('h2', {}, 'Appearance'), h('label', { class: 'row' }, 'Theme ', theme)),
     h('section', { class: 'panel' }, h('h2', {}, 'Review mode'), h('label', { class: 'row' }, review, h('span', {}, 'Open every section regardless of prerequisites')), h('p', { class: 'muted' }, 'For instructors and returning learners. It does not change what counts as demonstrated.')),
     h('section', { class: 'panel' }, h('h2', {}, 'Your data'), h('p', {}, 'Progress, notes and bookmarks are stored only in this browser.'),
-      h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([store.exportJSON()], { type: 'application/json' })), download: 'bench-progress.json' }); a.click(); } }, 'Export progress'),
+      h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([store.exportJSON()], { type: 'application/json' })), download: 'mitre-prep-tool-progress.json' }); a.click(); } }, 'Export progress'),
         h('button', { type: 'button', class: 'btn ghost', onclick: () => file.click() }, 'Import progress'), file,
         h('button', { type: 'button', class: 'btn ghost danger', onclick: () => { if (confirm('Erase all progress, notes and bookmarks in this browser?')) { store.reset(); route(); } } }, 'Erase everything'))));
 }

@@ -45,9 +45,9 @@ To rebuild them, including ARM64 variants, install Go 1.22 or newer and run `./d
 | Author documentation | `docs/` | Content schema, widget contract, the simulated MCU, and the sourced fact sheet |
 | Tests | `tests/` | Content validator and unit tests for the simulation models |
 
-Current size: 135 lessons, 35 laboratories and projects (including ten ESP32 build projects, five practice
-scenarios and six capstones), 956 assessment questions, 73 C exercises that execute in the built-in interpreter,
-46 interactive tools, and 339 unit tests over the simulation models.
+Current size: 135 lessons, 35 laboratories and projects (ten ESP32 build projects, five practice scenarios, six
+capstones), 972 assessment questions, 81 C exercises that execute in the built-in interpreter, 361 tracked practice
+items, 47 interactive tools, and 360 unit tests over the simulation models and core logic.
 
 Sections, in prerequisite order: Foundations, Electronics, Microcontroller Architecture, ESP32 Development,
 Embedded C, Communication Protocols, Real-Time Systems, Hardware Debugging, Firmware Engineering,
@@ -57,28 +57,40 @@ Embedded Security, eCTF Preparation, Capstone Projects.
 
 - A lesson is **mastered** by scoring 80% on its assessment counting first attempts only. A wrong answer shows
   why it is wrong and lets the learner retry, but does not count.
+- **Review**: questions from mastered lessons return at growing intervals (1, 3, 7, 16, 35 days). A miss sends the
+  question back to tomorrow and links the lesson. The dashboard shows what is due.
 - A section **unlocks** when 80% of the lessons in each prerequisite section are mastered, or when the learner
-  passes that section's checkpoint test. Settings has a review mode that opens everything for instructors.
+  passes that section's checkpoint test, which draws at least one question from every lesson. Capstones and
+  scenarios also lock behind their own prerequisites. Settings has a review mode that opens everything.
+- **Practice** lists every exercise and tool challenge in the course with its done state and a direct link, and
+  can be filtered to C programming.
 - A laboratory is recorded as either **built and tested on real hardware** or **completed without hardware**.
   The skills matrix keeps those apart; only the learner can attest to the first.
-- The dashboard's proficiency and competition-readiness figures are computed from demonstrated skill levels,
-  not from pages visited.
+- The dashboard shows demonstrated proficiency per track, first-attempt accuracy by question type (concepts, code
+  reading, circuit analysis, architecture, security reasoning), competition readiness and a prerequisite map.
 
 ## What is real and what is simulated
 
-Read this before trusting any number in the app.
+Read this before trusting any number in the app. Every code listing carries a label saying how it was checked.
 
-- **Nothing in this repository was run on physical hardware.** ESP-IDF, MSDK and TI SDK code is written against
-  vendor documentation and labelled as such next to every listing. Build it and trust your own result.
-- Code labelled *host-tested* was compiled with `gcc -Wall -Wextra -std=c11` and run on Linux.
+- **Nothing in this repository was run on physical hardware.** Lab results are phrased as what you should see.
+- **ESP-IDF code.** 41 listings are complete programs that were compiled for the `esp32` target with ESP-IDF v6.1
+  (*idf-built*), including every program in the ESP32 lessons and all ten projects. Another 39 fragments had every
+  call checked against the v6.1 headers (*idf-checked*). `tools/idf-check/` holds the extraction and build scripts
+  and the results table, so the check can be repeated. Compiling is not running: none of it was flashed.
+- **Plain C.** 117 listings were compiled with `gcc -Wall -Wextra -std=c11` and run on Linux (*host-tested*); the
+  larger ones live in `examples/` with Makefiles and tests.
+- **Still only reviewed against documentation** (55 listings): mostly shell commands, MSDK and TI SDK fragments, and
+  Cortex-M code that needs a toolchain not available here.
 - Every interactive tool is a model and says what it leaves out. The C lab runs a C subset on **Bench-MCU**, a
-  fictional microcontroller documented in `docs/BENCH_MCU.md`; its register map matches no real chip.
-- Chip-specific facts and every statement about which hardware a given eCTF year used come from
-  `docs/FACTS.md`, which was compiled from the official MITRE and vendor repositories on GitHub. Vendor
-  websites, datasheet PDFs and the eCTF rules site could not be reached from the environment this was built in,
-  so the fact sheet has an explicit **UNVERIFIED** list. The course text flags those items instead of guessing.
-  Before buying hardware or relying on a specification, check the manufacturer's datasheet and that year's
-  official eCTF rules.
+  fictional microcontroller documented in `docs/BENCH_MCU.md`; its register map matches no real chip. Its
+  electrical tools use typical teaching values, not the limits of a particular part.
+- **Hardware and eCTF facts** are in `docs/FACTS.md` with their sources. Round 1 used the official MITRE and
+  vendor repositories on GitHub; round 2 read the TI datasheet and technical reference manual, the Espressif
+  datasheets and advisories, and the MITRE eCTF rules site for 2024 to 2026. Analog Devices' website could not be
+  reached, so several MAX78000 datasheet items remain on the fact sheet's **UNVERIFIED** list and the lessons
+  flag them. Many reference links to other sites (Arm, FreeRTOS, NXP, USB-IF and others) were not load-tested.
+  Before buying hardware or relying on a specification, check the manufacturer's datasheet and that year's rules.
 - The practice scenarios are original to this course. They follow the shape of eCTF work (a specification,
   security requirements, an insecure reference design, then review and hardening) and are **not** official
   MITRE challenges.
@@ -88,9 +100,11 @@ Read this before trusting any number in the app.
 ## Develop
 
 ```bash
-node tests/validate.mjs            # schema, quiz rules, widget names; runs every C-lab solution against its tests
+node tests/validate.mjs            # schema, quiz rules, widget names, answer-length bias; runs every C exercise
 node tests/validate.mjs esp32      # one section
-node --test tests/*.test.mjs       # unit tests for the simulation models
+node --test tests/*.test.mjs       # unit tests for the simulation models and core logic
+node tests/quiz-bias.mjs           # how often the keyed answer is the longest option, per section
+tools/idf-check/build-all.sh       # compile every ESP-IDF program in the course (needs ESP-IDF v6.1; see its README)
 ```
 
 - Adding or editing lessons: `docs/CONTENT_GUIDE.md`.

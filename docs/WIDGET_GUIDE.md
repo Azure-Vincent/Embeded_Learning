@@ -79,6 +79,7 @@ an object keyed by id with at least `{ title }`, so content can be validated.
   tests: [ { name, stdin?, gpioIn?, uartRx?, adc?: [..], ticks?,           // inputs
              stdout?, stdoutIncludes?, exit?, regs?: {GPIO_OUT: 0x20}, uartTx?, mem?: [{sym|addr, size, value}] } ],  // expectations
   hints: ['md'], explain?: 'md shown after passing', readOnly?: false }
+  // further test expectations: fault, uartTxIncludes, gpioTrace, noWarning — see docs/BENCH_MCU.md
 ```
 The interpreter (`js/sim/cinterp.js`) runs a C subset on a simulated 32-bit little-endian machine (ILP32) with
 byte-addressable memory, so pointer casts, unions, struct layout and out-of-bounds writes behave as on a real MCU.

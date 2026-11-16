@@ -96,6 +96,20 @@ for (const id of ids) {
   for (const g of sec.glossary || []) if (!g.term || !g.def) E(id, 'glossary entries need term and def');
   for (const t of sec.troubleshooting || []) if (!t.symptom || !t.causes || !t.fix) E(id, 'troubleshooting entries need symptom, causes, fix');
 }
+// Answer-length bias: if the keyed answer is usually the longest option, mastery can be gamed without knowledge.
+if (!only.length) {
+  for (const id of ids) {
+    let sec; try { sec = (await import(`../js/content/${id}.js`)).default; } catch { continue; }
+    let n = 0, longest = 0, clear = 0;
+    for (const unit of [...(sec.lessons || []), ...(sec.labs || [])]) for (const q of unit.quiz || []) {
+      const ok = q.choices.find((c) => c.ok); if (!ok) continue;
+      const maxO = Math.max(...q.choices.filter((c) => !c.ok).map((c) => c.t.length));
+      n++; if (ok.t.length > maxO) longest++; if (ok.t.length > maxO * 1.3 && ok.t.length - maxO > 15) clear++;
+    }
+    if (n >= 10 && longest / n > 0.4) E(id, `keyed answer is the longest option in ${Math.round(100 * longest / n)}% of questions (limit 40%; run node tests/quiz-bias.mjs --list ${id})`);
+    if (n >= 10 && clear / n > 0.08) E(id, `keyed answer is clearly the longest option in ${Math.round(100 * clear / n)}% of questions (limit 8%)`);
+  }
+}
 for (const w of warns) console.log('warn  ' + w);
 for (const e of errs) console.log('ERROR ' + e);
 console.log(`${nLessons} lessons, ${nLabs} labs, ${nQ} questions, ${nCLab} C labs` + (cinterp ? '' : ' (C interpreter not present: C lab solutions not executed)'));

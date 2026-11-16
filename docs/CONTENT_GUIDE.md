@@ -84,6 +84,10 @@ hardware. Say "you should see", and tell the learner how to check.
 Exactly one `ok` choice, 3–4 choices, every choice has `why`. Distractors must be plausible misconceptions.
 A wrong pick shows only that choice's `why`, so it must teach, not just say "incorrect".
 Prefer questions that require reasoning about a new situation over recall. Mix the `kind`s.
+Keep option lengths balanced: the keyed answer must not be recognisable by being the longest or most precise option.
+State each distractor as a full misconception ("X, because Y") and keep the key to its essential claim, with the
+justification in `why`. `node tests/quiz-bias.mjs` reports the bias per section, and the validator fails a section
+where the key is the longest option in more than 40% of questions.
 
 ## Lab (guided laboratory, project, scenario or capstone)
 

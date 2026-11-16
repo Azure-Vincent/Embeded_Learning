@@ -309,3 +309,11 @@ Updated 2026-11-15 after round 2. Items verified in round 2 were removed (old it
 5. **MSPM0L2228 remaining:** exact BCR boot sequence timing and the full NONMAIN register layout were not transcribed; TI's errata sheet was not read.
 6. **ESP32 remaining:** the LimitedResults write-ups themselves (limitedresults.com not reachable); NVD entries (nvd.nist.gov not reachable); AR2020-001 and AR2022-003 PDFs (index entries only); per-strapping-pin functions were not re-read this round; the widely quoted "12 mA recommended / 40 mA absolute max per pin" figures do not appear in datasheet v5.3 and remain unsourced.
 7. **Canonical URLs still not load-tested** (hosts not reachable): https://www.freertos.org/Documentation/ ; https://developer.arm.com/documentation ; https://riscv.org/specifications/ ; https://openocd.org/doc/ ; https://sourceware.org/gdb/documentation/ ; https://ghidra-sre.org/ ; https://renode.readthedocs.io/ ; https://docs.platformio.org/ ; https://www.nxp.com/docs/en/user-guide/UM10204.pdf ; https://www.usb.org/documents ; https://sigrok.org/wiki/PulseView ; https://analogdevicesinc.github.io/msdk//USERGUIDE/ ; https://software-dl.ti.com/ccs/esd/uniflash/docs/uniflash.html ; https://ectfmitre.gitlab.io/ectf-website/2024/components/bootloader.html . Bosch CAN 2.0 specification: no URL confirmed. Refused by server: https://ectf.mitre.org/ , https://www.analog.com/en/products/max78000.html .
+
+## Sources read during the content review that are cited in lessons but not itemised above
+During the review of the eCTF hardware lessons, the following primary sources were read directly and are cited in
+`js/content/ectf/platforms/`. Their details are stated in those lessons with the citation, not repeated here:
+TI SLAU847F §1.3.2 (rules for the three SRAM views: do not mix views, initialise before a checked read); the 2026
+reference design's `firmware.ld` and `ti_msp_dl_config.c`; the OpenOCD commands on the 2025 and 2026 MITRE rules
+pages; Analog Devices MSDK `gpio.h` and `uart.h` (main branch, not the tags pinned by the 2024/2025 designs); and
+the ESP-IDF v6.1 source tree, which was cloned and built (see `tools/idf-check/RESULTS.md`).

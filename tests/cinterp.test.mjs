@@ -63,8 +63,13 @@ test('division and modulo truncate toward zero; division by zero faults', () => 
 });
 test('shifts: logical for unsigned, arithmetic for signed, count >= width flagged', () => {
   assert.equal(out(main('int n = -16; unsigned u = 0x80000000u; printf("%d %u %u %d", n >> 2, u >> 31, 1u << 31, 1 << 4);')), '-4 1 2147483648 16');
-  const r = run(main('unsigned s = 32; printf("%u", 1u << s);'));
-  assert.ok(hasWarn(r, /shifting a 32-bit value by 32/));
+  const r = run(main('unsigned s = 32;\nprintf("%u", 1u << s);'));
+  assert.equal(r.ok, false); assert.equal(r.errors[0].line, 7);
+  assert.match(r.errors[0].msg, /undefined behaviour: shift count 32 >= width 32/);
+  assert.match(run(main('int n = -1; printf("%d", 8 >> n);')).errors[0].msg, /undefined behaviour: shift count -1 is negative/);
+  assert.match(run(main('uint8_t b = 1; int n = 40; printf("%d", b << n);')).errors[0].msg, /shift count 40 >= width 32/); // uint8_t promotes to int
+  assert.match(run(main('uint64_t q = 1; int n = 64; q <<= n;')).errors[0].msg, /shift count 64 >= width 64/);
+  assert.equal(out(main('uint64_t q = 1; int n = 63; q <<= n; printf("%llx %u", q, 1u << 31 >> 31);')), '8000000000000000 1');
   assert.ok(hasWarn(run(main('printf("%d", 1 << 31);')), /left shift overflows a signed int/));
 });
 test('truncation on assignment to narrower types and sign extension on widening', () => {
@@ -426,6 +431,51 @@ test('interrupt between statements causes a lost update; irq_disable protects it
   assert.ok(rs < rm + racy.irqCounts.IRQ_TIMER, 'some ISR increments must be lost'); // those that landed between the load and the store
   assert.ok(safe.irqCounts.IRQ_TIMER > 10);
   assert.equal(ss, sm + safe.irqCounts.IRQ_TIMER);
+});
+// ---- preemption inside a read-modify-write statement
+const RMW_PRE = 'volatile uint32_t counter = 0;\nvolatile uint32_t isr_runs = 0;\nvoid timer_isr(void) { TIM_STATUS = TIM_EXPIRED; counter++; isr_runs++; }\n';
+const rmwBody = (stmt) => `irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 9; TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
+  uint32_t mine = 0;
+  while (mine < 400) { ${stmt} mine++; }
+  irq_disable(); TIM_CTRL = 0;
+  printf("%u %u %u", counter, mine, isr_runs);`;
+const rmwLost = (stmt) => { const r = run(main(rmwBody(stmt), RMW_PRE)); assert.deepEqual(r.errors, []); const [c, m, i] = r.stdout.split(' ').map(Number); assert.equal(m, 400); assert.ok(i > 20, 'the ISR must run'); return m + i - c; };
+test('counter++ in main loses updates to a timer ISR that also increments it', () => {
+  assert.ok(rmwLost('counter++;') > 0);
+  assert.ok(rmwLost('counter += 1;') > 0);
+  assert.ok(rmwLost('counter = counter + 1;') > 0);
+  assert.ok(rmwLost('++counter;') > 0);
+});
+test('the same increments inside irq_disable/irq_enable lose nothing, and the run is reproducible', () => {
+  assert.equal(rmwLost('irq_disable(); counter++; irq_enable();'), 0);
+  assert.equal(rmwLost('irq_disable(); counter = counter + 1; irq_enable();'), 0);
+  assert.equal(rmwLost('counter++;'), rmwLost('counter++;'));
+});
+test('read-modify-write through a pointer and a struct member is interruptible too; a plain local is not', () => {
+  const pre = 'typedef struct { volatile uint32_t n; uint32_t isr; } stats_t;\nstats_t st;\nstats_t *sp = &st;\nvoid timer_isr(void) { TIM_STATUS = 1; sp->n = sp->n + 1; st.isr++; }\n';
+  const body = (stmt) => `irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 9; TIM_CTRL = 7; volatile uint32_t *p = &st.n; uint32_t mine = 0; uint32_t local = 0;
+    while (mine < 400) { ${stmt} mine++; } irq_disable(); TIM_CTRL = 0; printf("%u %u %u", st.n + local, mine, st.isr);`;
+  const lost = (stmt) => { const [c, m, i] = out(main(body(stmt), pre)).split(' ').map(Number); return m + i - c; };
+  assert.ok(lost('(*p)++;') > 0);
+  assert.ok(lost('sp->n += 1;') > 0);
+  assert.ok(lost('st.n = st.n + 1;') > 0);
+  assert.equal(lost('local++;'), 0); // nothing else can reach a local, so no update is lost
+});
+test('GPIO_OUT |= bit in main loses an edge made by an ISR; GPIO_SET does not', () => {
+  // The ISR toggles pin 1 an odd number of times in total only if none of its toggles is overwritten by main's stale write.
+  const pre = 'volatile uint32_t isr_runs = 0;\nvoid timer_isr(void) { TIM_STATUS = TIM_EXPIRED; GPIO_TOGGLE = 1u << 1; isr_runs++; }\n';
+  const body = (set, clr) => `GPIO_DIR = 3; irq_attach(IRQ_TIMER, timer_isr); TIM_LOAD = 9; TIM_CTRL = TIM_ENABLE | TIM_AUTO_RELOAD | TIM_IRQ_EN;
+    for (int i = 0; i < 300; i++) { ${set} ${clr} }
+    irq_disable(); TIM_CTRL = 0; printf("%u %u", isr_runs & 1u, (GPIO_OUT >> 1) & 1u);`;
+  const check = (set, clr) => { const [parity, pin] = out(main(body(set, clr), pre)).split(' ').map(Number); return parity === pin; };
+  assert.equal(check('GPIO_OUT |= 1u;', 'GPIO_OUT &= ~1u;'), false, 'stale read-modify-write must undo an ISR toggle');
+  assert.equal(check('GPIO_SET = 1u;', 'GPIO_CLR = 1u;'), true);
+  assert.equal(check('irq_disable(); GPIO_OUT |= 1u; irq_enable();', 'irq_disable(); GPIO_OUT &= ~1u; irq_enable();'), true);
+});
+test('a read-modify-write of a memory object costs two ticks, of a local one', () => {
+  const steps = (stmt) => run(main(`int local = 0; ${stmt}`, 'int global = 0;')).steps;
+  assert.equal(steps('global++;') - steps('local++;'), 1);
+  assert.equal(steps('global = global + 1;') - steps('global = local + 1;'), 1);
 });
 test('an interrupt whose flag is never cleared starves main', () => {
   const pre = 'volatile int n = 0;\nvoid timer_isr(void) { n++; }';

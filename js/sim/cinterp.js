@@ -1193,7 +1193,7 @@ function compile(source, opts = {}) {
   }
   function shiftFn(op, rt, line) {
     const bits = rt.size * 8;
-    const bad = (n, r) => { warn(line, `shifting a ${bits}-bit value by ${n} is undefined behaviour (the count must be 0..${bits - 1}); this simulator gives ${r}`, 'shift'); return r; };
+    const bad = (n) => fault(n < 0 ? `undefined behaviour: shift count ${n} is negative. Real hardware gives different results on different CPUs` : `undefined behaviour: shift count ${n} >= width ${bits}. The count must be 0..${bits - 1}; real CPUs disagree about the result (some give 0, some use the count modulo ${bits})`);
     if (rt.size === 8) {
       const w = rt.signed ? asI : asU;
       return op === '<<' ? (x, n) => (n < 0 || n >= 64 ? bad(n, 0n) : w(64, x << BigInt(n))) : (x, n) => (n < 0 || n >= 64 ? bad(n, 0n) : x >> BigInt(n));
@@ -1266,17 +1266,25 @@ function compile(source, opts = {}) {
     if (isConstType(n.ty)) err(`cannot modify ${n.name ? `'${n.name}'` : 'this object'}: it is declared const`, line);
     if (n.ty.k === 'struct' && !n.ty.def.complete) sizeOf(n.ty, line);
   }
-  function assign(op, lhs, rhs, line, post) {
+  // A read-modify-write of an object in memory is load / modify / store on a real CPU, and an interrupt can be
+  // taken between the load and the store. `rmw` marks an '=' whose right-hand side reads the object it writes.
+  // Plain locals (and members/elements of local aggregates accessed directly) are exempt: no handler can name them.
+  function assign(op, lhs, rhs, line, post, rmw) {
     modifiable(lhs, line, op === '=' ? 'assignment' : `'${op}'`);
     const st = storer(lhs.ty, line), la = lhs.addr;
     if (op === '=') {
       const e = coerce(rv(rhs), lhs.ty, 'assignment', line);
+      if (rmw && !lhs.localRoot) return { ty: lhs.ty, ev: () => { const v = e(); tick(line); st(la(), v); return v; }, line, assign: true };
       return { ty: lhs.ty, ev: () => { const v = e(); st(la(), v); return v; }, line, assign: true };
     }
     if (!isScalar(lhs.ty)) err(`'${op}' cannot be applied to '${typeStr(lhs.ty)}'`, line);
     let cur;
     const L = loader(lhs.ty, line), r = binary(op.slice(0, -1), { ty: lhs.ty, ev: () => cur, line }, rhs, line);
     const back = conv({ ty: r.ty, ev: r.ev }, lhs.ty).ev;
+    if (!lhs.localRoot) { // interruptible between the load and the store
+      if (post) return { ty: lhs.ty, ev: () => { const a = la(), old = L(a); tick(line); cur = old; st(a, back()); return old; }, line };
+      return { ty: lhs.ty, ev: () => { const a = la(), old = L(a); tick(line); cur = old; const v = back(); st(a, v); return v; }, line };
+    }
     if (post) return { ty: lhs.ty, ev: () => { const a = la(); const old = cur = L(a); st(a, back()); return old; }, line };
     return { ty: lhs.ty, ev: () => { const a = la(); cur = L(a); const v = back(); st(a, v); return v; }, line };
   }
@@ -1296,7 +1304,7 @@ function compile(source, opts = {}) {
     if (!f) err(`'${typeStr(st)}' has no field named '${name}'`, line);
     const fty = st.const && !isConstType(f.ty) ? constOf(f.ty) : f.ty, off = f.off;
     if (arrow) { const be = base.ev; return lval(fty, off ? () => (be() + off) >>> 0 : be, line, { name }); }
-    if (base.addr) { const ba = base.addr; return lval(fty, off ? () => ba() + off : ba, line, { name, lv: base.lv }); }
+    if (base.addr) { const ba = base.addr; return lval(fty, off ? () => ba() + off : ba, line, { name, lv: base.lv, localRoot: base.localRoot }); }
     const be = base.ev, g = fromBuf(fty, line);
     return { ty: fty, ev: () => g(be(), off), line };
   }
@@ -1361,7 +1369,7 @@ function compile(source, opts = {}) {
       if (s.kind === 'func') { const f = s.fn; return { ty: f.ty, addr: () => f.addr, fn: f, line, name: t.v }; }
       if (s.g) { const g = s.g; return lval(s.ty, () => g.addr, line, { name: t.v, wasArray: false }); }
       const off = s.off;
-      return lval(s.ty, () => fp + off, line, { name: t.v, wasArray: s.wasArray });
+      return lval(s.ty, () => fp + off, line, { name: t.v, wasArray: s.wasArray, localRoot: true });
     }
     return err(`expected an expression but found ${show(t)}`);
   }
@@ -1377,7 +1385,7 @@ function compile(source, opts = {}) {
         if (a.ty.to.k === 'void') err('cannot index a void*; cast it to a real pointer type first', line);
         if (a.ty.to.k === 'struct' && !a.ty.to.def.complete) sizeOf(a.ty.to, line);
         const sz = pointee(a.ty, line), be = a.ev, ie = toNumEv(b);
-        n = lval(a.ty.to, b.k !== undefined ? (b.k === 0 ? be : () => (be() + Number(b.k) * sz) >>> 0) : () => (be() + ie() * sz) >>> 0, line, { name: n.name });
+        n = lval(a.ty.to, b.k !== undefined ? (b.k === 0 ? be : () => (be() + Number(b.k) * sz) >>> 0) : () => (be() + ie() * sz) >>> 0, line, { name: n.name, localRoot: n.ty.k === 'arr' && n.localRoot });
       } else if (accept('(')) {
         const args = [];
         if (!isP(')')) for (;;) { args.push(assignExpr()); if (!accept(',')) break; }
@@ -1486,8 +1494,16 @@ function compile(source, opts = {}) {
   }
   const ASSIGN_OPS = new Set(['=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>=']);
   function assignExpr() {
-    const lhs = condExpr(), t = peek();
-    if (t.t === 'p' && ASSIGN_OPS.has(t.v)) { p++; return assign(t.v, lhs, assignExpr(), t.line, false); }
+    const l0 = p, lhs = condExpr(), t = peek();
+    if (t.t === 'p' && ASSIGN_OPS.has(t.v)) {
+      const l1 = p++, rhs = assignExpr();
+      let rmw = false;
+      if (t.v === '=') { // does the right-hand side mention the same lvalue (token for token)?
+        const text = (a, b) => '\u0001' + toks.slice(a, b).map((x) => x.raw).join('\u0001') + '\u0001';
+        rmw = text(l1 + 1, p).includes(text(l0, l1));
+      }
+      return assign(t.v, lhs, rhs, t.line, false, rmw);
+    }
     return lhs;
   }
   function expression() {

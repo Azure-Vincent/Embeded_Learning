@@ -193,7 +193,7 @@ quote those numbers for you. Finding them is the skill, and a number copied from
 could be out of date.`,
 
     { t: 'refs', items: [
-      { title: 'Espressif: ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'Candidate URL; not load-tested when this lesson was written. If it has moved, search Espressif\'s documentation page for "ESP32 Series Datasheet".' },
+      { title: 'Espressif: ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'URL loads (it redirects to documentation.espressif.com). In version 5.3 the tables this exercise asks for are in section 5 (Tables 5-1 to 5-3); check the version on the title page of the copy you open.' },
     ] },
   ],
   quiz: [
@@ -297,7 +297,7 @@ For the Debugging, Security and eCTF sections.
 | JTAG/SWD debug probe | "Where is the CPU, and what is in memory right now?" Halt, step, inspect, flash | Supported by OpenOCD for your target. Check the voltage levels it supports. Many dev boards include a probe on board, in which case you do not need a separate one |
 | An ARM Cortex-M development board | Most of the embedded industry and recent eCTF targets use Cortex-M. Learn its debug and interrupt model on a general-purpose board | A vendor evaluation board with an **on-board debugger** and good documentation |
 | MAX78000FTHR | Competition hardware; see below | |
-| TI MSPM0L2228 development hardware | Competition hardware; see below | |`,
+| TI MSPM0L2228 development hardware (MSP-LITO-L2228 or LP-MSPM0L2228 LaunchPad) | Competition hardware; see below | |`,
 
     `## General-purpose learning hardware and official competition hardware are different things
 
@@ -313,14 +313,14 @@ teams normally receive or are told exactly what to obtain. What the public refer
 |---|---|---|---|
 | eCTF 2024 | Analog Devices MAX78000 (Arm Cortex-M4 with FPU, plus a RISC-V core) | MAX78000FTHR: the reference design builds for the \`FTHR_RevA\` board support package | [2024 reference design](https://github.com/mitre-cyber-academy/2024-ectf-insecure-example) |
 | eCTF 2025 | MAX78000 | MAX78000FTHR, same board support package | [2025 reference design](https://github.com/mitre-cyber-academy/2025-ectf-insecure-example) |
-| eCTF 2026 | Texas Instruments MSPM0L2228 (Arm Cortex-M0+) | **Confirm the exact board in that year's rules.** The reference design proves only the microcontroller. TI's evaluation board for the chip is the LP-MSPM0L2228 LaunchPad, but this course could not confirm from a primary source that it is the board the competition uses | [2026 reference design](https://github.com/ectfmitre/2026-ectf-insecure-example) |
+| eCTF 2026 | Texas Instruments MSPM0L2228 (Arm Cortex-M0+) | **MSP-LITO-L2228**, a custom board that TI designed and donated for the competition. It is **not sold commercially**. The 2026 rules describe TI's LP-MSPM0L2228 LaunchPad, which you can buy, as "largely interchangeable". The MSP-LITO board has no debug probe on it: you connect an external TI XDS110 with eight jumper wires. The LaunchPad has an XDS110 on board | [2026 rules: MSPM0L2228 board page](https://rules.ectf.mitre.org/2026/getting_started/mspm0l2228.html), [2026 reference design](https://github.com/ectfmitre/2026-ectf-insecure-example) |
 
 Earlier years used entirely different hardware (AVR, PSoC, Zynq FPGA boards, TI Tiva C) and some years were emulated
 only. The eCTF section covers that history.`,
 
     { t: 'callout', kind: 'decision', title: 'Do not buy competition boards to start learning', md: `**Choice:** learn on an ESP32 and a general Cortex-M board first; buy competition hardware only once you have read that year's official rules.
 
-**Why:** the competition target changes between years, the organisers may supply boards or require a specific revision, and the skills that transfer (reading a datasheet, a debugger, a bus capture, a threat model) are not specific to one chip. A MAX78000FTHR bought today is useful for studying the 2024 and 2025 designs, not for a future season on different silicon.
+**Why:** the competition target changes between years, the organisers may supply boards or require a specific revision, and the skills that transfer (reading a datasheet, a debugger, a bus capture, a threat model) are not specific to one chip. A MAX78000FTHR bought today is useful for studying the 2024 and 2025 designs, not for a future season on different silicon. The 2026 board (MSP-LITO-L2228) cannot be bought at all; the board you can buy for studying the 2026 design is TI's LP-MSPM0L2228 LaunchPad, which the 2026 rules call "largely interchangeable" and for which MITRE publishes a separate bootloader image.
 
 **When the other choice is right:** if you are on a team for a specific year, or you want to reproduce a past year's reference design exactly, get that year's board, and check the rules site for that year before paying.` },
 

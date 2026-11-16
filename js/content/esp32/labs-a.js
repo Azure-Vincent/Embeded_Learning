@@ -1,5 +1,7 @@
-// ESP32 projects 1-5 (guided laboratories). Firmware targets ESP-IDF v6.1 and is marked `reviewed`:
-// it was written against the ESP-IDF documentation and headers and was NOT compiled or run on a board here.
+// ESP32 projects 1-5 (guided laboratories). Firmware targets ESP-IDF v6.1.
+// Complete programs are marked `idf-built`: tools/idf-check compiled them for the esp32 target (0 warnings).
+// Fragments are marked `idf-checked`: spliced into their parent program and compiled, and every call checked
+// against the v6.1 headers. Nothing here was run on a board.
 
 /* ---------- small schematic-drawing helpers (inline SVG strings) ---------- */
 const sch = {
@@ -63,7 +65,7 @@ const idfRef = (path, title, note) => ({ title, url: `https://github.com/espress
 
 const PORTING = `**Other boards.** The pin numbers here are for the original ESP32 DevKit (ESP32-WROOM-32 module). On an ESP32-S3 or ESP32-C3 board the GPIO numbers that are safe differ: the strapping pins, the pins wired to the module's flash, and the USB D+/D− pins are in different places (USB is GPIO20/19 on the S3 and GPIO19/18 on the C3). Open your board's pinout and the *Strapping pins* and *Pin definitions* sections of the chip datasheet, pick a free GPIO that is none of those, and change the \`#define\` at the top of the file. Nothing else in the code depends on the pin number unless this project says so.`;
 
-const CURRENT_NOTE = `Check the datasheet (*DC characteristics* and *Absolute maximum ratings*) for what one GPIO and the whole chip may source or sink. A conservative design keeps GPIO current to a few mA and uses a transistor for anything heavier.`;
+const CURRENT_NOTE = `The ESP32 datasheet (v5.3, Table 5-3 *DC Characteristics*) gives only *typical* drive capability, about 40 mA sourcing and 28 mA sinking with the drive strength at maximum; it gives no recommended per-pin working current. It also has no 5 V-tolerance statement: an input may not go above VDD + 0.3 V. Keeping each GPIO to a few mA and using a transistor for anything heavier is conservative practice, not a datasheet number.`;
 
 const skills = [
   { id: 'esp-pa-idf-project', name: 'Create, build, flash and monitor an ESP-IDF project from the command line', track: 'programming' },
@@ -276,7 +278,7 @@ LED cathode (shorter leg, DevKit GND                 return path
         hints: ['The resistor sees only the voltage that is left after the LED has taken its share.', 'I = (3.3 − 1.9) / 330.'],
         answer: { type: 'number', value: 4.24, tol: 0.15, unit: 'mA' },
         solution: `(3.3 − 1.9) V / 330 Ω = 1.4 / 330 ≈ **4.2 mA**. The resistor dissipates 1.4 V × 4.2 mA ≈ 6 mW, far below a ¼ W rating, so any through-hole resistor will do.` },
-      { t: 'callout', kind: 'decision', md: `**Why 330 Ω and not 100 Ω or 1 kΩ?** 100 Ω gives about 14 mA: bright, but it uses a large share of what one pin should supply and leaves nothing for other pins. 1 kΩ gives about 1.4 mA: fine in a dim room, hard to see in daylight. 330 Ω is a standard E12 value in the middle. In a product you would also choose by battery life.` },
+      { t: 'callout', kind: 'decision', md: `**Why 330 Ω and not 100 Ω or 1 kΩ?** 100 Ω gives about 14 mA: bright, but several times what an indicator needs, and every milliamp comes out of the same regulator and the same chip-wide budget as your other pins. 1 kΩ gives about 1.4 mA: fine in a dim room, hard to see in daylight. 330 Ω is a standard E12 value in the middle. In a product you would also choose by battery life.` },
     ] },
     { title: 'Create the project and prove the round trip', blocks: [
       `Before any hardware is involved, prove that you can build, flash and see output. If a later step fails you will then know it is not the toolchain.
@@ -290,11 +292,11 @@ p1_led/
     CMakeLists.txt
     main.c
 \`\`\``,
-      { t: 'code', lang: 'cmake', status: 'reviewed', code: P1_CMAKE_TOP, caption: 'Project-level CMakeLists.txt',
+      { t: 'code', lang: 'cmake', status: 'idf-built', code: P1_CMAKE_TOP, caption: 'Project-level CMakeLists.txt',
         explain: [{ lines: '3', md: 'Pulls in the ESP-IDF build system. `IDF_PATH` is set by the environment that the installer activates.' }, { lines: '4', md: 'Names the project; the firmware image will be `build/p1_led.bin`.' }] },
-      { t: 'code', lang: 'cmake', status: 'reviewed', code: P1_CMAKE_MAIN, caption: 'main/CMakeLists.txt',
-        explain: [{ lines: '2-3', md: 'Registers one component called `main` with one source file. With no `REQUIRES` line, the `main` component may use every other ESP-IDF component. If you later add `REQUIRES`, you must list each one you include from, for example `esp_driver_gpio`.' }] },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P1_HELLO, caption: 'main/main.c, first version: no hardware yet',
+      { t: 'code', lang: 'cmake', status: 'idf-built', code: P1_CMAKE_MAIN, caption: 'main/CMakeLists.txt',
+        explain: [{ lines: '2-3', md: 'Registers one component called `main` with one source file. With no `REQUIRES` or `PRIV_REQUIRES` line, the `main` component may use every component in the build. ESP-IDF\'s own v6.1 examples add `idf_build_set_property(MINIMAL_BUILD ON)` to the project-level file to shorten the build; with that line `main` sees only the components it names, so you would add `PRIV_REQUIRES esp_driver_gpio` here for `driver/gpio.h` (and `esp_driver_ledc`, `esp_adc`, `esp_driver_i2c`, `esp_timer` in the later projects).' }] },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P1_HELLO, caption: 'main/main.c, first version: no hardware yet',
         explain: [{ lines: '8', md: '`app_main` is not the reset vector. The ROM, the second-stage bootloader and the ESP-IDF startup code run first, start FreeRTOS, and call `app_main` from a task called `main`.' }, { lines: '13', md: '`vTaskDelay` blocks this task and lets the scheduler run others, including the idle task.' }] },
       `Then, from the project directory:
 
@@ -322,12 +324,12 @@ Now move the lead to GPIO18. The LED should be off (or flicker briefly at reset)
     { title: 'Configure the pin and drive it high', blocks: [
       { t: 'predict', q: 'The code below configures GPIO18 as an output and then prints the pin configuration **before** writing a level. Is the LED on or off at the moment of the print?',
         choices: [
-          { t: 'Off: the output register bit for the pin is 0 until something sets it', ok: true, why: 'Enabling the output driver connects the pin to whatever the output register says, and that bit is 0 after reset. The pin goes from floating to actively driven low.' },
-          { t: 'On: enabling an output drives it high by default', why: 'Output enable only turns the pad driver on. Which level it drives comes from a separate register bit, and nothing has written that bit yet.' },
-          { t: 'Undefined: it floats until gpio_set_level is called', why: 'It floated before gpio_config. Once the output is enabled, one of the two pin transistors is always on, so the level is defined.' },
+          { t: 'Off: the pin is now driven, and the output register bit is still 0', ok: true, why: 'Enabling the output driver connects the pin to whatever the output register says, and that bit is 0 after reset. The pin goes from floating to actively driven low.' },
+          { t: 'On: enabling an output driver makes the pin go high until told otherwise', why: 'Output enable only turns the pad driver on. Which level it drives comes from a separate register bit, and nothing has written that bit yet.' },
+          { t: 'Undefined: the pin keeps floating until `gpio_set_level` is first called', why: 'It floated before gpio_config. Once the output is enabled, one of the two pin transistors is always on, so the level is defined.' },
         ],
         reveal: 'This matters in real designs: between reset and your `gpio_config` call the pin floats, and between `gpio_config` and your first write it is low. If the load must never see a wrong level (a motor driver, a relay), you add an external pull resistor for the floating window and you write the level register *before* enabling the output.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P1_STEADY, caption: 'main/main.c, second version: steady on' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P1_STEADY, caption: 'main/main.c, second version: steady on' },
       `Build, flash and monitor.
 
 **You should see** the LED on, steadily, and in the monitor a block of text about IO 18 printed by \`gpio_dump_io_configuration\`: pull-up and pull-down disabled, output enabled, input disabled, and a function-select line saying the pad is in GPIO mode. The exact wording depends on the IDF version.
@@ -364,10 +366,10 @@ The fix is to block instead of burning cycles: \`vTaskDelay()\` puts the task in
         solution: `The read is wrong, and for a mechanical reason: \`gpio_get_level\` reads the input register, and the pad's **input buffer is disabled** in \`GPIO_MODE_OUTPUT\`, so the register bit stays 0. Change the mode to \`GPIO_MODE_INPUT_OUTPUT\`. The pad then drives the pin and also samples it, so you read the real pin level.
 
 That is more useful than reading back the output register: if the pin is shorted to ground, the output register still says 1 but the input register says 0.` },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P1_FINAL, caption: 'main/main.c, complete blink with read-back' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P1_FINAL, caption: 'main/main.c, complete blink with read-back' },
       `**You should see** \`wrote 1, pin reads 1\` and \`wrote 0, pin reads 0\` alternating.
 
-Now a deliberate fault: with the program running, briefly connect GPIO18 to GND **through the 100 Ω resistor** (not a bare wire). Predict the log line first. With the LED path and a 100 Ω path to ground in parallel, the pin is pulled down somewhat while high; whether it reads 0 depends on the pin's output resistance and the input threshold. Record what you see and explain it using the thresholds in the datasheet's DC characteristics table.`,
+Now a deliberate fault: with the program running, briefly connect GPIO18 to GND **through the 100 Ω resistor** (not a bare wire). Touch it for a second only: up to 3.3 V / 100 Ω = 33 mA can flow, which is inside the datasheet's *typical* source capability but far more than you would design for. Predict the log line first. With the LED path and a 100 Ω path to ground in parallel, the pin is pulled down somewhat while high; whether it reads 0 depends on the pin's output resistance and the input thresholds. Measure the pin voltage during the fault and compare it with the thresholds in the datasheet's Table 5-3: a level above 0.75 × VDD (about 2.5 V) is guaranteed to read 1, a level below 0.25 × VDD (about 0.8 V) is guaranteed to read 0, and in between the datasheet promises nothing.`,
     ] },
     { title: 'Go underneath the driver: write the registers yourself', blocks: [
       `The driver's \`gpio_set_level\` ends in a single register write. Do that write yourself.
@@ -375,12 +377,12 @@ Now a deliberate fault: with the program running, briefly connect GPIO18 to GND 
 The GPIO peripheral has three registers for the output latch of pins 0–31: \`GPIO_OUT_REG\` (the latch itself), \`GPIO_OUT_W1TS_REG\` (write 1 to set) and \`GPIO_OUT_W1TC_REG\` (write 1 to clear). Writing a 1 bit to W1TS sets that bit of the latch and leaves every other bit alone; 0 bits do nothing.`,
       { t: 'predict', q: 'Why does the hardware provide separate set and clear registers when `GPIO_OUT_REG |= BIT(18)` would also set the bit?',
         choices: [
-          { t: 'Because `|=` is a read, a modify and a write, and an interrupt or another core can change the register between the read and the write', ok: true, why: 'The read-modify-write sequence is not atomic. If an ISR or the other core changes a different pin in between, your write puts the old value back and that change is lost. A single write to W1TS cannot lose anything.' },
-          { t: 'Because the output register is read-only', why: 'It is readable and writable. The problem with writing it is what happens to the other 31 bits when two pieces of code do so at once.' },
-          { t: 'Because set/clear writes are faster for the LED', why: 'An LED cannot tell a few nanoseconds apart. The reason is correctness when several contexts share one register.' },
+          { t: 'Because `|=` reads, modifies and writes back, and another context can interleave', ok: true, why: 'The read-modify-write sequence is not atomic. If an ISR or the other core changes a different pin in between, your write puts the old value back and that change is lost. A single write to W1TS cannot lose anything.' },
+          { t: 'Because the output register itself is read-only and can be changed only through them', why: 'It is readable and writable. The problem with writing it is what happens to the other 31 bits when two pieces of code do so at once.' },
+          { t: 'Because one write is faster than three steps, and LEDs need precise edge timing', why: 'An LED cannot tell a few nanoseconds apart. The reason is correctness when several contexts share one register.' },
         ],
         reveal: 'This lost-update race is the same one you will meet with shared variables in the RTOS section. Hardware designers remove it for GPIO by making "set" and "clear" single write operations.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P1_REG, caption: 'main/main.c, register-level variant (ESP32, ESP32-S3 and ESP32-C3 all have these three registers for GPIO0–31)' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P1_REG, caption: 'main/main.c, register-level variant (ESP32, ESP32-S3 and ESP32-C3 all have these three registers for GPIO0–31)' },
       `**You should see** the same blink, and \`GPIO_OUT = 0x00040000\` alternating with \`0x00000000\` (other bits may be set if other code drives pins). \`0x00040000\` is bit 18.
 
 Then delete the \`gpio_config\` call, rebuild and flash. **You should see** the printed register value still alternate while the LED stays dark. The latch changes, but nothing connects it to the pad: output enable is off. This is the experiment that shows what the driver call was for.`,
@@ -393,12 +395,12 @@ Then delete the \`gpio_config\` call, rebuild and flash. **You should see** the 
 It is chosen when a pin can sink more than it can source (true of some chips; check the datasheet), when the pin is open-drain, or when the LED runs from a different rail than the logic. In firmware, hide the polarity behind one function such as \`led_set(bool on)\` so the rest of the code never needs to know.` },
       { t: 'exercise', prompt: `**Debugging exercise D.** Someone moves the LED to the pin labelled \`D34\` because it was closer, and changes \`LED_GPIO\` to \`GPIO_NUM_34\`. The program builds. What happens at run time on an original ESP32, and where would you have found this out before wiring?`,
         hints: ['Look at the list of pins to avoid in the background section.'],
-        solution: `GPIO34–39 on the original ESP32 are **input-only**: the pads have no output driver. \`gpio_config\` reports an error for an output mode on these pins (and \`ESP_ERROR_CHECK\` then aborts and reboots, so you would see a reboot loop with an error line naming the GPIO). The LED never lights. The place to check is the pin table in the datasheet or the ESP-IDF GPIO documentation for your chip, before choosing a pin.` },
+        solution: `GPIO34–39 on the original ESP32 are **input-only**: the pads have no output driver. \`gpio_config\` refuses an output mode on these pins: in ESP-IDF v6.1 it logs \`gpio: GPIO can only be used as input mode\` and returns \`ESP_ERR_INVALID_ARG\` (\`ESP_ERROR_CHECK\` then aborts and reboots, so you would see a reboot loop with that line in it). The LED never lights. The place to check is the pin table in the datasheet or the ESP-IDF GPIO documentation for your chip, before choosing a pin.` },
     ] },
   ],
   walkthrough: [
     `Follow one call from C to copper, using the complete program from step 6.`,
-    { t: 'code', lang: 'c', status: 'reviewed', code: P1_FINAL, caption: 'The final program again, annotated',
+    { t: 'code', lang: 'c', status: 'idf-built', code: P1_FINAL, caption: 'The final program again, annotated',
       explain: [
         { lines: at(P1_FINAL, '.pin_bit_mask'), md: '`pin_bit_mask` is a 64-bit mask, one bit per GPIO number, so one call can configure several pins. `1ULL << 18` is bit 18. Writing `LED_GPIO` here instead of the shift is a classic bug: 18 is binary 10010, which selects GPIO1 and GPIO4.' },
         { lines: at(P1_FINAL, '.mode'), md: '`GPIO_MODE_INPUT_OUTPUT` makes the driver set the pin\'s bit in the output-enable register (through `GPIO_ENABLE_W1TS_REG`) and set the input-enable bit in the pad\'s IO_MUX register. Push-pull is the default; open-drain is a separate mode that sets the pad-driver bit in the pin\'s `GPIO_PINn_REG`.' },
@@ -433,7 +435,7 @@ It is chosen when a pin can sink more than it can source (true of some chips; ch
     { symptom: 'Monitor shows unreadable characters', cause: 'Baud rate mismatch between the monitor and the console UART, or a board with a non-default crystal.', fix: 'Use `idf.py monitor` (it reads the baud rate from the project configuration). If only the very first ROM lines are garbled, the crystal frequency setting in menuconfig does not match the board.' },
     { symptom: 'LED never lights, log looks right', cause: 'LED reversed, wrong breadboard row, or the jumper is on a different DevKit pin than GPIO18.', fix: 'Repeat the step 3 test with the lead on 3V3. Then measure GPIO18 to GND: if it toggles 0/3.3 V the fault is after the pin; if not, you are on the wrong pin.' },
     { symptom: 'LED is on but very dim', cause: 'Resistor is 33 kΩ or 330 kΩ instead of 330 Ω (colour bands misread), or the LED is a high-V_f colour (blue, white) with little headroom from 3.3 V.', fix: 'Measure the resistor with the multimeter out of circuit. For blue/white LEDs, recalculate with V_f ≈ 3 V: very little voltage is left for the resistor.' },
-    { symptom: 'Board reboots in a loop; log shows an error naming a GPIO and then `abort()`', cause: '`gpio_config` rejected the pin: input-only pin used as an output, or a pin number that does not exist on this chip.', fix: 'Read the error line; pick a valid output pin for your chip.' },
+    { symptom: 'Board reboots in a loop; log shows `gpio: GPIO can only be used as input mode` or `gpio: GPIO_PIN mask error` and then `abort()`', cause: '`gpio_config` rejected the request: an input-only pin used as an output, or a mask bit for a pin that does not exist on this chip.', fix: 'Read the error line; pick a valid output pin for your chip and check that the mask is `1ULL << pin`.' },
     { symptom: '`task_wdt: Task watchdog got triggered` every few seconds', cause: 'A loop in your task never blocks, so the idle task is starved.', fix: 'Use `vTaskDelay` (or block on a queue) inside every infinite loop.' },
     { symptom: 'Board will not boot or flash once the LED is connected', cause: 'The LED is on a strapping pin (GPIO0, 2, 5, 12 or 15 on the original ESP32) and its load changes the level sampled at reset.', fix: 'Move the LED to a non-strapping pin such as GPIO18.' },
     { symptom: 'Read-back is always 0', cause: 'Pin configured `GPIO_MODE_OUTPUT`, so its input buffer is off.', fix: 'Use `GPIO_MODE_INPUT_OUTPUT` if you need to read the pin.' },
@@ -447,28 +449,28 @@ It is chosen when a pin can sink more than it can source (true of some chips; ch
   quiz: [
     { kind: 'circuit', q: 'A blue LED with V_f ≈ 3.0 V is put in place of the red one, keeping the 330 Ω resistor and a 3.3 V pin. What do you expect?',
       choices: [
-        { t: 'It lights very dimly: only about 0.3 V is left across the resistor, so under 1 mA flows', ok: true, why: '(3.3 − 3.0) / 330 ≈ 0.9 mA, and the real value moves a lot with small changes in V_f or pin voltage. Driving high-V_f LEDs from 3.3 V leaves almost no headroom to control the current.' },
-        { t: 'It is brighter, because blue LEDs are more efficient', why: 'Brightness follows current. Work out the voltage left across the resistor once the LED has taken its forward voltage.' },
-        { t: 'It burns out, because 3.0 V is close to the supply', why: 'A high forward voltage reduces the current; it does not raise it. Damage comes from too much current, and here there is very little.' },
+        { t: 'It lights only dimly, because the 0.3 V left across the resistor drives under 1 mA', ok: true, why: '(3.3 − 3.0) / 330 ≈ 0.9 mA, and the real value moves a lot with small changes in V_f or pin voltage. Driving high-V_f LEDs from 3.3 V leaves almost no headroom to control the current.' },
+        { t: 'It is brighter than the red one, because blue LEDs turn current into light more efficiently', why: 'Brightness follows current. Work out the voltage left across the resistor once the LED has taken its forward voltage.' },
+        { t: 'It burns out, because a 3.0 V drop puts the LED close to the full supply voltage', why: 'A high forward voltage reduces the current; it does not raise it. Damage comes from too much current, and here there is very little.' },
       ] },
     { kind: 'code', q: 'What does this configuration do on an original ESP32?', code: String.raw`gpio_config_t c = { .pin_bit_mask = GPIO_NUM_18, .mode = GPIO_MODE_OUTPUT };
 gpio_config(&c);`,
       choices: [
-        { t: 'It configures GPIO1 and GPIO4 as outputs, because 18 is used as a bit mask (binary 10010)', ok: true, why: 'The field is a mask with one bit per pin. The value 18 has bits 1 and 4 set. GPIO1 is the console TX pin on most DevKits, so the log output may also break.' },
-        { t: 'It configures GPIO18, because the driver accepts either a pin number or a mask', why: 'The driver cannot tell the two apart: 18 is a perfectly valid mask. It does what the bits say.' },
+        { t: 'It makes GPIO1 and GPIO4 outputs, because 18 is read as a bit mask', ok: true, why: 'The field is a mask with one bit per pin. The value 18 is binary 10010, which has bits 1 and 4 set. GPIO1 is the console TX pin on most DevKits, so the log output may also break.' },
+        { t: 'It makes GPIO18 an output, because the driver accepts either a pin number or a mask', why: 'The driver cannot tell the two apart: 18 is a perfectly valid mask. It does what the bits say.' },
         { t: 'It fails to compile, because the types differ', why: 'An enum value converts silently to a 64-bit integer in C. The compiler has no objection, which is what makes this bug common.' },
       ] },
     { kind: 'concept', q: 'You remove `gpio_config()` but keep writing `GPIO_OUT_W1TS_REG`. The register read-back shows bit 18 set, yet the pin measures near 0 V with the LED attached. Why?',
       choices: [
-        { t: 'The output latch changed, but the pad driver is not enabled, so the pin is high-impedance and the LED path pulls it to ground', ok: true, why: 'The latch, the output enable and the routing are separate. Only the latch was written.' },
-        { t: 'Register writes from application code are ignored without a driver', why: 'The write clearly happened: the read-back shows it. Ask what else lies between that latch bit and the physical pad.' },
-        { t: 'The LED has pulled the pin low because 4 mA is too much for it', why: 'A few mA through a properly enabled output moves the level by a fraction of a volt at most. Here the output stage is not on at all.' },
+        { t: 'The latch bit changed, but the output driver that connects it to the pad was never enabled', ok: true, why: 'The latch, the output enable and the routing are separate, and only the latch was written. The pin is therefore high-impedance, and the LED and resistor pull it to ground.' },
+        { t: 'Register writes from application code are ignored until a driver claims the peripheral', why: 'The write clearly happened: the read-back shows it. Ask what else lies between that latch bit and the physical pad.' },
+        { t: 'The LED load has dragged the pin low, because 4 mA is more than the pad can source', why: 'A few mA through a properly enabled output moves the level by a fraction of a volt at most. Here the output stage is not on at all.' },
       ] },
     { kind: 'concept', q: 'What would happen if you replaced `vTaskDelay(pdMS_TO_TICKS(500))` with `vTaskDelay(pdMS_TO_TICKS(5))` on a default configuration with a 100 Hz tick?',
       choices: [
-        { t: 'The macro yields 0 ticks, so the task never blocks: the LED toggles as fast as the loop runs and the watchdog eventually complains', ok: true, why: 'One tick is 10 ms. 5 ms rounds down to 0 ticks, and a delay of 0 does not block. Delays shorter than a tick need a hardware timer or a higher tick rate.' },
-        { t: 'The LED blinks with a 10 ms period, because delays round up to one tick', why: 'The conversion is an integer division, and integer division rounds towards zero.' },
-        { t: 'The build fails because 5 ms is below the tick period', why: 'The macro is plain arithmetic on constants. Nothing checks it against the tick rate at build time.' },
+        { t: 'The delay becomes 0 ticks, so the loop never blocks and the watchdog eventually fires', ok: true, why: 'One tick is 10 ms. 5 ms rounds down to 0 ticks, and a delay of 0 does not block. Delays shorter than a tick need a hardware timer or a higher tick rate.' },
+        { t: 'The LED blinks with a 10 ms half-period, because a delay is rounded up to one whole tick', why: 'The conversion is an integer division, and integer division rounds towards zero.' },
+        { t: 'The build fails, because the macro rejects a delay shorter than the configured tick period', why: 'The macro is plain arithmetic on constants. Nothing checks it against the tick rate at build time.' },
       ] },
     { kind: 'circuit', q: 'With the active-high circuit running, you measure 3.25 V on GPIO18 and 1.93 V on the LED anode. What is the LED current?',
       choices: [
@@ -478,9 +480,9 @@ gpio_config(&c);`,
       ] },
     { kind: 'arch', q: 'Two tasks on different cores each control a different pin in GPIO0–31. Task A runs `REG_WRITE(GPIO_OUT_REG, REG_READ(GPIO_OUT_REG) | BIT(4))` while task B runs `gpio_set_level(18, 0)`. What can go wrong?',
       choices: [
-        { t: 'Task A can read the register before B clears bit 18 and write it back afterwards, turning pin 18 on again', ok: true, why: 'A does read-modify-write on the whole latch. If B\'s single clear write lands between A\'s read and write, A restores the stale bit. Using the W1TS register in A removes the race.' },
-        { t: 'Nothing: each task touches a different bit', why: 'They intend to touch different bits, but one of them writes all 32 bits of the latch.' },
-        { t: 'The bus faults, because two cores cannot access one peripheral', why: 'Both cores can access the same peripheral registers; the bus serialises the accesses. The danger is in the order of those accesses.' },
+        { t: 'Task A can write back a stale copy of the whole latch and switch pin 18 on again', ok: true, why: 'A does read-modify-write on the whole latch. If B\'s single clear write lands between A\'s read and write, A restores the stale bit. Using the W1TS register in A removes the race.' },
+        { t: 'Nothing can go wrong, because each task changes only its own bit', why: 'They intend to touch different bits, but one of them writes all 32 bits of the latch.' },
+        { t: 'The bus faults, because two cores may not access one register at once', why: 'Both cores can access the same peripheral registers; the bus serialises the accesses. The danger is in the order of those accesses.' },
       ] },
   ],
 };
@@ -713,7 +715,7 @@ const P2_FIG = sch.open(540, 250, 'Schematic: push-button from GPIO19 to ground 
   + sch.rail(210, 50, '3V3 (inside the chip)') + sch.wire('210,50 210,55') + `<g stroke-dasharray="4 3">` + sch.resV(210, 55, '', 12) + `</g>` + sch.txt(222, 78, 'internal pull-up', 'start', 'font-size="10"') + sch.txt(222, 90, 'enabled in software', 'start', 'font-size="10"')
   + sch.wire('210,105 210,110') + sch.dot(210, 110)
   + sch.wire('162,110 300,110', 'stroke="var(--sig2)"') + sch.dot(300, 110)
-  + sch.wire('300,110 300,115') + sch.sw(300, 115, 'SW1') + sch.wire('300,155 300,200')
+  + sch.sw(300, 110, 'SW1') + `<g stroke-dasharray="4 3">` + sch.resV(300, 150, '', 12) + `</g>` + sch.txt(240, 166, 'R2 1 kΩ', 'start', 'font-size="10"') + sch.txt(240, 178, '(optional;', 'start', 'font-size="10"') + sch.txt(240, 190, 'else a wire)', 'start', 'font-size="10"')
   + sch.wire('300,110 390,110', 'stroke="var(--sig2)" stroke-dasharray="4 3"') + `<g stroke-dasharray="4 3">` + sch.capV(390, 110, 90, 'C1 100 nF') + `</g>` + sch.txt(403, 172, '(optional, step 6)', 'start', 'font-size="10"')
   + sch.wire('162,200 390,200') + sch.dot(300, 200) + sch.gnd(300, 200)
   + sch.close;
@@ -734,7 +736,7 @@ const p2 = {
     'The ESP32 DevKit, breadboard and LED circuit from project 1 (LED and 330 Ω on GPIO18).',
     '1 × 6 mm tactile push-button (4 pins; the two pins on each long side are joined internally).',
     '2 jumper wires.',
-    'Optional, step 6: 1 × 100 nF ceramic capacitor (marked 104) and 1 × 1 kΩ resistor. With the internal pull-up of a few tens of kΩ this gives a time constant of a few milliseconds, the same order as the bounce.',
+    'Optional, step 6: 1 × 100 nF ceramic capacitor (marked 104) and 1 × 1 kΩ resistor. With the internal pull-up (typically 45 kΩ, ESP32 datasheet Table 5-3) this gives a time constant of 45 kΩ × 100 nF = 4.5 ms, the same order as the bounce.',
     'Multimeter. A logic analyser is useful but not required.',
   ],
   software: ['ESP-IDF v6.1 and the project skeleton from project 1 (copy the directory, rename the project to `p2_button`).'],
@@ -743,7 +745,7 @@ const p2 = {
 
 A push-button is two pieces of metal. Pressed, it connects two wires; released, it connects nothing. "Nothing" is the problem: a CMOS input draws almost no current, so an unconnected pin sits at whatever voltage stray charge and nearby signals leave on it. It may read 0, 1, or follow your hand as you wave it past the board.
 
-A **pull-up resistor** fixes the released level: it connects the pin weakly to 3.3 V. The button connects the pin strongly to ground. Released, the pin reads 1. Pressed, it reads 0 and a small current flows through the resistor. This is "active-low" wiring, and it is the usual choice because the ESP32 has an internal pull-up on most pins that you can enable in software (check the datasheet's DC characteristics for its value; it is tens of kΩ, weak but enough for a short wire).
+A **pull-up resistor** fixes the released level: it connects the pin weakly to 3.3 V. The button connects the pin strongly to ground. Released, the pin reads 1. Pressed, it reads 0 and a small current flows through the resistor. This is "active-low" wiring, and it is the usual choice because the ESP32 has an internal pull-up on most pins that you can enable in software (typically 45 kΩ according to Table 5-3 of the ESP32 datasheet, with a wide tolerance: weak, but enough for a short wire).
 
 ## Contacts bounce
 
@@ -774,9 +776,10 @@ Tactile switch: place it across the centre gap of the breadboard. The pins on th
 side of the gap as each other are the two contacts; use one pin from each side of the gap.
 Check with the multimeter's continuity range: no beep released, beep when pressed.
 
-Optional (step 6):  C1 100 nF from GPIO19 to GND, and R2 1 kohm between SW1 and GND.
+Optional (step 6):  C1 100 nF from GPIO19 to GND, and R2 1 kohm between SW1 side B and GND
+                    (in place of the direct wire in the second row of the table).
 ` },
-    { t: 'figure', svg: P2_FIG, caption: 'Released: the internal pull-up holds GPIO19 at 3.3 V. Pressed: SW1 pulls it to ground. C1 is the optional hardware filter.' },
+    { t: 'figure', svg: P2_FIG, caption: 'Released: the internal pull-up holds GPIO19 at 3.3 V. Pressed: SW1 pulls it to ground. C1 and R2 (dashed) are the optional hardware filter of step 6; without R2, SW1 goes straight to GND.' },
     { t: 'widget', name: 'breadboard', props: { challenge: 'button-pullup' }, caption: 'Build the button and pull-up in simulation first (here with an external resistor, so you can see it).' },
     { t: 'widget', name: 'gpio-electrical', caption: 'Set the pin to input and switch between floating, pull-up and pull-down to see what defines the level.' },
   ],
@@ -787,12 +790,12 @@ Optional (step 6):  C1 100 nF from GPIO19 to GND, and R2 1 kohm between SW1 and 
         choices: [
           { t: '1', ok: true, why: 'Released, the only connection to the pin is the pull-up to 3.3 V, so it reads high. Pressed reads 0. The logic is inverted relative to "pressed = true", and your code must say so in one clear place.' },
           { t: '0', why: 'The pin would be low only if something connected it to ground. Released, the switch is an open circuit.' },
-          { t: 'It varies', why: 'It would vary with no pull resistor at all. Here the pull-up provides a defined path to 3.3 V.' },
+          { t: 'It varies from one read to the next', why: 'It would vary with no pull resistor at all. Here the pull-up provides a defined path to 3.3 V.' },
         ],
         reveal: 'Active-low inputs are normal. Name variables for meaning (`pressed`) rather than for voltage (`level`) as soon as you leave the driver layer.' },
     ] },
     { title: 'Read the raw level', blocks: [
-      { t: 'code', lang: 'c', status: 'reviewed', code: P2_RAW, caption: 'main/main.c, version 1: log every change seen at a 10 ms poll' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P2_RAW, caption: 'main/main.c, version 1: log every change seen at a 10 ms poll' },
       `Flash and monitor. **You should see** \`level 1\` at start, \`level 0\` when you press, \`level 1\` when you release. Press 20 times and check for 40 lines. Most buttons give exactly 40 here, because a 10 ms poll rarely lands inside a bounce burst. Do not conclude that the button is clean; the next step looks properly.
 
 **Measure.** DC volts from GPIO19 to GND: about 3.3 V released, about 0 V pressed.
@@ -815,7 +818,7 @@ Note the side effects: GPIO0 is a strapping pin and GPIO1 is the console's TX pi
       `To see bounce you need something faster than a 10 ms poll. Let the hardware watch the pin: enable an interrupt on **any edge** and count how many times it fires.`,
       { t: 'predict', q: 'You press and release the button once, firmly. An ideal switch produces exactly 2 edges. What do you expect the counter to show for a real one?',
         reveal: `Typically more than 2, and a different number each time: 2, 4, 7, 3… Some presses are clean. Small tactile switches often bounce for well under a millisecond, larger or older switches for longer. The number also depends on how you press. Record ten presses in your notebook; that record is your evidence for choosing a debounce time.` },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P2_COUNT, caption: 'main/main.c, version 2: count edges in an ISR' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P2_COUNT, caption: 'main/main.c, version 2: count edges in an ISR' },
       `**You should see**, every half second in which something happened, a line such as \`+5 edges (total 23)\`. Press slowly, quickly, and at an angle. If you never see more than 2 per press-and-release, your switch is unusually clean or the edges are faster than the pin can follow; try a different switch, or tap two bare jumper wires together as a very bouncy "switch".`,
       { t: 'callout', kind: 'note', md: `\`s_edges++\` in the ISR and the read in the task are safe here only because the task never writes the variable and a 32-bit read is a single instruction on this CPU. The moment both sides modify a variable you need a critical section or a queue. \`volatile\` tells the compiler the value can change behind its back; it does **not** make an operation atomic.` },
     ] },
@@ -824,7 +827,7 @@ Note the side effects: GPIO0 is a strapping pin and GPIO1 is the console's TX pi
 
 Try to write the filter yourself first. You need three variables: the accepted state, the candidate state and a counter.`,
       { t: 'widget', name: 'state-machine', props: { machine: 'debounce' }, caption: 'Step a debounce state machine by hand before reading the C.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P2_POLL, caption: 'main/main.c, version 3: polling with a counting filter' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P2_POLL, caption: 'main/main.c, version 3: polling with a counting filter' },
       `**You should see** exactly one \`press N\` line and one LED toggle per press, for 50 presses in a row. If you get that, compute the response time: a press is accepted between 30 and 40 ms after contact. Nobody can feel that.`,
       { t: 'exercise', prompt: 'With `POLL_MS = 10` and `STABLE_POLLS = 3`, a noise spike pulls the line low for 12 ms. Can it be accepted as a press? Answer yes or no and explain.',
         hints: ['How many consecutive polls can fall inside a 12 ms window?'],
@@ -837,12 +840,12 @@ Try to write the filter yourself first. You need three variables: the accepted s
 The plan: the ISR puts a timestamp in a queue. A task blocks on the queue with no timeout. When the first edge arrives it keeps receiving with a 30 ms timeout; each bounce edge restarts that wait. When the receive finally times out, the line has been quiet for 30 ms, and the task reads the settled level.`,
       { t: 'predict', q: 'The ISR sends to a queue of 32 entries. Suppose a faulty switch produces 100 edges in 2 ms. What happens to edges 33 to 100?',
         choices: [
-          { t: '`xQueueSendFromISR` returns failure and those timestamps are dropped; the design still works because the task only needs to know that edges happened', ok: true, why: 'A full queue cannot block an ISR, so the call fails immediately. The task drains the queue, waits for quiet and reads the level, which is the only thing that decides the state.' },
-          { t: 'The ISR blocks until the task makes room', why: 'An ISR cannot block: there is no task context to suspend. That is why the FromISR variants exist and return at once.' },
-          { t: 'The queue grows to hold them', why: 'A FreeRTOS queue has the fixed length given at creation. Its storage is allocated once.' },
+          { t: 'The send fails at once and those timestamps are dropped; the design tolerates it', ok: true, why: 'A full queue cannot block an ISR, so the call fails immediately. The task drains the queue, waits for quiet and reads the level, which is the only thing that decides the state.' },
+          { t: 'The ISR waits inside `xQueueSendFromISR` until the task has made room in the queue', why: 'An ISR cannot block: there is no task context to suspend. That is why the FromISR variants exist and return at once.' },
+          { t: 'The queue grows to hold them, because FreeRTOS allocates extra storage on demand', why: 'A FreeRTOS queue has the fixed length given at creation. Its storage is allocated once.' },
         ],
         reveal: 'Design ISR-to-task paths so that losing an event under overload degrades gracefully. Here the level read after the quiet period is the source of truth and the queue is only a wake-up signal.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P2_FINAL, caption: 'main/main.c, version 4: interrupt, queue and wait-for-quiet debounce' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P2_FINAL, caption: 'main/main.c, version 4: interrupt, queue and wait-for-quiet debounce' },
       `**You should see** lines such as \`pressed: 4 edge(s) over 380 us, presses=7\` and \`released: 2 edge(s) over 95 us, presses=7\`. The edge count and duration are your switch's bounce, now measured rather than assumed. One LED toggle per press, 50 presses in a row.
 
 Compare with the polling version: between presses this task uses no CPU time at all.`,
@@ -854,15 +857,15 @@ Compare with the polling version: between presses this task uses no CPU time at 
     xQueueSendFromISR(s_edge_q, &t_us, NULL);
 }`,
         hints: ['What does a log call need to do if another task is in the middle of printing?', 'What can an ISR not do when a lock is held by someone else?'],
-        solution: `\`ESP_LOGI\` formats text and writes it to the console through the C library's stdio, which protects the output stream with a lock. Taking a lock may need to block, and an ISR cannot block: there is no task to suspend. ESP-IDF detects the attempt and aborts. Formatting also takes far too long and too much stack for interrupt context.
+        solution: `\`ESP_LOGI\` formats text and writes it to the console through the C library's stdio, which protects the output stream with a lock. Taking a lock may need to block, and an ISR cannot block: there is no task to suspend. ESP-IDF's C-library lock code (\`components/esp_libc/src/locks.c\` in v6.1) calls \`abort()\` when that lock is requested from interrupt context. Formatting also takes far too long and too much stack for interrupt context.
 
 Debug an ISR by recording into a variable or queue and printing from a task (as the final program does with the timestamps), by toggling a spare GPIO and watching it on a logic analyser, or with \`ESP_EARLY_LOGI\`/\`ESP_DRAM_LOGE\`, which exist for this purpose (read their documentation for the restrictions).` },
     ] },
     { title: 'Optional: filter in hardware with an RC', blocks: [
       { t: 'widget', name: 'rc-circuit', props: { r: 47000, c: 1e-7, mode: 'debounce' }, caption: 'A bouncing switch through an RC filter. Change R and C and watch when the filtered line crosses the logic threshold.' },
-      `Add C1 (100 nF) from GPIO19 to GND. On release the capacitor charges through the pull-up: with a pull-up of a few tens of kΩ the time constant τ = R·C is a few milliseconds, so short bounces no longer reach the logic threshold.
+      `Add C1 (100 nF) from GPIO19 to GND. On release the capacitor charges through the pull-up: with the typical 45 kΩ pull-up the time constant is τ = R·C = 45 kΩ × 100 nF = 4.5 ms, so short bounces no longer reach the logic threshold.
 
-On press, the switch shorts the charged capacitor directly. That works, but the discharge current is limited only by the contact resistance. Adding R2 (1 kΩ) in series with the switch limits it and gives a controlled 0.1 ms fall. Check that the pressed level is still a solid low: R2 and the pull-up form a divider, and 1 kΩ against tens of kΩ leaves the pin at a few percent of 3.3 V.
+On press, the switch shorts the charged capacitor directly. That works, but the discharge current is limited only by the contact resistance. Adding R2 (1 kΩ) in series with the switch limits it to 3.3 mA and gives a controlled fall with τ = 1 kΩ × 100 nF = 0.1 ms. Check that the pressed level is still a solid low: R2 and the pull-up form a divider, 3.3 V × 1 / (45 + 1) ≈ 72 mV, far below the 0.25 × VDD (0.8 V) that the datasheet guarantees to read as 0.
 
 Re-flash **version 2** (the edge counter). **You should see** the edge counts per press drop, typically to exactly 2.`,
       { t: 'callout', kind: 'warn', md: `An RC filter turns fast edges into slow ramps. A digital input that spends a long time near its threshold can produce several transitions of its own unless it has hysteresis (a Schmitt trigger). Check whether your chip's pins have hysteresis and whether it must be enabled (datasheet, DC characteristics and the IO_MUX chapter). This is why hardware filtering is normally used **together with** software debounce, not instead of it.` },
@@ -877,11 +880,11 @@ Re-flash **version 2** (the edge counter). **You should see** the edge counts pe
 Fixes: keep the poll at one tick or more; or express the stable time in milliseconds using \`esp_timer_get_time()\` instead of counting polls; or raise the tick rate in menuconfig, accepting more scheduler overhead. A guard such as \`_Static_assert(pdMS_TO_TICKS(POLL_MS) > 0, "poll shorter than a tick")\` turns the mistake into a build error.` },
       { t: 'exercise', prompt: `**Debugging exercise D.** In version 4, someone moves the two ISR-installation lines to the top of \`app_main\`, before \`xQueueCreate\`. The board usually works, but occasionally crashes at power-up when the button happens to be held. Why?`,
         hints: ['What is the value of `s_edge_q` before `xQueueCreate` returns?', 'When can the first interrupt fire?'],
-        solution: `An interrupt can fire the instant the handler is added. If an edge arrives before \`xQueueCreate\` has run, the ISR calls \`xQueueSendFromISR\` with a NULL handle and the kernel dereferences it. The rule is general: **create everything an ISR uses before enabling the interrupt**. The final program creates the queue first, then the task, and installs the handler last.` },
+        solution: `An interrupt can fire the instant the handler is added. If an edge arrives before \`xQueueCreate\` has run, the ISR calls \`xQueueSendFromISR\` with a NULL handle; FreeRTOS asserts on it (or, with assertions disabled, dereferences it) and the chip aborts. The rule is general: **create everything an ISR uses before enabling the interrupt**. The final program creates the queue first, then the task, and installs the handler last.` },
     ] },
   ],
   walkthrough: [
-    { t: 'code', lang: 'c', status: 'reviewed', code: P2_FINAL, caption: 'Version 4, annotated',
+    { t: 'code', lang: 'c', status: 'idf-built', code: P2_FINAL, caption: 'Version 4, annotated',
       explain: [
         { lines: at(P2_FINAL, 'static void btn_isr', /^}$/), md: 'The handler runs in interrupt context, called by the GPIO driver\'s shared ISR. That shared ISR reads the GPIO interrupt status register, finds which pins are pending, clears their status bits through the write-1-to-clear register and calls each registered handler.' },
         { lines: at(P2_FINAL, 'esp_timer_get_time'), md: '`esp_timer_get_time()` returns microseconds since boot from a 64-bit hardware timer. It is safe to call from an ISR.' },
@@ -901,7 +904,7 @@ Fixes: keep the poll at one tick or more; or express the stable time in millisec
     `| Check | How | You should see |
 |---|---|---|
 | Idle level | DC volts GPIO19 to GND, released | about 3.3 V |
-| Pressed level | Same, button held | under 0.1 V (a few tens of mV more with R2 fitted) |
+| Pressed level | Same, button held | close to 0 V (about 70 mV with R2 fitted) |
 | Pull-up current | Multimeter on a mA/µA range **in place of** the button (probes on GPIO19 and GND) | some tens of µA; from it, compute the pull-up resistance as 3.3 V / I and compare with the datasheet |
 | Bounce exists | Version 2, ten presses | at least some presses reporting more than 2 edges |
 | Polling debounce | Version 3, 50 presses | \`press 50\` on the 50th; LED toggles each time |
@@ -931,27 +934,27 @@ Before coding, draw the state machine on paper with every state, event and timeo
   quiz: [
     { kind: 'circuit', q: 'The button is rewired from GPIO19 to **3V3** instead of to GND, with the internal pull-up still enabled. What does the firmware see?',
       choices: [
-        { t: 'The pin reads 1 whether the button is pressed or not', ok: true, why: 'Released, the pull-up holds it high. Pressed, the switch also connects it to 3.3 V. There is no state in which anything pulls it low. For a button to 3V3 you need a pull-down.' },
-        { t: 'The logic is simply inverted: pressed reads 1, released reads 0', why: 'For released to read 0, something must pull the pin to ground when the switch is open. With a pull-up, nothing does.' },
-        { t: 'Pressing it shorts the supply', why: 'A short needs a path from 3.3 V to ground. Pressing connects 3.3 V to a pin that is already pulled to 3.3 V; no current flows.' },
+        { t: 'The pin reads 1 whether or not the button is pressed', ok: true, why: 'Released, the pull-up holds it high. Pressed, the switch also connects it to 3.3 V. There is no state in which anything pulls it low. For a button to 3V3 you need a pull-down.' },
+        { t: 'The logic is simply inverted: pressed reads 1 and released reads 0', why: 'For released to read 0, something must pull the pin to ground when the switch is open. With a pull-up, nothing does.' },
+        { t: 'Pressing the button shorts the 3.3 V supply', why: 'A short needs a path from 3.3 V to ground. Pressing connects 3.3 V to a pin that is already pulled to 3.3 V; no current flows.' },
       ] },
     { kind: 'code', q: 'In the polling filter, `STABLE_POLLS` is 3 and the poll period is 10 ms. A user reports that very quick taps are sometimes missed. Which change addresses that without letting bounce through, given that the measured bounce never exceeds 2 ms?',
       choices: [
-        { t: 'Reduce `STABLE_POLLS` to 2', ok: true, why: 'Two equal samples 10 ms apart still span far more than a 2 ms bounce burst, and the minimum press length that can be accepted drops from just over 30 ms to just over 20 ms.' },
+        { t: 'Reduce `STABLE_POLLS` to 2 and keep the 10 ms poll period', ok: true, why: 'The filter then needs three agreeing samples spanning 20 ms, still far longer than a 2 ms bounce burst, and the shortest press that can be accepted drops from just over 30 ms to just over 20 ms.' },
         { t: 'Reduce the poll period to 1 ms and keep `STABLE_POLLS` at 3', why: 'With a 10 ms tick, a 1 ms delay becomes 0 ticks: the loop no longer blocks and three samples span microseconds, which is shorter than a bounce.' },
-        { t: 'Increase `STABLE_POLLS` to 6', why: 'That makes the filter demand a longer steady press, so quick taps are rejected more often, not less.' },
+        { t: 'Increase `STABLE_POLLS` to 6 and keep the 10 ms poll period', why: 'That makes the filter demand a longer steady press, so quick taps are rejected more often, not less.' },
       ] },
     { kind: 'concept', q: 'Why does the ISR send to a queue instead of toggling the LED and incrementing `presses` itself?',
       choices: [
-        { t: 'Because the ISR fires on every bounce edge and cannot wait to see whether the line settles; waiting is a task\'s job', ok: true, why: 'Debouncing needs time to pass, and an ISR must return quickly. The task can block on the queue with a timeout, which is the "wait for quiet" operation.' },
-        { t: 'Because `gpio_set_level` is forbidden in an ISR', why: 'It is a single register write and is allowed in interrupt context. The reason lies in what debouncing requires, not in that call.' },
-        { t: 'Because ISRs cannot access global variables', why: 'They can, and the edge-counting version does. Sharing needs care, but it is not prohibited.' },
+        { t: 'Because deciding that the line has settled takes time, and an ISR must return at once', ok: true, why: 'The ISR fires on every bounce edge and cannot wait to see whether the line settles. The task can block on the queue with a timeout, which is the "wait for quiet" operation.' },
+        { t: 'Because `gpio_set_level` is one of the calls that are forbidden inside an ISR', why: 'It is a single register write and is allowed in interrupt context. The reason lies in what debouncing requires, not in that call.' },
+        { t: 'Because an ISR is not allowed to read or write global variables such as `presses`', why: 'They can, and the edge-counting version does. Sharing needs care, but it is not prohibited.' },
       ] },
     { kind: 'concept', q: 'What would happen if `portYIELD_FROM_ISR()` were removed from the handler?',
       choices: [
-        { t: 'It still works, but the button task may start up to one tick later, when the scheduler next runs', ok: true, why: 'The queue send makes the task ready. Without the yield request, the interrupted task resumes and the switch happens at the next tick interrupt or blocking call.' },
-        { t: 'The queue send fails', why: 'The item is copied into the queue before the yield is considered. The yield affects only when the receiver runs.' },
-        { t: 'The interrupt is never cleared and fires forever', why: 'The GPIO driver clears the interrupt status before calling your handler. Yielding has nothing to do with acknowledging the interrupt.' },
+        { t: 'It still works, but the button task may start up to one tick later', ok: true, why: 'The queue send makes the task ready. Without the yield request, the interrupted task resumes and the switch happens at the next tick interrupt or blocking call.' },
+        { t: 'The queue send fails and the event is lost', why: 'The item is copied into the queue before the yield is considered. The yield affects only when the receiver runs.' },
+        { t: 'The interrupt is never acknowledged, so the handler fires again and again', why: 'The GPIO driver clears the interrupt status before calling your handler. Yielding has nothing to do with acknowledging the interrupt.' },
       ] },
     { kind: 'circuit', q: 'You add a 100 nF capacitor from the input to ground and rely on a 45 kΩ pull-up (a value you measured). Roughly how long after release does the pin take to rise to about 63% of 3.3 V?',
       choices: [
@@ -961,9 +964,9 @@ Before coding, draw the state machine on paper with every state, event and timeo
       ] },
     { kind: 'arch', q: 'A battery sensor wakes once a day or when its button is pressed. Which input design fits, and why?',
       choices: [
-        { t: 'Interrupt-driven, because the CPU can stay asleep until an edge occurs', ok: true, why: 'A polling loop must wake every few milliseconds for ever, which dominates the energy budget of a device that otherwise sleeps all day.' },
-        { t: 'Polling at 10 ms, because it is simpler and equally efficient', why: 'It is simpler, but 8.6 million wake-ups a day to catch a handful of presses is not equally efficient.' },
-        { t: 'Polling at 1 s to save power', why: 'A press shorter than a second would be missed entirely, and the device still wakes 86 400 times a day.' },
+        { t: 'Interrupt-driven, because the CPU can sleep until an edge arrives', ok: true, why: 'A polling loop must wake every few milliseconds for ever, which dominates the energy budget of a device that otherwise sleeps all day.' },
+        { t: 'Polling every 10 ms, because it is simpler and uses about the same energy', why: 'It is simpler, but 8.6 million wake-ups a day to catch a handful of presses is not equally efficient.' },
+        { t: 'Polling once a second, because so few wake-ups cost almost nothing', why: 'A press shorter than a second would be missed entirely, and the device still wakes 86 400 times a day.' },
       ] },
   ],
 };
@@ -1021,6 +1024,7 @@ void app_main(void)
 }`;
 
 const P3_RAMP = String.raw`    /* replaces everything from "uint32_t duty = ..." to the end of app_main */
+    ESP_LOGI(TAG, "ramping 0..%u", (unsigned)LED_DUTY_MAX);
     while (1) {
         for (int pct = 0; pct <= 100; pct++) {
             uint32_t duty = (LED_DUTY_MAX * (uint32_t)pct) / 100U;
@@ -1036,7 +1040,7 @@ const P3_RAMP = String.raw`    /* replaces everything from "uint32_t duty = ..."
         }
     }`;
 
-const P3_FADE = String.raw`    /* replaces the software ramp loop */
+const P3_FADE = String.raw`    /* replaces the software ramp's while (1) loop; keep the ESP_LOGI line above it */
     ESP_ERROR_CHECK(ledc_fade_func_install(0));
     while (1) {
         ESP_ERROR_CHECK(ledc_set_fade_time_and_start(PWM_MODE, LED_CHANNEL, LED_DUTY_MAX, 2000, LEDC_FADE_WAIT_DONE));
@@ -1113,9 +1117,9 @@ const P3_FIG = sch.open(580, 260, 'Schematic: GPIO23 drives the gate of an N-cha
   + sch.dot(240, 130) + sch.wire('240,130 240,150') + sch.resV(240, 150, 'R2 100 kΩ', -12) + sch.wire('240,200 240,210') + sch.dot(240, 210)
   + sch.nmos(262, 130, 'Q1') + sch.wire('304,156 304,210') + sch.dot(304, 210)
   + sch.wire('304,104 304,85') + sch.dot(304, 85) + sch.motor(304, 40, 'M1') + sch.wire('304,85 304,80') + sch.wire('304,40 304,30') + sch.dot(304, 30)
-  + sch.wire('304,85 380,85 380,78') + sch.diode(380, 38, 'up', 'D1') + sch.wire('380,38 380,30') + sch.dot(380, 30)
-  + sch.txt(394, 76, 'flyback', 'start', 'font-size="10"')
-  + sch.wire('304,30 530,30', 'stroke="var(--sig3)"') + sch.dot(430, 30) + sch.capV(430, 30, 180, 'C1 220 µF') + sch.dot(430, 210)
+  + sch.wire('304,85 402,85 402,78') + sch.diode(402, 38, 'up', 'D1') + sch.wire('402,38 402,30') + sch.dot(402, 30)
+  + sch.dot(348, 30) + sch.capV(348, 30, 55, '') + sch.dot(348, 85) + sch.txt(361, 54, 'C2', 'start', 'font-size="10"') + sch.txt(361, 66, '100 n', 'start', 'font-size="10"')
+  + sch.wire('304,30 530,30', 'stroke="var(--sig3)"') + sch.dot(450, 30) + sch.capV(450, 30, 180, 'C1 220 µF') + sch.dot(450, 210)
   + sch.wire('530,30 530,142') + sch.wire('518,142 542,142') + sch.wire('524,150 536,150', 'stroke-width="3"') + sch.wire('518,158 542,158') + sch.wire('524,166 536,166', 'stroke-width="3"') + sch.wire('530,166 530,210')
   + sch.txt(546, 140, '+', 'start') + sch.txt(512, 152, 'BT1', 'end') + sch.txt(512, 165, 'motor supply', 'end', 'font-size="10"')
   + sch.wire('162,210 530,210') + sch.gnd(240, 210) + sch.txt(330, 232, 'common ground: logic GND and motor supply −', 'start', 'font-size="10"')
@@ -1162,7 +1166,7 @@ With an 80 MHz source clock (the APB clock on the original ESP32; other chips an
     { t: 'callout', kind: 'decision', md: `**Which frequency?** *LED:* anything above a few hundred Hz hides flicker from the eye, but cameras and moving eyes still catch it; 1–5 kHz is a common choice and still leaves 13 bits of resolution. *Motor:* below about 20 kHz the windings act as a loudspeaker and the motor whines at the PWM frequency. 20 kHz is just above hearing. Higher still wastes energy: every switching edge spends time with the MOSFET half-on, and those losses grow with frequency.` },
     `## Why a transistor, and why these extra parts
 
-A small motor draws hundreds of milliamps running and often more than an amp stalled or starting. A GPIO supplies a few. So the GPIO only *controls* a switch that carries the motor current. An N-channel MOSFET between the motor and ground (a **low-side switch**) turns on when its gate is a few volts above its source, and the source is at ground, so a 3.3 V pin can drive it directly if the MOSFET is a logic-level type.
+A small motor draws hundreds of milliamps running and often more than an amp stalled or starting. A GPIO should be asked for a few milliamps. So the GPIO only *controls* a switch that carries the motor current. An N-channel MOSFET between the motor and ground (a **low-side switch**) turns on when its gate is a few volts above its source, and the source is at ground, so a 3.3 V pin can drive it directly if the MOSFET is a logic-level type.
 
 - **Flyback diode.** A motor winding is an inductor, and an inductor's current cannot stop instantly. When the MOSFET turns off, the winding raises the drain voltage as high as it must to keep the current flowing, easily tens of volts, which destroys the MOSFET. A diode across the motor, cathode to the positive supply, gives that current a path: it circulates through the diode and decays. With PWM this happens on every cycle.
 - **Gate pull-down.** From reset until your code configures the pin, the GPIO floats. A floating gate can sit at any voltage, so the motor may run at power-up. 100 kΩ to ground holds it off.
@@ -1192,7 +1196,7 @@ DevKit GND                    GND rail
 
 Do NOT connect motor supply + to any DevKit pin.
 ` },
-    { t: 'figure', svg: P3_FIG, caption: 'Low-side MOSFET switch. When Q1 turns off, the motor current continues through D1 instead of forcing the drain voltage up.' },
+    { t: 'figure', svg: P3_FIG, caption: 'Low-side MOSFET switch. D1 is the flyback diode: when Q1 turns off, the motor current continues through D1 instead of forcing the drain voltage up. C2 (100 nF) sits directly across the motor terminals; C1 is the bulk capacitor across the motor supply.' },
     { t: 'widget', name: 'transistor-switch', props: { type: 'nmos', challenge: 'motor' }, caption: 'Build the same stage in simulation. Remove the flyback diode there, not on your bench.' },
   ],
   steps: [
@@ -1200,12 +1204,12 @@ Do NOT connect motor supply + to any DevKit pin.
       `Start with the LED from project 1: it is a safe load and you can see the result.`,
       { t: 'predict', q: 'The pin will be high 25 % of the time at 5 kHz. A multimeter on DC volts is connected from GPIO18 to GND. What will it read?',
         choices: [
-          { t: 'About 0.8 V', ok: true, why: 'A DC meter averages over many cycles: 25 % of 3.3 V is about 0.83 V. The pin itself is never at 0.8 V; it is at 3.3 V a quarter of the time and 0 V otherwise.' },
-          { t: 'About 3.3 V, because the meter catches the peaks', why: 'A DC voltmeter integrates over a fraction of a second, thousands of PWM cycles. It cannot follow a 5 kHz signal.' },
-          { t: 'It jumps between 0 V and 3.3 V', why: 'That is what you saw at 1 Hz in project 1. At 5 kHz the changes are far faster than the meter updates.' },
+          { t: 'About 0.8 V, the average over many cycles', ok: true, why: 'A DC meter averages over many cycles: 25 % of 3.3 V is about 0.83 V. The pin itself is never at 0.8 V; it is at 3.3 V a quarter of the time and 0 V otherwise.' },
+          { t: 'About 3.3 V, because the meter holds the peaks', why: 'A DC voltmeter integrates over a fraction of a second, thousands of PWM cycles. It cannot follow a 5 kHz signal.' },
+          { t: 'It jumps between 0 V and 3.3 V as the pin switches', why: 'That is what you saw at 1 Hz in project 1. At 5 kHz the changes are far faster than the meter updates.' },
         ],
         reveal: 'This gives you a way to check a duty cycle with nothing but a multimeter: V_avg / 3.3 V. It works on the pin. Across the LED it does not scale linearly, because the LED voltage is roughly constant whenever it conducts.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P3_STATIC, caption: 'main/main.c, version 1: fixed duty' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P3_STATIC, caption: 'main/main.c, version 1: fixed duty' },
       `**You should see** the LED clearly dimmer than full on, with no visible flicker, and \`duty 2047 of 8191\` in the log. **Measure** GPIO18 to GND on DC volts: about 0.8 V. Change the duty to one half and three quarters, re-flash, and record the meter reading each time. Plot the three points; they should lie on a straight line through zero.
 
 Wave the board quickly from side to side in a dim room. You should see a dotted trail rather than a continuous streak: that is the PWM, made visible by movement.`,
@@ -1216,15 +1220,15 @@ ESP_ERROR_CHECK(ledc_set_duty(PWM_MODE, LED_CHANNEL, LED_DUTY_MAX / 2));
 ESP_LOGI(TAG, "duty set");`,
         hints: ['Compare with version 1, line by line, after the channel configuration.', 'Why might hardware want a new duty value to take effect only at a chosen moment?'],
         answer: { type: 'text', accept: ['update', 'ledc_update_duty'], nudge: 'One call from version 1 is absent.' },
-        solution: `\`ledc_update_duty()\` is missing. \`ledc_set_duty\` only stores the new value; \`ledc_update_duty\` tells the hardware to load it. The peripheral applies the new duty at the start of a PWM period, so the output never contains a truncated or stretched pulse. The two-step design also lets you prepare several channels and update them together.` },
+        solution: `\`ledc_update_duty()\` is missing. \`ledc_set_duty\` only writes the new value into the channel's duty register, where it waits; \`ledc_update_duty\` sets the bits that tell the hardware to load it. The peripheral applies the new duty at the start of a PWM period, so the output never contains a truncated or stretched pulse. The two-step design also lets you prepare several channels and update them together.` },
     ] },
     { title: 'Fade in software, then let the hardware do it', blocks: [
       `Replace the fixed duty with a ramp from 0 to 100 % and back, one percent every 20 ms.`,
-      { t: 'code', lang: 'c', status: 'reviewed', code: P3_RAMP, caption: 'Version 2: software ramp (fragment; the configuration above it is unchanged)' },
+      { t: 'code', lang: 'c', status: 'idf-checked', code: P3_RAMP, caption: 'Version 2: software ramp (fragment; the configuration above it is unchanged)' },
       `**You should see** the LED breathe with a 4 s period. Look closely at the dim end: brightness seems to rise quickly at first and then hardly change over the upper half. Your eye responds roughly logarithmically, so equal duty steps are not equal brightness steps. The challenge at the end returns to this.
 
 LEDC can also ramp the duty itself, in hardware, so the CPU is not involved between the start and end points:`,
-      { t: 'code', lang: 'c', status: 'reviewed', code: P3_FADE, caption: 'Version 3: hardware fade (fragment)' },
+      { t: 'code', lang: 'c', status: 'idf-checked', code: P3_FADE, caption: 'Version 3: hardware fade (fragment)' },
       `**You should see** a smoother fade: the hardware steps through every duty value its resolution allows instead of 100 coarse steps.`,
       { t: 'exercise', prompt: 'The LED timer runs at 5 kHz from an 80 MHz clock. What is the largest whole number of bits of duty resolution it can have?',
         hints: ['The counter needs 2ⁿ clock ticks per PWM period.', '80 000 000 / 5000 = 16 000. Which power of two fits?'],
@@ -1253,7 +1257,7 @@ Now a test with no firmware involved. Leave the R1 lead that goes to GPIO23 unco
     ] },
     { title: 'Drive the motor with 20 kHz PWM', blocks: [
       `Connect the R1 lead to GPIO23. The motor uses its own LEDC timer and channel so that it can run at a different frequency from the LED.`,
-      { t: 'code', lang: 'c', status: 'reviewed', code: P3_MOTOR, caption: 'main/main.c, version 4: motor soft start and stop' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P3_MOTOR, caption: 'main/main.c, version 4: motor soft start and stop' },
       `**You should see** the log count up in 5 % steps. The motor will not move for the first few steps, then start and speed up to full speed, hold, slow down and stop. Note the percentage at which it first turns: below that the average current cannot overcome static friction. Note also that it keeps turning at a *lower* percentage on the way down than it needed to start. Record both.
 
 **Measure:**
@@ -1276,18 +1280,18 @@ The fix is the separate motor supply with a bulk capacitor and a common ground. 
       { t: 'widget', name: 'circuit-debug', props: { scenario: 'brownout' }, caption: 'The same fault in simulation, with meter probes.' },
       { t: 'predict', q: 'Suppose D1 were left out and the motor is carrying 300 mA when Q1 turns off. What happens at the drain in the next microsecond?',
         choices: [
-          { t: 'The drain voltage shoots far above the supply voltage until something breaks down and conducts', ok: true, why: 'The winding\'s inductance keeps the 300 mA flowing. With the MOSFET off and no diode there is no path, so the voltage rises (V = L·di/dt) until the MOSFET avalanches. Repeated 20 000 times a second, that heats and eventually destroys it, and couples noise into everything nearby.' },
-          { t: 'The current stops instantly and the drain rests at the supply voltage', why: 'That would be true for a resistor. An inductor stores energy in its magnetic field, and that energy has to go somewhere.' },
-          { t: 'The drain is pulled below ground', why: 'The winding acts to keep current flowing in the same direction, into the drain node. That pushes the node up, not down.' },
+          { t: 'The drain voltage shoots far above the supply until something breaks down', ok: true, why: 'The winding\'s inductance keeps the 300 mA flowing. With the MOSFET off and no diode there is no path, so the voltage rises (V = L·di/dt) until the MOSFET avalanches. Repeated 20 000 times a second, that heats and eventually destroys it, and couples noise into everything nearby.' },
+          { t: 'The current stops at once and the drain simply rests at the supply voltage', why: 'That would be true for a resistor. An inductor stores energy in its magnetic field, and that energy has to go somewhere.' },
+          { t: 'The drain is pulled far below ground, because the winding reverses its current', why: 'The winding acts to keep current flowing in the same direction, into the drain node. That pushes the node up, not down.' },
         ],
         reveal: 'With D1 fitted, the drain rises only one diode drop above the supply, and the current circulates through the motor and diode. If you have an oscilloscope, look at the drain with D1 in place: you should see a square wave from near 0 V to slightly above the supply voltage.' },
     ] },
   ],
   walkthrough: [
-    { t: 'code', lang: 'c', status: 'reviewed', code: P3_MOTOR, caption: 'Version 4, annotated',
+    { t: 'code', lang: 'c', status: 'idf-built', code: P3_MOTOR, caption: 'Version 4, annotated',
       explain: [
         { lines: at(P3_MOTOR, '#define PWM_MODE'), md: 'Low-speed mode is available on every ESP32-family chip. In this mode register changes are latched by an explicit update, which the driver performs for you.' },
-        { lines: at(P3_MOTOR, 'static void motor_set_percent', /^}$/), md: 'Converts a percentage to a compare value. `ledc_set_duty` stores it in the driver; `ledc_update_duty` writes the channel\'s duty register and sets the bit that loads it at the next counter overflow, so every PWM period is complete.' },
+        { lines: at(P3_MOTOR, 'static void motor_set_percent', /^}$/), md: 'Converts a percentage to a compare value. `ledc_set_duty` writes it to the channel\'s duty register, where it has no effect yet; `ledc_update_duty` sets the duty-start bit and, in low-speed mode, the parameter-update bit, and the hardware loads the value at the next counter overflow, so every PWM period is complete.' },
         { lines: at(P3_MOTOR, 'const ledc_timer_config_t', 'ledc_timer_config(&timer_cfg)'), md: '`ledc_timer_config` selects the source clock, computes the fractional divider that gives 20 kHz with a 1024-step counter (80 MHz / (20 000 × 1024) ≈ 3.9) and writes the timer\'s configuration register. `LEDC_AUTO_CLK` lets the driver pick a source clock that can reach the request.' },
         { lines: at(P3_MOTOR, 'const ledc_channel_config_t', 'ledc_channel_config(&ch_cfg)'), md: '`ledc_channel_config` binds channel 1 to timer 1, writes `hpoint` (the counter value at which the output goes high) and the initial duty, and routes the channel\'s output signal to GPIO23 through the GPIO matrix. From here on the pin is driven by the LEDC peripheral, not by `GPIO_OUT_REG`.' },
         { lines: at(P3_MOTOR, '.duty       = 0'), md: 'Starting at duty 0 matters: the motor must not jump when the channel is first connected to the pin.' },
@@ -1295,7 +1299,7 @@ The fix is the separate motor supply with a bulk capacitor and a common ground. 
       ] },
     `**What changed on the pin.** In projects 1 and 2 the pad's output came from the GPIO output register. \`ledc_channel_config\` changed the GPIO matrix output selection for the pad to the LEDC channel's signal. If you later call \`gpio_set_level\` on that pin it has no effect until you route the pin back with \`gpio_config\` (or stop the channel).
 
-**Duty limits.** With n bits, duty values 0 to 2ⁿ − 1 are always valid. The value 2ⁿ − 1 leaves the output low for one count per period (99.9 % at 10 bits). Whether writing 2ⁿ for a true 100 % is accepted depends on the chip; the LEDC documentation for your target says. For a motor the difference is irrelevant.`,
+**Duty limits.** With n bits, the value 2ⁿ − 1 leaves the output low for one count per period (99.9 % at 10 bits). The ESP-IDF v6.1 header gives the valid range as 0 to 2ⁿ inclusive, so 2ⁿ is a true 100 %; the LEDC documentation adds that on some chips 2ⁿ must not be used when the timer runs at its *maximum* resolution, because the hardware duty counter overflows. Check that note for your target. For a motor the difference is irrelevant.`,
   ],
   testing: [
     `| Check | How | You should see |
@@ -1312,7 +1316,7 @@ The fix is the separate motor supply with a bulk capacitor and a common ground. 
 **Frequency experiment.** Change \`MOTOR_FREQ_HZ\` to 1000 and re-flash. You should hear the motor whine at 1 kHz. That is the reason for 20 kHz. Put it back.
 
 **With a logic analyser on GPIO23:** at the 50 % step you should measure 25 µs high and 25 µs low. Never connect a logic analyser input to the MOSFET drain or the motor terminals: they exceed logic levels.`,
-    { t: 'callout', kind: 'hw', md: `A multimeter's Hz range and a cheap logic analyser both lose accuracy near their limits. A 24 MHz analyser sampling a 20 kHz signal has about 0.2 % timing resolution per edge, which is adequate. The meter's DC reading of a PWM signal is trustworthy only if the meter averages properly at that frequency; cross-check one point with the analyser.` },
+    { t: 'callout', kind: 'hw', md: `A multimeter's Hz range and a cheap logic analyser both lose accuracy near their limits. A 24 MHz analyser samples every 42 ns, which is under 0.1 % of a 50 µs period per edge: adequate. The meter's DC reading of a PWM signal is trustworthy only if the meter averages properly at that frequency; cross-check one point with the analyser.` },
   ],
   troubleshooting: [
     { symptom: 'ESP32 resets or logs a brownout when the motor starts', cause: 'Motor current is drawn from the DevKit rail, or the motor supply shares a thin ground wire with the logic.', fix: 'Separate motor supply; bulk capacitor at the motor stage; join the grounds at one point near the MOSFET source.' },
@@ -1340,29 +1344,29 @@ The fix is the separate motor supply with a bulk capacitor and a common ground. 
       ] },
     { kind: 'circuit', q: 'The flyback diode is installed with its cathode on the MOSFET drain and its anode on the positive supply. What happens when the MOSFET turns on?',
       choices: [
-        { t: 'The diode is forward biased from supply to drain, so the supply is shorted to ground through the diode and the MOSFET', ok: true, why: 'Anode at the supply and cathode at a drain pulled to ground is the conducting direction. The motor is bypassed and the current is limited only by the supply, the diode and the MOSFET.' },
-        { t: 'Nothing unusual; a diode across a motor works in either direction', why: 'A diode conducts one way only. In the correct orientation it is reverse biased while the MOSFET is on. Consider which way it is biased here.' },
-        { t: 'The motor runs backwards', why: 'Direction depends on the polarity of the voltage across the motor. A diode in parallel does not reverse it.' },
+        { t: 'The diode conducts from the supply to the drain, shorting the supply through the MOSFET', ok: true, why: 'Anode at the supply and cathode at a drain pulled to ground is the conducting direction. The motor is bypassed and the current is limited only by the supply, the diode and the MOSFET.' },
+        { t: 'Nothing unusual, because a diode across a motor protects it in either direction', why: 'A diode conducts one way only. In the correct orientation it is reverse biased while the MOSFET is on. Consider which way it is biased here.' },
+        { t: 'The motor runs backwards, because the diode reverses the polarity across it', why: 'Direction depends on the polarity of the voltage across the motor. A diode in parallel does not reverse it.' },
       ] },
     { kind: 'circuit', q: 'Why is R2 (100 kΩ, gate to ground) needed if the firmware sets the duty to 0 at start-up?',
       choices: [
-        { t: 'Because between power-on and the firmware configuring the pin, the GPIO is high-impedance and the gate would float', ok: true, why: 'Boot ROM, bootloader and start-up code run for a noticeable time before `app_main`. A floating gate holds whatever charge it picks up and can turn the MOSFET partly or fully on.' },
-        { t: 'Because the gate needs a DC current to stay on', why: 'A MOSFET gate is insulated; it draws current only while its capacitance charges or discharges.' },
-        { t: 'To protect the GPIO from the motor voltage', why: 'The gate is insulated from the drain, and R2 goes to ground. It offers no protection against a drain-side fault.' },
+        { t: 'Because the GPIO floats from power-on until the firmware configures it', ok: true, why: 'While the pin is high-impedance nothing else defines the gate voltage. Boot ROM, bootloader and start-up code run for a noticeable time before `app_main`. A floating gate holds whatever charge it picks up and can turn the MOSFET partly or fully on.' },
+        { t: 'Because a MOSFET gate needs a small steady current path to stay switched on', why: 'A MOSFET gate is insulated; it draws current only while its capacitance charges or discharges.' },
+        { t: 'Because it protects the GPIO from the motor supply voltage if the MOSFET fails', why: 'The gate is insulated from the drain, and R2 goes to ground. It offers no protection against a drain-side fault.' },
       ] },
     { kind: 'code', q: 'What does this fragment do to the motor?', code: String.raw`ledc_set_duty(PWM_MODE, MOTOR_CHANNEL, 512);
 ledc_set_duty(PWM_MODE, MOTOR_CHANNEL, 256);
 ledc_update_duty(PWM_MODE, MOTOR_CHANNEL);`,
       choices: [
-        { t: 'It goes to about 25 %; the 50 % value was never applied', ok: true, why: 'Each set call overwrites the pending value. Only the update call loads a value into the hardware, and by then the pending value is 256 of 1023.' },
-        { t: 'It runs briefly at 50 % and then at 25 %', why: 'Nothing reaches the PWM hardware until the update call, so the first value is never output.' },
-        { t: 'It stays at its previous speed, because two sets cancel', why: 'Nothing cancels. The update call applies whichever value was stored last.' },
+        { t: 'It goes to about 25 %; the 50 % value is never output', ok: true, why: 'Each set call overwrites the pending value. Only the update call loads a value into the hardware, and by then the pending value is 256 of 1023.' },
+        { t: 'It runs briefly at 50 % and then settles at 25 %', why: 'A stored duty value has no effect on the output until the update call, and by then the first value has been overwritten.' },
+        { t: 'It keeps its previous speed, because the two sets cancel out', why: 'Nothing cancels. The update call applies whichever value was stored last.' },
       ] },
     { kind: 'concept', q: 'What would happen if you raised the motor PWM frequency from 20 kHz to 300 kHz, keeping everything else?',
       choices: [
-        { t: 'Resolution falls to 8 bits, and the MOSFET spends a larger share of each period switching, so it runs hotter', ok: true, why: '80 MHz / 300 kHz ≈ 266 ticks, so 8 bits at most. The gate, charged through 220 Ω from a GPIO, takes a fixed time to switch; at 300 kHz that time is a significant part of the 3.3 µs period.' },
-        { t: 'The motor spins proportionally faster', why: 'Speed follows the average voltage, which is set by duty, not by how often the switching repeats.' },
-        { t: 'Nothing changes except that the whine becomes inaudible', why: 'It is already inaudible at 20 kHz. Going higher has costs in resolution and switching loss.' },
+        { t: 'Resolution drops to 8 bits, and the MOSFET runs hotter because switching losses rise', ok: true, why: '80 MHz / 300 kHz ≈ 266 ticks, so 8 bits at most. The gate, charged through 220 Ω from a GPIO, takes a fixed time to switch; at 300 kHz that time is a significant part of the 3.3 µs period.' },
+        { t: 'The motor spins proportionally faster, because it gets fifteen times as many pulses', why: 'Speed follows the average voltage, which is set by duty, not by how often the switching repeats.' },
+        { t: 'Nothing changes except that the whine moves further above the range of hearing', why: 'It is already inaudible at 20 kHz. Going higher has costs in resolution and switching loss.' },
       ] },
     { kind: 'circuit', q: 'A motor has a stall current of 1.2 A at 6 V. The MOSFET\'s datasheet gives R_DS(on) = 0.05 Ω at V_GS = 2.5 V. Roughly how much power does the MOSFET dissipate while the motor is stalled and the MOSFET is fully on?',
       choices: [
@@ -1570,7 +1574,7 @@ const p4 = {
   ],
   hardware: [
     'ESP32 DevKit and breadboard.',
-    '1 × TMP36 analog temperature sensor in the 3-pin TO-92 package. It runs from 3.3 V and outputs 10 mV per °C with a 500 mV offset, so 0–50 °C is 0.5–1.0 V: comfortably inside the ADC range and away from both ends.',
+    '1 × TMP36 analog temperature sensor in the 3-pin TO-92 package. It runs from 3.3 V (its datasheet specifies a 2.7 V to 5.5 V supply) and outputs 10 mV per °C with a 500 mV offset, so 0–50 °C is 0.5–1.0 V: comfortably inside the ADC range and away from both ends.',
     '1 × 100 nF ceramic capacitor across the sensor supply pins, close to the sensor: the standard supply decoupling its datasheet asks for.',
     'Variant B (step 7): 1 × 10 kΩ NTC thermistor with a known B constant, and 1 × 10 kΩ 1 % resistor. Equal values put the junction at half the supply at 25 °C, where the divider is most sensitive.',
     '3 jumper wires. Keep the wire to the ADC pin short.',
@@ -1582,13 +1586,13 @@ const p4 = {
 
 An analog-to-digital converter compares the pin voltage with a reference and returns an integer. A 12-bit ADC returns 0–4095. In an ideal converter, \`code = V_in / V_fullscale × 4095\`. The ESP32's converter is not ideal in three ways that this project deals with:
 
-- **Range.** The ADC's own reference is about 1.1 V. To measure higher voltages an input **attenuator** is switched in. The attenuation setting (0, 2.5, 6 or 12 dB) selects the usable input range; the ESP-IDF ADC calibration documentation gives the recommended range for each setting on each chip. With 12 dB the range covers most of 0–3.3 V, but not the last few hundred millivolts at the top, and the bottom hundred or so millivolts are inaccurate.
+- **Range.** The ADC's own reference is 1100 mV by design. To measure higher voltages an input **attenuator** is switched in. The attenuation setting (0, 2.5, 6 or 12 dB) selects the usable input range. For the original ESP32 the datasheet (v5.3, Table 4-4) gives these *effective measurement ranges*: 100–950 mV at 0 dB, 100–1250 mV at 2.5 dB, 150–1750 mV at 6 dB and 150–2450 mV at 12 dB. So even the widest setting does not reach the top 850 mV of a 3.3 V signal, and no setting is accurate in the bottom 100–150 mV. Other chips have other ranges; the ESP-IDF ADC calibration documentation lists them.
 - **Chip-to-chip variation.** The reference differs between individual chips. Espressif measures it at the factory and stores correction data in eFuse. The **calibration** driver (\`adc_cali\`) uses that data to turn a raw code into millivolts. The original ESP32 uses a "line fitting" scheme; the S3 and C3 use "curve fitting". The code below selects whichever exists.
 - **Noise.** Successive conversions of a steady voltage differ by several counts, more when the radio is active. You will measure this.`,
     { t: 'widget', name: 'adc-lab', props: { bits: 12, vref: 3.3 }, caption: 'Quantisation in an ideal ADC: how a voltage becomes a code, and how big one step is.' },
     `## Two kinds of analog temperature sensor
 
-A **TMP36** is an integrated circuit that outputs a voltage proportional to temperature: 500 mV at 0 °C plus 10 mV per degree (750 mV at 25 °C). The conversion is one subtraction. Its accuracy is in its datasheet's specification table.
+A **TMP36** is an integrated circuit that outputs a voltage proportional to temperature: 500 mV at 0 °C plus 10 mV per degree (750 mV at 25 °C). The conversion is one subtraction. Confirm the scale factor, the offset and the accuracy in the specifications table of the Analog Devices TMP35/TMP36/TMP37 datasheet, and the pin order in its pin-configuration drawing, before you rely on them.
 
 A **thermistor** is a resistor whose value falls steeply as temperature rises (NTC). You put it in a voltage divider and measure the junction. It is cheap and sensitive but non-linear: you convert with the B-parameter equation, \`1/T = 1/T₀ + ln(R/R₀)/B\`, with T in kelvin.`,
     { t: 'callout', kind: 'decision', md: `**Why GPIO34?** It belongs to ADC1. On the original ESP32, ADC2 is shared with Wi-Fi, so ADC2 pins stop being usable for measurements when Wi-Fi is on; use ADC1 for anything you will keep. GPIO34 is also input-only, which is no loss for an analog input and removes the chance of driving the sensor by mistake. On an ESP32-S3 or C3, choose a pin from the ADC1 list in the chip's datasheet; the code finds the channel from the GPIO number with \`adc_oneshot_io_to_channel\`, so only the \`#define\` changes.` },
@@ -1619,7 +1623,7 @@ NTC lead B                   DevKit GND               bottom of the divider
         answer: { type: 'number', value: 720, tol: 5, unit: 'mV' },
         solution: `500 + 22 × 10 = **720 mV**. Allow for the sensor's stated accuracy and your meter's: anything from roughly 700 to 740 mV is believable. Pinch the sensor between two fingers and the reading should climb towards 0.8 V over half a minute.` },
       `**You should see** a voltage between about 0.68 and 0.78 V at ordinary room temperatures, rising when you warm the sensor. Write it down: this number is the reference for everything the firmware reports. Then connect Vout to GPIO34.`,
-      { t: 'exercise', prompt: `**Debugging exercise A.** On another bench, Vout reads close to 2.6 V and the sensor is too hot to touch a few seconds after power-up. What has happened and what should you do first?`,
+      { t: 'exercise', prompt: `**Debugging exercise A.** On another bench, Vout reads far above the expected 0.7 V and the sensor is too hot to touch a few seconds after power-up. What has happened and what should you do first?`,
         hints: ['A healthy TMP36 draws microamps and cannot heat itself noticeably.', 'The part is symmetrical-looking: which pins could be exchanged?'],
         solution: `The sensor is inserted **backwards**, so +Vs and GND are swapped and the chip conducts heavily through its internal protection structures. Remove power immediately. Let it cool, refit it using the datasheet's pin drawing, and re-check the 0.7 V reading. A part that has been reversed may survive but can no longer be trusted for accuracy; mark it.` },
     ] },
@@ -1631,7 +1635,7 @@ NTC lead B                   DevKit GND               bottom of the divider
           { t: 'Hundreds of counts, so single readings are useless', why: 'That would indicate a fault such as a floating input or a missing ground. A correctly wired low-impedance source is far quieter.' },
         ],
         reveal: 'One count at 12 bits and 12 dB attenuation is a little under 1 mV, which for the TMP36 is about 0.1 °C. A spread of 20 counts is therefore a 2 °C jitter in single readings. That is why the next step averages.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P4_RAW, caption: 'main/main.c, version 1: raw codes and their spread' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P4_RAW, caption: 'main/main.c, version 1: raw codes and their spread' },
       `**You should see** a first line naming the ADC unit and channel for your pin (unit 1, channel 6 for GPIO34 on the original ESP32), then once a second something like \`raw min 842  max 861  mean 851  spread 19\`. Your numbers will differ. Record the typical spread.
 
 Now pull the Vout wire out of GPIO34 and watch. **You should see** the readings wander and the spread grow: a floating ADC input, the analog version of project 2's floating button. Put it back.`,
@@ -1657,10 +1661,10 @@ int mean = sum / 64;`,
       { t: 'predict', q: 'Using the naive formula mV = raw × 3300 / 4095 on an original ESP32 at 12 dB attenuation, how will the result compare with your multimeter reading of about 720 mV?',
         reveal: `It will usually be off by tens of millivolts, and the error is different on every chip. The formula assumes the full-scale voltage is exactly 3.3 V and the response is a straight line through zero, and neither is true for this converter. Tens of millivolts is several degrees for a TMP36. The calibration driver replaces the naive formula with a correction built from factory-measured values stored in that chip's eFuse.` },
       `Add the calibration code. Print both the naive conversion and the calibrated one next to each other for a minute and compare both with the multimeter.`,
-      { t: 'code', lang: 'c', status: 'reviewed', code: P4_FINAL, caption: 'main/main.c, version 2: averaged, calibrated, converted to temperature' },
-      `**You should see** lines such as \`722 mV  ->  22.2 C\`. The millivolt figure should now agree with your multimeter to within roughly 10–20 mV. Write down both and the difference.
+      { t: 'code', lang: 'c', status: 'idf-built', code: P4_FINAL, caption: 'main/main.c, version 2: averaged, calibrated, converted to temperature' },
+      `**You should see** lines such as \`722 mV  ->  22.2 C\`. The millivolt figure should now be much closer to your multimeter than the naive one was, typically within a few tens of millivolts. Write down both and the difference.
 
-If you see the warning that no calibration is available, the chip has no calibration data in eFuse (possible on very old or unusual modules); the program then falls back to the rough formula.`,
+If you see the warning that no calibration is available, the chip has no calibration data in eFuse (possible on very old or unusual modules). On the original ESP32 the line-fitting scheme then needs a \`default_vref\` value in its configuration (the design value is 1100 mV) and returns an error without one; this program then falls back to the rough formula.`,
     ] },
     { title: 'Validate the whole chain', blocks: [
       `A reading that looks plausible is not a verified measurement. Check each stage separately:
@@ -1677,18 +1681,22 @@ printf("%u.%u C\n", (unsigned)(t10 / 10), (unsigned)(t10 % 10));`,
         solution: `Below 0 °C the output is under 500 mV, and \`450u − 500u\` **wraps** to 4 294 967 246 in unsigned arithmetic; divided by 10 that prints as roughly 429 496 724. Temperatures can be negative, so the value must be a signed type. The final program uses \`int\` and also handles the display of values between −0.9 and −0.1, where integer division gives 0 and would lose the minus sign. Test conversions at the edges of the range on a PC, not only at room temperature on the bench.` },
     ] },
     { title: 'Explore attenuation', blocks: [
-      `The TMP36 never exceeds about 1 V in normal conditions, yet 12 dB attenuation spreads the 12-bit codes over a range more than three times wider. Change \`SENSOR_ATTEN\` to \`ADC_ATTEN_DB_2_5\`, re-flash, and compare.
+      `The TMP36 never exceeds about 1 V in normal conditions, yet 12 dB attenuation spreads the 12-bit codes over an input range about three times wider than 2.5 dB does (the two attenuations differ by 9.5 dB, a voltage ratio of 3). Change \`SENSOR_ATTEN\` to \`ADC_ATTEN_DB_2_5\`, re-flash, and compare.
 
-**You should see** the same millivolt value (calibration accounts for the attenuation) but, if you print raw codes, about twice as many counts for the same voltage, and a steadier temperature. Look up the recommended input range for 2.5 dB on your chip in the ESP-IDF ADC documentation and work out the highest temperature a TMP36 could report before it leaves that range.`,
+**You should see** the same millivolt value (calibration accounts for the attenuation) but, if you print raw codes, roughly three times as many counts for the same voltage, and a steadier temperature.`,
+      { t: 'exercise', prompt: 'The ESP32 datasheet gives 100–1250 mV as the effective measurement range at 2.5 dB. What is the highest temperature, in °C, that a TMP36 can report before its output leaves that range?',
+        hints: ['Which end of the range does a rising temperature approach?', 'Turn the top of the range back into a temperature with the sensor\'s own formula.', 'T = (V − 500 mV) / (10 mV per °C).'],
+        answer: { type: 'number', value: 75, tol: 0.5, unit: '°C' },
+        solution: `(1250 − 500) mV / 10 mV per °C = **75 °C**. The bottom of the range, 100 mV, corresponds to −40 °C, the sensor's own lower limit, so 2.5 dB suits a TMP36 unless it must read above 75 °C. At 0 dB (100–950 mV) the limit would be 45 °C.` },
       { t: 'callout', kind: 'mistake', md: `**Choosing 12 dB "to be safe" for every signal.** The widest range gives the coarsest resolution and, on the original ESP32, the worst linearity. Choose the smallest attenuation whose range covers your signal with margin.` },
     ] },
     { title: 'Variant B: a thermistor divider', blocks: [
-      `Replace the TMP36 with the divider (wiring table, variant B) and set the attenuation back to 12 dB: at 25 °C the junction sits near 1.65 V.`,
+      `Replace the TMP36 with the divider (wiring table, variant B) and set the attenuation back to 12 dB: at 25 °C the junction sits near 1.65 V. The 150–2450 mV range also limits this divider: the junction reaches 2450 mV when the thermistor is 10 kΩ × 2450 / 850 ≈ 28.8 kΩ, which for a B = 3950 part is about 3 °C. Below that the reading is outside the range the ADC is specified for.`,
       { t: 'exercise', prompt: 'At 25 °C the 10 kΩ thermistor and the 10 kΩ fixed resistor are in series across 3.3 V. How much power is dissipated **in the thermistor**, in mW? (This self-heating is an error source.)',
         hints: ['Find the current through the series pair first.', 'I = 3.3 V / 20 kΩ; P = I² × R.'],
         answer: { type: 'number', value: 0.27, tol: 0.02, unit: 'mW' },
         solution: `I = 3.3 / 20 000 = 165 µA. P = (165 µA)² × 10 kΩ ≈ **0.27 mW**. The thermistor's datasheet gives a dissipation constant in mW per °C; divide to get the self-heating error. With typical values it is a small fraction of a degree, which is one reason for choosing 10 kΩ rather than 100 Ω parts.` },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P4_NTC, caption: 'Thermistor conversion: add this function and call it with the result of read_millivolts()' },
+      { t: 'code', lang: 'c', status: 'idf-checked', code: P4_NTC, caption: 'Thermistor conversion: add this function and call it with the result of read_millivolts()' },
       `Print the result with \`ESP_LOGI(TAG, "%d mV -> %.1f C", mv, ntc_celsius(mv));\`. **You should see** a temperature close to the TMP36's earlier reading, falling junction voltage when you warm the thermistor, and a much larger change in millivolts per degree than the TMP36 gave.
 
 Two things to notice. First, the result depends on \`VSUPPLY_MV\`: the divider is powered from the 3.3 V rail but the ADC measures against its own internal reference, so a rail that is really 3.25 V produces an error unless you put the measured value in. Second, the B equation is an approximation that is good near 25 °C and drifts further away; the thermistor datasheet says how far.`,
@@ -1704,7 +1712,7 @@ Both need microsecond timing that a FreeRTOS task with a 10 ms tick cannot produ
     ] },
   ],
   walkthrough: [
-    { t: 'code', lang: 'c', status: 'reviewed', code: P4_FINAL, caption: 'Version 2, annotated',
+    { t: 'code', lang: 'c', status: 'idf-built', code: P4_FINAL, caption: 'Version 2, annotated',
       explain: [
         { lines: at(P4_FINAL, 'static bool cali_init', /^}$/), md: 'The `#if` picks the scheme at compile time from capability macros that the calibration header defines per chip. Curve fitting needs the channel because its correction is per channel; line fitting does not. Both read factory values from eFuse and build a conversion function.' },
         { lines: at(P4_FINAL, 'for (int i = 0; i < SAMPLES', /^    }$/), md: '`adc_oneshot_read` selects the channel in the SAR ADC\'s multiplexer, starts one conversion, waits for the done flag and returns the code. On chips where ADC2 is shared with Wi-Fi, the driver takes a lock here, which is why a read can fail with a timeout on ADC2 while Wi-Fi is busy.' },
@@ -1725,7 +1733,7 @@ Both need microsecond timing that a FreeRTOS task with a 10 ms tick cannot produ
 | Sensor loaded | Same, with GPIO34 connected and the program running | no change (within 1–2 mV); a drop means the pin is not in analog mode or is the wrong pin |
 | Noise | Version 1 | spread of several to a few tens of counts |
 | Averaging | Mean of 64 | line-to-line change of 1–2 counts |
-| Calibration | Logged mV against the multimeter at three temperatures | agreement within roughly 10–20 mV; note whether the difference is constant |
+| Calibration | Logged mV against the multimeter at three temperatures | agreement within a few tens of mV (the datasheet quotes about ±6 % chip-to-chip spread before calibration); note whether the difference is constant |
 | Direction | Warm the sensor | TMP36: mV and °C rise. Thermistor: mV fall, °C rise |
 | Floating input | Pull the signal wire | readings wander; spread grows |
 | Supply | DC volts 3V3–GND | your actual rail voltage; use it for \`VSUPPLY_MV\` in variant B |
@@ -1753,16 +1761,16 @@ There is nothing digital to capture here, so a logic analyser does not help; the
     { kind: 'concept', q: 'An ideal 12-bit ADC has a 3.3 V full scale. Roughly what temperature change does one count represent for a TMP36?',
       choices: [
         { t: 'About 0.08 °C', ok: true, why: '3300 mV / 4095 ≈ 0.81 mV per count, and the sensor gives 10 mV per degree, so one count is about 0.08 °C. Resolution is not the limit here; noise and accuracy are.' },
-        { t: 'About 0.8 °C', why: 'One count is about 0.8 mV, and the sensor moves 10 mV for each degree, so a single count is a much smaller temperature step than that.' },
-        { t: 'About 8 °C', why: 'That would make a 12-bit converter useless for temperature. Work out millivolts per count first, then divide by the sensor\'s millivolts per degree.' },
+        { t: 'About 0.80 °C', why: 'One count is about 0.8 mV, and the sensor moves 10 mV for each degree, so a single count is a much smaller temperature step than that.' },
+        { t: 'About 8.0 °C', why: 'That would make a 12-bit converter useless for temperature. Work out millivolts per count first, then divide by the sensor\'s millivolts per degree.' },
       ] },
     { kind: 'code', q: 'What is wrong with this averaging code, given 12-bit samples?', code: String.raw`uint16_t sum = 0;
 for (int i = 0; i < 32; i++) { int raw; adc_oneshot_read(adc, chan, &raw); sum += raw; }
 int mean = sum / 32;`,
       choices: [
-        { t: 'The sum can reach 131 040, which does not fit in 16 bits, so it wraps', ok: true, why: '32 × 4095 = 131 040, but a `uint16_t` holds at most 65 535. It works for low readings and fails for high ones, which makes the bug easy to miss on the bench.' },
-        { t: 'Integer division loses too much precision', why: 'Dividing by 32 loses a fraction of one count, far below the noise. Look at the range the accumulator must cover.' },
-        { t: 'The ADC cannot be read 32 times in a row', why: 'It can be read as often as you like. The problem is in the arithmetic afterwards.' },
+        { t: 'The sum can reach 131 040, which overflows the 16-bit accumulator', ok: true, why: '32 × 4095 = 131 040, but a `uint16_t` holds at most 65 535. It works for low readings and fails for high ones, which makes the bug easy to miss on the bench.' },
+        { t: 'Dividing by 32 with integer arithmetic throws away too much of the precision', why: 'Dividing by 32 loses a fraction of one count, far below the noise. Look at the range the accumulator must cover.' },
+        { t: 'The ADC cannot be read 32 times in a row without a pause', why: 'It can be read as often as you like. The problem is in the arithmetic afterwards.' },
       ] },
     { kind: 'circuit', q: 'In the thermistor divider (10 kΩ fixed resistor on top, NTC to ground), the junction reads 1.10 V with a 3.30 V supply. What is the thermistor resistance?',
       choices: [
@@ -1772,21 +1780,21 @@ int mean = sum / 32;`,
       ] },
     { kind: 'concept', q: 'What would happen if this project used GPIO25 (an ADC2 pin on the original ESP32) and the firmware later enabled Wi-Fi?',
       choices: [
-        { t: 'ADC reads could fail or time out, because Wi-Fi uses ADC2', ok: true, why: 'On the original ESP32 the Wi-Fi driver needs ADC2, and the oneshot driver arbitrates between them. A design that will ever use the radio should put its analog inputs on ADC1.' },
-        { t: 'Nothing: the two are independent peripherals', why: 'They share hardware on this chip. The GPIO documentation for the original ESP32 says so explicitly.' },
-        { t: 'Wi-Fi would fail to start', why: 'Wi-Fi takes priority over application reads of that converter. It is the measurement that loses.' },
+        { t: 'ADC reads could fail or time out, because the Wi-Fi driver also uses that converter', ok: true, why: 'On the original ESP32 the Wi-Fi driver needs ADC2, and the oneshot driver arbitrates between them. A design that will ever use the radio should put its analog inputs on ADC1.' },
+        { t: 'Nothing would change, because the ADC and the radio are independent peripherals', why: 'They share hardware on this chip. The GPIO documentation for the original ESP32 says so explicitly.' },
+        { t: 'Wi-Fi would fail to start, because the application already owns the converter', why: 'Wi-Fi takes priority over application reads of that converter. It is the measurement that loses.' },
       ] },
     { kind: 'concept', q: 'Averaging 64 samples made the reading steady, but it is still 3 °C higher than a reference thermometer at every temperature. What does that tell you?',
       choices: [
-        { t: 'There is a systematic offset that averaging cannot remove; it needs calibration or correction', ok: true, why: 'Averaging reduces random scatter only. A constant difference comes from the sensor\'s offset, the ADC\'s offset, or self-heating, and must be found stage by stage and corrected.' },
-        { t: 'More samples are needed; 256 would close the gap', why: 'More samples narrow the scatter around the same wrong value. The mean would not move.' },
-        { t: 'The ADC resolution is too low', why: 'One count is under a tenth of a degree. A 3 °C error is about 40 counts and is not a resolution effect.' },
+        { t: 'There is a systematic offset, which averaging cannot remove', ok: true, why: 'Averaging reduces random scatter only. A constant difference comes from the sensor\'s offset, the ADC\'s offset, or self-heating, and must be found stage by stage and corrected.' },
+        { t: 'More samples are needed: averaging 256 instead of 64 would close the gap', why: 'More samples narrow the scatter around the same wrong value. The mean would not move.' },
+        { t: 'The ADC resolution is too low to resolve the last few degrees', why: 'One count is under a tenth of a degree. A 3 °C error is about 40 counts and is not a resolution effect.' },
       ] },
     { kind: 'arch', q: 'A sensor must sit at the end of a 10 m cable in a noisy plant room and report temperature to within 0.5 °C. Which approach is the better starting point?',
       choices: [
         { t: 'A digital sensor that converts at the sensing point and sends numbers with a checksum', ok: true, why: 'Millivolt-level analog signals pick up noise and lose accuracy over a long cable. A digital sensor\'s reading is unaffected by cable noise as long as the bits arrive, and a CRC tells you when they do not.' },
-        { t: 'A TMP36 with more averaging in firmware', why: 'Averaging helps with random noise but not with mains pickup, ground offsets along the cable, or the ADC\'s own inaccuracy.' },
-        { t: 'A thermistor with a larger fixed resistor', why: 'A higher-impedance node is more sensitive to picked-up noise, not less, and the conversion still depends on the MCU\'s ADC.' },
+        { t: 'A TMP36 on the cable, with much heavier averaging of the ADC readings in firmware', why: 'Averaging helps with random noise but not with mains pickup, ground offsets along the cable, or the ADC\'s own inaccuracy.' },
+        { t: 'A thermistor on the cable, with a larger fixed resistor to raise the signal level', why: 'A higher-impedance node is more sensitive to picked-up noise, not less, and the conversion still depends on the MCU\'s ADC.' },
       ] },
   ],
 };
@@ -1864,7 +1872,8 @@ static int32_t bme280_temp_centi(int32_t adc_t, const bme280_cal_t *c)
 
 int main(void)
 {
-    /* Known input -> known output. Check these against the worked example in your datasheet. */
+    /* Known input -> known output: the numbers of the calculation example in Bosch's BMP280 datasheet,
+       which uses this same temperature formula. Confirm them in your own copy. */
     const bme280_cal_t cal = { .t1 = 27504, .t2 = 26435, .t3 = -1000 };
     const uint8_t raw[3] = { 0x7E, 0xED, 0x00 };            /* temp_msb, temp_lsb, temp_xlsb */
     int32_t adc_t = ((int32_t)raw[0] << 12) | ((int32_t)raw[1] << 4) | (raw[2] >> 4);
@@ -2098,7 +2107,7 @@ Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups
 (if present) CSB        3V3 or leave as fitted   CSB high selects I2C rather than SPI
 (if present) SDO        GND -> address 0x76      3V3 would give 0x77; do not leave it floating
 ` },
-    { t: 'figure', svg: P5_FIG, caption: 'Both lines idle high through the pull-ups. Either end can only pull a line low.' },
+    { t: 'figure', svg: P5_FIG, caption: 'Both lines idle high through the pull-ups. Either end can only pull a line low. The breakout\'s CSB and SDO pins, where present, are not drawn: see the last two rows of the table.' },
     { t: 'widget', name: 'i2c-visualizer', props: { device: 'scan' }, caption: 'What a bus scan looks like on the wire: an address byte, then ACK from a device that exists or NACK from silence.' },
   ],
   steps: [
@@ -2109,9 +2118,9 @@ Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups
 - SDA to GND and SCL to GND: **both close to 3.3 V**.`,
       { t: 'predict', q: 'You measure SDA at 3.3 V but SCL at about 0.3 V and drifting. Nothing is transmitting. What is the most likely cause?',
         choices: [
-          { t: 'SCL has no pull-up: the breakout lacks one, or the external resistor is in the wrong row', ok: true, why: 'An idle I2C line is held high only by its pull-up. A low, drifting voltage means nothing is pulling it anywhere. No communication is possible until both lines idle high.' },
-          { t: 'The sensor is holding the clock low because it is busy', why: 'A device stretching the clock holds SCL firmly at 0 V, and only during a transaction. Here nothing has addressed it, and the voltage is drifting rather than held.' },
-          { t: 'This is normal; SCL is only high during transfers', why: 'It is the reverse: both lines rest high and are pulled low to signal. The START condition is defined as SDA falling while SCL is high.' },
+          { t: 'SCL has no working pull-up, so nothing is holding the line high', ok: true, why: 'Either the breakout lacks one or the external resistor is in the wrong row. An idle I2C line is held high only by its pull-up. A low, drifting voltage means nothing is pulling it anywhere. No communication is possible until both lines idle high.' },
+          { t: 'The sensor is stretching the clock, holding SCL low while it finishes a conversion', why: 'A device stretching the clock holds SCL firmly at 0 V, and only during a transaction. Here nothing has addressed it, and the voltage is drifting rather than held.' },
+          { t: 'This is normal: SCL rests low and goes high only while a transfer is in progress', why: 'It is the reverse: both lines rest high and are pulled low to signal. The START condition is defined as SDA falling while SCL is high.' },
         ],
         reveal: 'Checking the idle levels takes ten seconds and rules out the most common I2C fault before any code runs.' },
       { t: 'exercise', prompt: 'With VDD = 3.3 V and a 4.7 kΩ pull-up, how much current flows through the resistor while a device holds the line low (assume the low level is 0 V)? Answer in mA.',
@@ -2121,7 +2130,7 @@ Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups
     ] },
     { title: 'Scan the bus', blocks: [
       `A scan addresses every possible device and records which addresses are acknowledged. It needs no knowledge of the sensor, so it tests only wiring, power and pull-ups.`,
-      { t: 'code', lang: 'c', status: 'reviewed', code: P5_SCAN, caption: 'main/main.c, version 1: bus scan' },
+      { t: 'code', lang: 'c', status: 'idf-built', code: P5_SCAN, caption: 'main/main.c, version 1: bus scan' },
       `**You should see** \`device answers at 0x76\` (or \`0x77\`) and \`scan complete: 1 device(s)\`, repeated every three seconds. Note the address. Unplug the SDA jumper: the next scan should find nothing, and the driver may log timeout errors. Plug it back in.`,
       { t: 'exercise', prompt: `**Debugging exercise A.** A scan finds no devices. The multimeter shows VIN = 3.3 V, SDA idle at 3.3 V, SCL idle at 3.3 V, and continuity from each DevKit pin to the breakout header. A logic analyser shows clock pulses on the wire connected to the breakout's **SDA** pin and data on the wire to its **SCL** pin. What is wrong?`,
         hints: ['Which signal should have regular pulses?'],
@@ -2132,12 +2141,12 @@ Rp 4.7 kohm             SCL to 3V3               pull-up  } already has pull-ups
       `An ACK proves that *something* is at 0x76. The identity register proves *what*. Open the datasheet's memory map and find the register named \`id\`. Confirm its address and the value it should contain.`,
       { t: 'predict', q: 'To read register 0xD0 the controller must first tell the sensor which register it wants. How many bytes does the ESP32 put on the bus before the sensor sends the ID byte back, counting address bytes?',
         choices: [
-          { t: 'Three: address+write, the register number 0xD0, then (after a repeated start) address+read', ok: true, why: 'The register pointer can only be set by a write, so the read is two phases joined by a repeated start: [0xEC] [0xD0] then [0xED], after which the sensor sends the data byte. 0xEC and 0xED are the 7-bit address 0x76 shifted left with the R/W bit appended.' },
-          { t: 'One: address+read, and the sensor sends the ID', why: 'A bare read returns whatever the sensor\'s register pointer currently selects. Nothing has told it to point at 0xD0.' },
-          { t: 'Two: address+read and then the register number', why: 'After address+read the controller is the receiver; it cannot send the register number in that direction.' },
+          { t: 'Three: address+write, register number 0xD0, then address+read', ok: true, why: 'The register pointer can only be set by a write, so the read is two phases joined by a repeated start: [0xEC] [0xD0] then [0xED], after which the sensor sends the data byte. 0xEC and 0xED are the 7-bit address 0x76 shifted left with the R/W bit appended.' },
+          { t: 'One: address+read, after which the sensor sends its ID register', why: 'A bare read returns whatever the sensor\'s register pointer currently selects. Nothing has told it to point at 0xD0.' },
+          { t: 'Two: address+read, followed by the register number 0xD0', why: 'After address+read the controller is the receiver; it cannot send the register number in that direction.' },
         ],
         reveal: '`i2c_master_transmit_receive` performs exactly this sequence. The controller ends the read by sending NACK after the last byte it wants, then STOP.' },
-      { t: 'code', lang: 'c', status: 'reviewed', code: P5_ID, caption: 'Version 2 (fragment): add a device handle and read one register' },
+      { t: 'code', lang: 'c', status: 'idf-checked', code: P5_ID, caption: 'Version 2 (fragment): add a device handle and read one register' },
       `**You should see** \`chip id 0x60\`. If you see \`0x58\`, your board carries a BMP280: temperature and pressure work with the same registers, but there is no humidity. Any other value means you are talking to a different device, or the read is malformed.`,
       { t: 'exercise', prompt: `**Debugging exercise B.** A colleague copies the address from a different vendor's library and gets a NACK on every transaction, though the scan found the device. Their configuration is below. What is the mistake?`,
         code: String.raw`const i2c_device_config_t dev_cfg = {
@@ -2183,22 +2192,22 @@ So test the formula where it is easy: on your PC, with known inputs and a known 
 gcc -Wall -Wextra -std=c11 bme_test.c -o bme_test && ./bme_test
 \`\`\``,
       { t: 'code', lang: 'c', status: 'host-tested', code: P5_HOST, caption: 'bme_test.c: runs on your PC, not on the ESP32. Compiled and run with gcc for this course; it prints T=25.08 C and exits 0.' },
-      `**You should see** \`adc_t=519888  T=25.08 C\`. Check the constants and the expected result against the worked example in your datasheet.`,
+      `**You should see** \`adc_t=519888  T=25.08 C\`. The constants and the expected result are those of the calculation example in Bosch's **BMP280** datasheet, whose temperature formula is the same one; as far as this course could establish, the BME280 datasheet prints the formula without worked numbers. Check both statements against your own copies, and compare the function line by line with the *Compensation formulas* section.`,
       { t: 'exercise', prompt: `**Debugging exercise D.** In the test program, change the struct so that \`t2\` and \`t3\` are \`uint16_t\`, as someone would if they declared all three calibration words the same way. Initialise \`t3\` with the same bit pattern (\`(uint16_t)-1000\`, which is 64536). Predict whether the result is still 25.08 °C, then run it. Why does it change?`,
         hints: ['What value does `(int32_t)c->t3` have when `t3` is a `uint16_t` holding 64536?', 'Sign extension happens when a *signed* 16-bit value is widened.'],
-        solution: `It is no longer 25.08 °C. With \`uint16_t\`, the bit pattern 0xFC18 widens to +64 536 instead of −1000, so \`var2\` becomes a large positive term instead of a small negative correction, and the result is wrong by an amount that grows as the temperature moves away from the calibration point. On the bench near room temperature the error can be small enough to pass a casual look. The datasheet's trimming table gives the type of every parameter; copy the signedness as carefully as the address. The host test catches this in seconds.` },
+        solution: `It is no longer 25.08 °C: the program prints **29.83 °C** and exits with status 1. With \`uint16_t\`, the bit pattern 0xFC18 widens to +64 536 instead of −1000, so \`var2\` becomes +23 933 instead of −371, and the error grows with the square of the distance from the point where \`var2\` is zero. The trap is that the bug is invisible on any device whose parameters happen to be positive: such a board passes every bench test, and the next board does not. The datasheet's trimming table gives the type of every parameter; copy the signedness as carefully as the address. The host test catches this in seconds.` },
       { t: 'callout', kind: 'why', md: `This is the general method for any conversion code: separate the pure arithmetic from the hardware access, and test the arithmetic on a PC against a vector from the datasheet. The bus code is then the only thing left to debug on the board.` },
     ] },
     { title: 'Assemble the driver and take real measurements', blocks: [
       `Put the pieces together: verify the ID, reset, read the temperature trimming parameters, configure, then loop: trigger one forced measurement, wait until the status register says it is done, burst-read all eight data bytes, convert.`,
-      { t: 'code', lang: 'c', status: 'reviewed', code: P5_FINAL, caption: 'main/main.c, version 3: register-level BME280 driver (temperature compensated; pressure and humidity raw)' },
-      `**You should see** one line with three calibration constants (dig_T1 is typically in the high twenty-thousands; the others vary per device), then every two seconds a line such as \`T = 23.41 C   (raw T 0x7F2A0, raw P 0x53E10, raw H 0x6B40)\`.
+      { t: 'code', lang: 'c', status: 'idf-built', code: P5_FINAL, caption: 'main/main.c, version 3: register-level BME280 driver (temperature compensated; pressure and humidity raw)' },
+      `**You should see** one line with three calibration constants (they differ from device to device; write yours down, they are inputs for your own host test), then every two seconds a line such as \`T = 23.41 C   (raw T 0x7F2A0, raw P 0x53E10, raw H 0x6B40)\`.
 
 Check it:
 - The temperature should be within a degree or two of project 4's sensor. Boards often read slightly high because the breakout and the DevKit warm it.
 - Breathe gently on the sensor: the raw humidity value should rise within a second or two, and the temperature a little.
 - If raw H is always \`0x8000\`, humidity measurement is skipped: either the chip is a BMP280 or \`ctrl_hum\` was not applied.`,
-      { t: 'callout', kind: 'mistake', md: `**Reading the data registers one at a time.** The sensor updates its data registers when a conversion ends. If you read the msb in one transaction and the lsb in another, a new result can arrive in between and you combine halves of two different readings. A single burst read from 0xF7 guarantees a consistent set; the datasheet says so in the section on data readout.` },
+      { t: 'callout', kind: 'mistake', md: `**Reading the data registers one at a time.** The sensor updates its data registers when a conversion ends. If you read the msb in one transaction and the lsb in another, a new result can arrive in between and you combine halves of two different readings. A single burst read from 0xF7 gives a consistent set; look for the datasheet's section on data readout (register shadowing) and confirm what it promises.` },
     ] },
     { title: 'Look at it on the wire', blocks: [
       `If you have a logic analyser: channel 0 on SDA, channel 1 on SCL, ground to GND, sample at 2 MHz or more, add the I2C protocol decoder and capture one measurement cycle.
@@ -2214,7 +2223,7 @@ Measure the SCL period with the cursors: 10 µs at 100 kHz. Look at the shape of
     ] },
   ],
   walkthrough: [
-    { t: 'code', lang: 'c', status: 'reviewed', code: P5_FINAL, caption: 'Version 3, annotated',
+    { t: 'code', lang: 'c', status: 'idf-built', code: P5_FINAL, caption: 'Version 3, annotated',
       explain: [
         { lines: at(P5_FINAL, '#define BME280_ADDR', '#define MODE_FORCED'), md: 'The register map as constants. Every number here comes from a named table in the datasheet; nothing in the rest of the file uses a bare register address.' },
         { lines: at(P5_FINAL, 'static esp_err_t reg_read', /^}$/), md: 'One call, two phases on the wire: START, address+W, the register number, REPEATED START, address+R, `len` bytes with ACK after each except the last (NACK), STOP. The driver loads these as commands into the I2C peripheral\'s command registers and its TX FIFO; the peripheral then clocks them out and raises an interrupt when done.' },
@@ -2230,7 +2239,7 @@ Measure the SCL period with the cursors: 10 µs at 100 kHz. Look at the shape of
         { lines: at(P5_FINAL, 'const i2c_master_bus_config_t', 'i2c_new_master_bus'), md: 'Creates the bus: assigns the pins through the GPIO matrix in open-drain mode, enables the weak internal pull-ups as a fallback, and sets up the peripheral. `glitch_ignore_cnt` sets the input filter that ignores pulses shorter than that many clock cycles.' },
         { lines: at(P5_FINAL, 'const i2c_device_config_t', 'i2c_master_bus_add_device'), md: 'A device handle stores the address and the SCL frequency. The frequency is applied by programming the peripheral\'s SCL high and low period registers before each transaction to that device.' },
       ] },
-    `**The internal pull-ups are not enough.** They are tens of kΩ, which with typical breadboard capacitance gives rise times too slow for reliable 100 kHz operation and far too slow for 400 kHz. They are enabled here only so that a bus with no resistors fails less confusingly. Real pull-ups are the 4.7 kΩ resistors on the breakout or on your breadboard.`,
+    `**The internal pull-ups are not enough.** They are typically 45 kΩ (ESP32 datasheet Table 5-3), which with typical breadboard capacitance gives rise times of a microsecond or two: too slow for reliable 100 kHz operation and far too slow for 400 kHz (the worked example in the testing section has the numbers). They are enabled here only so that a bus with no resistors fails less confusingly. Real pull-ups are the 4.7 kΩ resistors on the breakout or on your breadboard.`,
   ],
   testing: [
     `| Check | How | You should see |
@@ -2245,12 +2254,14 @@ Measure the SCL period with the cursors: 10 µs at 100 kHz. Look at the shape of
 | Fault handling | Pull the SDA jumper while running | \`measurement failed: …\` warnings, no crash; readings resume when it is replaced |
 | Timing | Logic analyser on SCL | 10 µs period (100 kHz) |
 
-To estimate bus rise time without an oscilloscope: with the board unpowered, measure the pull-up resistance, estimate capacitance at roughly 10–20 pF per device pin plus about 1 pF per centimetre of jumper, and use t_r ≈ 0.85 × R × C. Compare it with the maximum rise time for your bus speed in the I2C specification's timing table.`,
+To estimate bus rise time without an oscilloscope: with the board unpowered, measure the pull-up resistance, estimate capacitance at roughly 10–20 pF per device pin plus about 1 pF per centimetre of jumper, and use t_r ≈ 0.85 × R × C. Compare it with the maximum rise time for your bus speed in the I2C specification's timing table (UM10204, characteristics of the SDA and SCL bus lines: 1000 ns in standard mode and 300 ns in fast mode in the revision this course was written from; confirm in yours).
+
+**Worked example.** Two device pins and 20 cm of jumper: C ≈ 2 × 15 pF + 20 pF = 50 pF. With 4.7 kΩ, t_r ≈ 0.85 × 4700 × 50 × 10⁻¹² ≈ 200 ns, inside both limits. With only the ESP32's internal pull-up (typically 45 kΩ), t_r ≈ 0.85 × 45 000 × 50 × 10⁻¹² ≈ 1.9 µs, which fails even the standard-mode limit.`,
     { t: 'callout', kind: 'hw', md: `A logic analyser shows you 0s and 1s after its own threshold, so slow edges look clean on it. If the decoder shows the right bytes but the sensor NACKs intermittently, suspect rise time and view the lines on an oscilloscope, or simply lower the pull-up value or the bus speed and see whether the fault goes away.` },
   ],
   troubleshooting: [
     { symptom: 'Scan finds nothing; driver logs timeouts', cause: 'No pull-ups, sensor unpowered, SDA/SCL swapped, or no common ground.', fix: 'Measure idle levels (both 3.3 V), VIN at the header, then swap SDA and SCL.' },
-    { symptom: 'Scan finds a device at every address', cause: 'SDA is stuck low (shorted to ground or held by a confused device), so every address appears acknowledged.', fix: 'Measure SDA idle. Power-cycle the sensor; check for solder bridges on the header.' },
+    { symptom: 'Scan finds a device at every address, or every probe fails with a timeout or bus-busy error', cause: 'SDA or SCL is stuck low (shorted to ground or held by a confused device). A simple bit-banged controller reads the low line as an ACK at every address; the ESP32 peripheral notices that the line does not follow what it sends and reports an error instead.', fix: 'Measure SDA and SCL idle: both must be near 3.3 V. Power-cycle the sensor; check for solder bridges on the header.' },
     { symptom: 'Device found by the scan but every register access is NACKed', cause: 'Address given in 8-bit form, or the device handle uses the other address (0x77 vs 0x76).', fix: 'Use the 7-bit address the scan reported.' },
     { symptom: 'ID reads 0x58', cause: 'The board carries a BMP280, not a BME280.', fix: 'Temperature and pressure will work; humidity will not. Accept 0x58 in your ID check if that is acceptable, or return the board.' },
     { symptom: 'Raw values constant at 0x80000 / 0x8000', cause: 'Sensor still in sleep mode, or that measurement is skipped (oversampling field 0).', fix: 'Write `ctrl_hum`, then `ctrl_meas` with non-zero oversampling and forced or normal mode.' },
@@ -2269,17 +2280,17 @@ To estimate bus rise time without an oscilloscope: with the board unpowered, mea
   quiz: [
     { kind: 'concept', q: 'Why can several I2C devices share the SDA wire without damaging each other, even if two transmit at once?',
       choices: [
-        { t: 'Because no device drives the line high: each only pulls low or releases, and a resistor provides the high level', ok: true, why: 'With open-drain outputs the worst case is two devices both pulling low, which is harmless. A push-pull bus would short 3.3 V to ground when two devices disagreed.' },
-        { t: 'Because the controller disables every other device before transmitting', why: 'There is no enable signal in I2C. Devices are selected by address within the data stream, and all of them stay connected to the wire.' },
-        { t: 'Because each device has a series resistor that limits fault current', why: 'Some designs add series resistors, but safety on a shared line comes from how the outputs are built, not from limiting a fault.' },
+        { t: 'Because devices only pull the line low or release it; a resistor supplies the high level', ok: true, why: 'With open-drain outputs the worst case is two devices both pulling low, which is harmless. A push-pull bus would short 3.3 V to ground when two devices disagreed.' },
+        { t: 'Because the controller disables every other device on the bus before it transmits', why: 'There is no enable signal in I2C. Devices are selected by address within the data stream, and all of them stay connected to the wire.' },
+        { t: 'Because each device has a series resistor that limits the current if two disagree', why: 'Some designs add series resistors, but safety on a shared line comes from how the outputs are built, not from limiting a fault.' },
       ] },
     { kind: 'code', q: 'What does this call put on the bus?', code: String.raw`const uint8_t reg = 0xF7;
 uint8_t d[8];
 i2c_master_transmit_receive(dev, &reg, 1, d, 8, 100);`,
       choices: [
-        { t: 'START, address+W, 0xF7, repeated START, address+R, eight bytes read with ACKs and a final NACK, STOP', ok: true, why: 'The write phase sets the register pointer, the repeated start turns the bus around without releasing it, and the sensor auto-increments through 0xF7–0xFE.' },
+        { t: 'START, address+W, 0xF7, repeated START, address+R, eight bytes, STOP', ok: true, why: 'The controller ACKs each data byte except the last, which it NACKs. The write phase sets the register pointer, the repeated start turns the bus around without releasing it, and the sensor auto-increments through 0xF7–0xFE.' },
         { t: 'Eight separate read transactions, one for each register', why: 'One call is one transaction. The sensor advances its own register pointer after each byte; the controller does not re-address it.' },
-        { t: 'START, address+R, 0xF7, then eight bytes', why: 'After address+R the controller is receiving. The register number has to be sent in a write phase first.' },
+        { t: 'START, address+R, 0xF7 sent by the controller, then eight bytes from the sensor, STOP', why: 'After address+R the controller is receiving. The register number has to be sent in a write phase first.' },
       ] },
     { kind: 'circuit', q: 'A breakout already has 10 kΩ pull-ups and you add 4.7 kΩ pull-ups on the breadboard as well. What is the effective pull-up on each line?',
       choices: [
@@ -2289,21 +2300,21 @@ i2c_master_transmit_receive(dev, &reg, 1, d, 8, 100);`,
       ] },
     { kind: 'concept', q: 'What would happen if the driver read `temp_msb`, `temp_lsb` and `temp_xlsb` in three separate transactions while the sensor runs in normal (continuous) mode?',
       choices: [
-        { t: 'Occasionally the bytes would come from two different conversions, giving a reading that jumps by a large, wrong amount', ok: true, why: 'If a new result is stored between your reads, you combine the high byte of one value with the low bytes of the next. Near a point where the high byte changes, the error is large. A burst read avoids it.' },
-        { t: 'Nothing; registers do not change during a read', why: 'The sensor protects a set of registers only within one burst read. Between separate transactions it is free to update them.' },
-        { t: 'The sensor would NACK the second and third reads', why: 'Each is a valid transaction and is acknowledged. That is what makes the problem silent.' },
+        { t: 'Now and then the three bytes would come from two different conversions', ok: true, why: 'If a new result is stored between your reads, you combine the high byte of one value with the low bytes of the next. Near a point where the high byte changes, the error is large. A burst read avoids it.' },
+        { t: 'Nothing, because the sensor freezes its data registers while they are being read', why: 'The sensor protects a set of registers only within one burst read. Between separate transactions it is free to update them.' },
+        { t: 'The sensor would NACK the second and third reads until the next conversion ends', why: 'Each is a valid transaction and is acknowledged. That is what makes the problem silent.' },
       ] },
-    { kind: 'code', q: 'A driver assembles a signed calibration word like this, with `c[4] = 0x18` and `c[5] = 0xFC`. What value results?', code: String.raw`uint16_t t3 = (uint16_t)(c[4] | (c[5] << 8));
+    { kind: 'code', q: 'A driver assembles a calibration word that the datasheet defines as signed, with `c[4] = 0x18` and `c[5] = 0xFC`. What value does `x` hold?', code: String.raw`uint16_t t3 = (uint16_t)(c[4] | (c[5] << 8));
 int32_t  x  = (int32_t)t3;`,
       choices: [
-        { t: '64536, where −1000 was intended', ok: true, why: 'The bit pattern 0xFC18 is −1000 as a signed 16-bit value but 64536 unsigned. Widening an unsigned type fills the upper bits with zeros. Storing it as `int16_t` first makes the widening sign-extend.' },
-        { t: '−1000', why: 'That would be the result if the 16-bit value were held in a signed type before being widened. Check the declared type of `t3`.' },
-        { t: '6396 (0x18FC)', why: 'That swaps the byte order. The code places `c[5]` in the high byte, giving 0xFC18.' },
+        { t: '64536 (0x0000FC18)', ok: true, why: 'The bit pattern 0xFC18 is −1000 as a signed 16-bit value but 64536 unsigned. Widening an unsigned type fills the upper bits with zeros. Storing it as `int16_t` first makes the widening sign-extend.' },
+        { t: '−1000 (0xFFFFFC18)', why: 'That would be the result if the 16-bit value were held in a signed type before being widened. Check the declared type of `t3`.' },
+        { t: '6396 (0x000018FC)', why: 'That swaps the byte order. The code places `c[5]` in the high byte, giving 0xFC18.' },
       ] },
     { kind: 'arch', q: 'During bring-up of an unfamiliar I2C chip, the bus scan passes but the identity register returns an unexpected value. What is the right next step?',
       choices: [
-        { t: 'Stop and find out what the device is before writing any configuration to it', ok: true, why: 'An ACK only shows that something is at that address. Writing register values intended for one chip into another can put it into an unknown state or, for some devices, change non-volatile settings.' },
-        { t: 'Carry on; if the address matches, the chip must be compatible', why: 'Addresses are 7 bits and widely reused. Different chips, and different revisions of one chip, share addresses.' },
+        { t: 'Stop and identify the device before writing any configuration to it', ok: true, why: 'An ACK only shows that something is at that address. Writing register values intended for one chip into another can put it into an unknown state or, for some devices, change non-volatile settings.' },
+        { t: 'Carry on, because a chip that answers at the expected address must be compatible', why: 'Addresses are 7 bits and widely reused. Different chips, and different revisions of one chip, share addresses.' },
         { t: 'Remove the identity check, since it is only informational', why: 'The check is the one piece of evidence about what you are talking to. Removing it hides the problem and keeps the consequences.' },
       ] },
   ],

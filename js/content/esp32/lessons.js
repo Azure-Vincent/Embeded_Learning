@@ -166,23 +166,23 @@ The ESP32-C6 is the one in the table with an 802.15.4 radio and a USB Serial/JTA
     ] },
     { q: 'What does an ESP32-WROOM module add to the bare ESP32 chip?', kind: 'concept', choices: [
       { t: 'SPI flash, a crystal, an antenna and RF certification', ok: true, why: 'The chip has no program flash of its own on most variants; the module supplies it together with the clock and RF parts.' },
-      { t: 'A USB connector and voltage regulator', why: 'Those belong to the development board that carries the module. The module itself runs from 3.3 V and has no USB connector.' },
-      { t: 'A second CPU core', why: 'The number of cores is a property of the silicon. A module cannot change it.' },
+      { t: 'A USB connector, a 3.3 V regulator and the BOOT and EN buttons', why: 'Those belong to the development board that carries the module. The module itself runs from 3.3 V and has no USB connector.' },
+      { t: 'A second CPU core and extra RAM, which the bare chip lacks', why: 'The number of cores is a property of the silicon. A module cannot change it.' },
     ] },
     { q: 'A relay driver circuit pulls GPIO0 low through a transistor base whenever the board is unpowered or in reset. What symptom do you expect on a classic ESP32?', kind: 'circuit', choices: [
-      { t: 'The chip waits in download mode after every reset instead of running the application', ok: true, why: 'GPIO0 is sampled at reset. Low selects the serial bootloader, so the application never starts until GPIO0 is high at reset.' },
-      { t: 'The flash is powered at the wrong voltage', why: 'Flash voltage is selected by a different strapping pin (GPIO12). GPIO0 chooses between normal boot and download mode.' },
-      { t: 'Nothing: strapping pins only matter while flashing', why: 'Strapping pins are sampled at every reset, whether or not a flashing tool is attached.' },
+      { t: 'The chip waits in download mode after every reset', ok: true, why: 'GPIO0 is sampled at reset. Low selects the serial bootloader, so the application never starts until GPIO0 is high at reset.' },
+      { t: 'The flash is powered at the wrong voltage, so boot fails with flash read errors', why: 'Flash voltage is selected by a different strapping pin (GPIO12). GPIO0 chooses between normal boot and download mode.' },
+      { t: 'Nothing: strapping pins only matter while a flashing tool is attached', why: 'Strapping pins are sampled at every reset, whether or not a flashing tool is attached.' },
     ] },
     { q: 'You port a project from an ESP32 to an ESP32-C3. Which statement is correct?', kind: 'arch', choices: [
-      { t: 'Driver-level C code is largely unchanged, but there is one core, a different CPU architecture and a different pin list', ok: true, why: 'ESP-IDF drivers present the same API across chips. Core count, the RISC-V toolchain and pin restrictions all change.' },
-      { t: 'The same binary runs, because both are called ESP32', why: 'Xtensa and RISC-V have different instruction sets. You must set the target and rebuild; a binary for one will not execute on the other.' },
-      { t: 'Tasks pinned to core 1 keep working', why: 'The C3 has a single core, so there is no core 1 to pin a task to.' },
+      { t: 'The driver calls stay the same; the core count, CPU architecture and pin list change', ok: true, why: 'ESP-IDF drivers present the same API across chips. Core count, the RISC-V toolchain and pin restrictions all change.' },
+      { t: 'The same binary runs on both, because the ESP-IDF drivers hide the difference between the chips', why: 'Xtensa and RISC-V have different instruction sets. You must set the target and rebuild; a binary for one will not execute on the other.' },
+      { t: 'Tasks pinned to core 1 keep working, because the scheduler emulates the second core', why: 'The C3 has a single core, so there is no core 1 to pin a task to.' },
     ] },
     { q: 'A crash dump shows `PC: 0x400d1a44`. Using the ESP32 memory map, where was the CPU executing?', kind: 'arch', choices: [
-      { t: 'Application code in flash (IROM), fetched through the cache', ok: true, why: 'IROM spans 0x400D0000–0x40400000. That is where normal application functions execute from.' },
-      { t: 'The mask ROM bootloader', why: 'Mask ROM is 0x40000000–0x40070000. This address is above that range.' },
-      { t: 'Code placed in internal RAM (IRAM)', why: 'IRAM is 0x40080000–0x400AA000. The address in the dump is higher than that range.' },
+      { t: 'Application code in flash (IROM), via the cache', ok: true, why: 'IROM spans 0x400D0000–0x40400000. That is where normal application functions execute from.' },
+      { t: 'The first-stage bootloader in the mask ROM', why: 'Mask ROM is 0x40000000–0x40070000. This address is above that range.' },
+      { t: 'Interrupt-safe code that was copied into internal RAM (IRAM)', why: 'IRAM is 0x40080000–0x400AA000. The address in the dump is higher than that range.' },
     ] },
   ],
 });
@@ -337,9 +337,9 @@ For one boot of your own board, identify: which line is the last one printed by 
   ],
   quiz: [
     { q: 'Why is the second-stage bootloader written at `0x1000` on an ESP32 but at `0x0` on an ESP32-C3?', kind: 'arch', choices: [
-      { t: 'Each chip\'s mask ROM is hard-wired to load the bootloader from that offset', ok: true, why: 'The first-stage bootloader is in ROM and cannot be changed; the offset it reads from is a fixed property of each chip.' },
-      { t: 'It is a menuconfig option with different defaults', why: 'The partition table offset is configurable, but the bootloader offset is not: the code that reads it is in ROM, before any configuration exists.' },
-      { t: 'RISC-V chips need the reset vector at address zero', why: 'The offset is a position in external flash, not a CPU address. The CPU starts executing in mask ROM on both chips.' },
+      { t: 'Each chip\'s mask ROM loads the bootloader from a fixed offset', ok: true, why: 'The first-stage bootloader is in ROM and cannot be changed; the offset it reads from is a fixed property of each chip.' },
+      { t: 'It is a menuconfig option whose default differs between the two targets', why: 'The partition table offset is configurable, but the bootloader offset is not: the code that reads it is in ROM, before any configuration exists.' },
+      { t: 'RISC-V chips need the reset vector at address zero of the flash', why: 'The offset is a position in external flash, not a CPU address. The CPU starts executing in mask ROM on both chips.' },
     ] },
     { q: 'You changed the log level in menuconfig and rebuilt. Which file recorded your change?', kind: 'concept', choices: [
       { t: '`sdkconfig`', ok: true, why: 'menuconfig writes the full configuration to sdkconfig, and the build generates sdkconfig.h from it.' },
@@ -348,18 +348,18 @@ For one boot of your own board, identify: which line is the last one printed by 
     ] },
     { q: 'esptool reports "Failed to connect: No serial data received". What is the most direct manual remedy on a typical dev board?', kind: 'circuit', choices: [
       { t: 'Hold BOOT, tap EN, release BOOT, then retry', ok: true, why: 'That sequence holds GPIO0 low through reset, which puts the ROM in download mode even if the auto-reset circuit did not manage it.' },
-      { t: 'Run `idf.py fullclean`', why: 'That deletes build output on the PC. The error is about the chip not answering on the serial port, which no rebuild can affect.' },
-      { t: 'Lower the application log level', why: 'The application is not running when esptool connects. The chip must be in the ROM serial bootloader, which depends on GPIO0 at reset.' },
+      { t: 'Run `idf.py fullclean`, rebuild, then retry the flash', why: 'That deletes build output on the PC. The error is about the chip not answering on the serial port, which no rebuild can affect.' },
+      { t: 'Lower the application log level so the port is quiet', why: 'The application is not running when esptool connects. The chip must be in the ROM serial bootloader, which depends on GPIO0 at reset.' },
     ] },
     { q: 'A component you wrote in `components/sensor/` includes `driver/gpio.h` and the build says the header cannot be found, though `main` includes it without trouble. Why?', kind: 'code', choices: [
-      { t: 'The component must declare the GPIO driver component in `REQUIRES` or `PRIV_REQUIRES`', ok: true, why: 'Only `main` gets every component implicitly. Other components see only the include paths of components they declare.' },
-      { t: 'Headers can only be included from `main`', why: 'Any component can use any driver. What is missing is the declared dependency that puts the driver\'s include directory on this component\'s path.' },
-      { t: 'The GPIO driver was removed from ESP-IDF', why: 'The driver exists and `main` is using it in the same build. The difference between the two components is their declared dependencies.' },
+      { t: 'The component must list the GPIO driver in `REQUIRES` or `PRIV_REQUIRES`', ok: true, why: 'Only `main` gets every component implicitly. Other components see only the include paths of components they declare.' },
+      { t: 'Driver headers can only be included from `main`; other components must call through it', why: 'Any component can use any driver. What is missing is the declared dependency that puts the driver\'s include directory on this component\'s path.' },
+      { t: 'The GPIO driver must first be enabled in menuconfig for components other than `main`', why: 'The driver exists and `main` is using it in the same build. The difference between the two components is their declared dependencies.' },
     ] },
     { q: '`idf.py size` shows the app is 40 kB over its partition. Which action attacks the cause rather than moving the limit?', kind: 'concept', choices: [
-      { t: 'Run `idf.py size-components` to find the largest contributors and remove or shrink them', ok: true, why: 'Per-component size shows where the bytes are (often logging strings, unused protocol stacks or tables), which is where reductions come from.' },
-      { t: 'Buy a module with more flash', why: 'More flash only helps after the partition table is also changed, and it leaves the image as large as before.' },
-      { t: 'Erase the flash before flashing', why: 'Erasing does not change the size of the image or the partition; the size check happens at build time on the PC.' },
+      { t: 'Run `idf.py size-components` and shrink the largest contributors', ok: true, why: 'Per-component size shows where the bytes are (often logging strings, unused protocol stacks or tables), which is where reductions come from.' },
+      { t: 'Buy a module with more flash, so that the same partition table has room to spare', why: 'More flash only helps after the partition table is also changed, and it leaves the image as large as before.' },
+      { t: 'Erase the whole flash before flashing, to free the space old images occupy', why: 'Erasing does not change the size of the image or the partition; the size check happens at build time on the PC.' },
     ] },
   ],
 });
@@ -570,19 +570,19 @@ Find an Arduino sketch for a sensor you own (or any I2C sensor library example).
   ],
   quiz: [
     { q: 'In an Arduino sketch on an ESP32, what is `delay(1000)` doing to the processor?', kind: 'concept', choices: [
-      { t: 'Blocking the calling FreeRTOS task for about a second while other tasks may run', ok: true, why: 'The Arduino core implements delay with vTaskDelay, so the loop task sleeps and the scheduler runs whatever else is ready.' },
-      { t: 'Spinning in a counting loop with interrupts disabled', why: 'That is how delay works on some small 8-bit boards. On the ESP32 the core sits on FreeRTOS, and a busy loop of that length would trip a watchdog.' },
-      { t: 'Putting the whole chip into deep sleep', why: 'Deep sleep powers down the CPU and loses RAM contents; it must be requested explicitly and the program restarts afterwards.' },
+      { t: 'Blocking the calling FreeRTOS task for about a second; other tasks can run', ok: true, why: 'The Arduino core implements delay with vTaskDelay, so the loop task sleeps and the scheduler runs whatever else is ready.' },
+      { t: 'Spinning in a calibrated counting loop with interrupts disabled for one second', why: 'That is how delay works on some small 8-bit boards. On the ESP32 the core sits on FreeRTOS, and a busy loop of that length would trip a watchdog.' },
+      { t: 'Putting the whole chip into deep sleep and waking it on a timer', why: 'Deep sleep powers down the CPU and loses RAM contents; it must be requested explicitly and the program restarts afterwards.' },
     ] },
     { q: 'A `.cpp` file defines `void app_main() { ... }` and the link fails with "undefined reference to app_main". Why?', kind: 'code', choices: [
-      { t: 'The C++ compiler mangled the name, so the C startup code cannot find it; it needs `extern "C"`', ok: true, why: 'Startup code calls the unmangled C symbol app_main. Declaring the function extern "C" makes the C++ compiler emit that exact symbol.' },
-      { t: 'C++ projects must use `main()` instead', why: 'The entry point ESP-IDF calls is always app_main, in either language. The problem is the symbol name the compiler produced for it.' },
-      { t: 'ESP-IDF does not support C++ source files', why: 'C++ is supported and widely used. The file compiled; it is the link step that failed to match a symbol.' },
+      { t: 'The C++ compiler mangled the name; it needs `extern "C"`', ok: true, why: 'Startup code calls the unmangled C symbol app_main. Declaring the function extern "C" makes the C++ compiler emit that exact symbol.' },
+      { t: 'C++ projects must define `main()` instead, and the startup code calls that', why: 'The entry point ESP-IDF calls is always app_main, in either language. The problem is the symbol name the compiler produced for it.' },
+      { t: 'ESP-IDF does not compile C++ source files unless a menuconfig option is set', why: 'C++ is supported and widely used. The file compiled; it is the link step that failed to match a symbol.' },
     ] },
     { q: 'You add `ESP_LOGD(TAG, "raw=%d", raw);` and nothing is printed, although `ESP_LOGI` lines from the same file appear. Most likely cause?', kind: 'code', choices: [
-      { t: 'Debug level is above the compile-time maximum log level, so the call was compiled out', ok: true, why: 'The default maximum level is Info. More verbose calls are removed at compile time unless the maximum is raised in menuconfig.' },
-      { t: 'The tag string is too long', why: 'Tags are ordinary strings with no practical length limit of that kind, and the Info lines use the same tag successfully.' },
-      { t: '`%d` is not supported by the logging library', why: 'ESP_LOGx uses the normal printf formatting from the C library, and %d is supported.' },
+      { t: 'Debug is above the compile-time maximum log level, so the call was compiled out', ok: true, why: 'The default maximum level is Info. More verbose calls are removed at compile time unless the maximum is raised in menuconfig.' },
+      { t: 'The tag string is too long for the debug level, which truncates tags to save space', why: 'Tags are ordinary strings with no practical length limit of that kind, and the Info lines use the same tag successfully.' },
+      { t: '`%d` is not supported by the debug and verbose macros, which take strings only', why: 'ESP_LOGx uses the normal printf formatting from the C library, and %d is supported.' },
     ] },
     { q: 'A field device calls `ESP_ERROR_CHECK(i2c_master_transmit(...))` for every sensor read. A connector works loose once a day. What does the user observe?', kind: 'arch', choices: [
       { t: 'The device reboots each time a read fails', ok: true, why: 'ESP_ERROR_CHECK calls abort() on any non-OK result, and abort resets the chip.' },
@@ -590,9 +590,9 @@ Find an Arduino sketch for a sensor you own (or any I2C sensor library example).
       { t: 'The driver retries until the sensor answers', why: 'No retry is built into the macro or implied by it. Retrying is something your code must do explicitly.' },
     ] },
     { q: 'Which is a genuine reason to choose ESP-IDF over the Arduino framework for a product?', kind: 'concept', choices: [
-      { t: 'You need control of sdkconfig, the partition table and security features such as secure boot', ok: true, why: 'Those are configured through the IDF build and menuconfig, which the plain Arduino flow fixes in advance.' },
-      { t: 'ESP-IDF programs run on a faster CPU', why: 'Both frameworks run on the same chip at the same clock; Arduino is a layer on top of the same SDK.' },
-      { t: 'Arduino cannot use Wi-Fi', why: 'The Arduino core exposes Wi-Fi through its own library, implemented with the same esp_wifi driver.' },
+      { t: 'You need control of sdkconfig, the partition table and secure boot', ok: true, why: 'Those are configured through the IDF build and menuconfig, which the plain Arduino flow fixes in advance.' },
+      { t: 'ESP-IDF programs run the CPU at a higher clock frequency than Arduino sketches can', why: 'Both frameworks run on the same chip at the same clock; Arduino is a layer on top of the same SDK.' },
+      { t: 'The Arduino core has no Wi-Fi support, so networking needs ESP-IDF', why: 'The Arduino core exposes Wi-Fi through its own library, implemented with the same esp_wifi driver.' },
     ] },
   ],
 });
@@ -699,8 +699,8 @@ while (1) {
     vTaskDelay(pdMS_TO_TICKS(100));
 }`,
       choices: [
-        { t: 'A steady 1', why: 'That would need something pulling the pin to 3.3 V. On this particular pin the requested pull-up does not exist in the silicon.' },
-        { t: 'A steady 0', why: 'Nothing connects the pin to ground while the button is open, so there is no reason for it to sit at 0.' },
+        { t: 'A steady 1, because the pull-up was requested', why: 'That would need something pulling the pin to 3.3 V. On this particular pin the requested pull-up does not exist in the silicon.' },
+        { t: 'A steady 0, because the button goes to ground', why: 'Nothing connects the pin to ground while the button is open, so there is no reason for it to sit at 0.' },
         { t: 'An unpredictable mix of 0 and 1', ok: true, why: 'GPIO34 has no internal pull resistors, so the request is ineffective and the open input floats.' },
       ],
       reveal: `GPIO34–39 have no pull-up or pull-down. The return value of \`gpio_config\` was also ignored, so any complaint from the driver went unseen. Two fixes: move the button to a pin with pull resistors, or add an external 10 kΩ from GPIO34 to 3.3 V.` },
@@ -741,9 +741,9 @@ The answer is open-drain (\`GPIO_MODE_INPUT_OUTPUT_OD\`) on both boards with a s
   ],
   quiz: [
     { q: 'Why does the GPIO driver write to `GPIO_OUT_W1TS` instead of reading `GPIO_OUT`, OR-ing a bit and writing it back?', kind: 'arch', choices: [
-      { t: 'A single write cannot be interrupted half-way, so concurrent changes to other pins are never lost', ok: true, why: 'Read-modify-write takes several instructions. If an interrupt or another core changes a different bit in between, the write-back undoes it. W1TS/W1TC avoid the read entirely.' },
-      { t: 'The `GPIO_OUT` register cannot be read', why: 'It can be read. The issue is what may happen between the read and the write, not whether the read is possible.' },
-      { t: 'It makes the pin switch at a higher voltage', why: 'Which register is used has no effect on the electrical output level; both end up setting the same output latch.' },
+      { t: 'One write changes one pin, so no update to another pin can be lost in between', ok: true, why: 'Read-modify-write takes several instructions. If an interrupt or another core changes a different bit in between, the write-back undoes it. W1TS/W1TC avoid the read entirely.' },
+      { t: 'The `GPIO_OUT` register is write-only, so there is nothing to read back and OR', why: 'It can be read. The issue is what may happen between the read and the write, not whether the read is possible.' },
+      { t: 'Writing through W1TS makes the pad switch faster and at a higher drive strength', why: 'Which register is used has no effect on the electrical output level; both end up setting the same output latch.' },
     ] },
     { q: 'A pin is configured with `GPIO_MODE_OUTPUT` and driven high. `gpio_get_level` on it returns 0. Why?', kind: 'code', choices: [
       { t: 'The input buffer is not enabled in output-only mode', ok: true, why: 'Reading needs the input path. GPIO_MODE_INPUT_OUTPUT enables both the driver and the input buffer.' },
@@ -751,19 +751,19 @@ The answer is open-drain (\`GPIO_MODE_INPUT_OUTPUT_OD\`) on both boards with a s
       { t: '`gpio_get_level` only works after an interrupt is configured', why: 'Reading a level is independent of interrupts; it simply samples the input register.' },
     ] },
     { q: 'What is wrong with `.pin_bit_mask = 1 << 33`?', kind: 'code', choices: [
-      { t: 'The constant 1 is a 32-bit int, so shifting by 33 is undefined and does not select GPIO33', ok: true, why: 'The shift must be done in a 64-bit type: 1ULL << 33.' },
-      { t: 'GPIO33 cannot be configured with `gpio_config`', why: 'GPIO33 is an ordinary pin. The trouble is in how the C expression is evaluated before the driver ever sees it.' },
-      { t: 'Pin masks start at 1, so it should be `1 << 34`', why: 'Bit n of the mask corresponds to GPIO n. The numbering is not the problem.' },
+      { t: '`1` is a 32-bit int, so the shift is undefined and does not select GPIO33', ok: true, why: 'The shift must be done in a 64-bit type: 1ULL << 33.' },
+      { t: 'GPIO33 is an input-only pad, so it cannot be configured with `gpio_config`', why: 'GPIO33 is an ordinary pin. The trouble is in how the C expression is evaluated before the driver ever sees it.' },
+      { t: 'Pin masks start at bit 1 for GPIO0, so GPIO33 needs `1 << 34`', why: 'Bit n of the mask corresponds to GPIO n. The numbering is not the problem.' },
     ] },
     { q: 'A 5 V sensor output is wired directly to an ESP32 GPIO and "works". What is the right assessment?', kind: 'circuit', choices: [
-      { t: 'It exceeds the pin\'s rated input voltage and needs a divider or level shifter, even if it appears to work', ok: true, why: 'ESP32 GPIOs are 3.3 V and not 5 V tolerant. Overstress may damage the pad gradually rather than at once.' },
-      { t: 'It is fine because the internal pull-down limits the voltage', why: 'A weak pull resistor cannot hold down a low-impedance 5 V driver, and it is not a protection device.' },
-      { t: 'It is fine as long as the pin is configured as an input', why: 'The voltage limit applies to the pad whatever its mode. Configuration does not change what the silicon can withstand.' },
+      { t: 'It exceeds the pin\'s rated input voltage and needs a divider or level shifter', ok: true, why: 'ESP32 GPIOs are 3.3 V and not 5 V tolerant. Overstress may damage the pad gradually rather than at once.' },
+      { t: 'It is fine, because enabling the internal pull-down limits the voltage at the pad', why: 'A weak pull resistor cannot hold down a low-impedance 5 V driver, and it is not a protection device.' },
+      { t: 'It is fine as long as the pin stays configured as an input and never drives', why: 'The voltage limit applies to the pad whatever its mode. Configuration does not change what the silicon can withstand.' },
     ] },
     { q: 'For a button wired between a GPIO and **3.3 V**, which configuration gives a defined level when the button is open?', kind: 'circuit', choices: [
       { t: 'Input with pull-down enabled; pressed reads 1', ok: true, why: 'The pull-down holds the open pin at 0, and the button overrides it to 1.' },
       { t: 'Input with pull-up enabled; pressed reads 0', why: 'With the button going to 3.3 V, a pull-up means the pin is high both open and closed, so the press is invisible.' },
-      { t: 'Input with both pulls disabled', why: 'Then nothing defines the level when the button is open, and the input floats.' },
+      { t: 'Input with both pulls disabled, since the button supplies the level', why: 'Then nothing defines the level when the button is open, and the input floats.' },
     ] },
   ],
 });
@@ -894,7 +894,7 @@ A mechanical switch does not close once. The contacts bounce for a few milliseco
     vTaskDelay(1);
 }`,
       choices: [
-        { t: 'It prints 1000 lines per second reliably', why: 'That would require the logging lock and the scheduler to be usable from interrupt context, which they are not.' },
+        { t: 'It prints 100 lines per second, because each call waits one tick', why: 'That would require the logging lock and the scheduler to be usable from interrupt context, which they are not.' },
         { t: 'It crashes or hangs: an ISR must not block or take locks', ok: true, why: 'vTaskDelay needs a task to suspend and there is none in interrupt context; ESP_LOGI takes a lock that the interrupted task may hold.' },
         { t: 'It works but counts only every second pulse', why: 'There is no mechanism here that would skip alternate edges. The failure is more fundamental than a missed count.' },
       ],
@@ -940,9 +940,9 @@ A rotary encoder produces edges 200 µs apart at full speed. Your design saves a
   ],
   quiz: [
     { q: 'Why can application code not run from flash while NVS is writing a value?', kind: 'arch', choices: [
-      { t: 'The flash cache is disabled during the write, so code and constants stored in flash are unreachable', ok: true, why: 'The flash chip cannot serve reads while programming or erasing, so ESP-IDF turns the cache off for that period.' },
-      { t: 'NVS disables all interrupts globally for the duration', why: 'Interrupts whose handlers are IRAM-safe remain enabled. The limitation is about where code is stored, not a blanket interrupt mask.' },
-      { t: 'The CPU clock is lowered during flash writes', why: 'No clock change is involved. The issue is access to instructions that live in the chip being written.' },
+      { t: 'The flash cache is off during the write, so code stored in flash is unreachable', ok: true, why: 'The flash chip cannot serve reads while programming or erasing, so ESP-IDF turns the cache off for that period.' },
+      { t: 'NVS disables all interrupts and the scheduler globally until the write completes', why: 'Interrupts whose handlers are IRAM-safe remain enabled. The limitation is about where code is stored, not a blanket interrupt mask.' },
+      { t: 'The CPU clock is lowered during flash writes, which stalls code fetched from flash', why: 'No clock change is involved. The issue is access to instructions that live in the chip being written.' },
     ] },
     { q: 'An ISR registered with `ESP_INTR_FLAG_IRAM` calls a helper function that is not marked `IRAM_ATTR`. When does this fail?', kind: 'code', choices: [
       { t: 'Only when the interrupt fires during a flash write or erase', ok: true, why: 'The helper lives in flash. It is reachable most of the time and unreachable exactly while the cache is disabled.' },
@@ -950,18 +950,18 @@ A rotary encoder produces edges 200 µs apart at full speed. Your design saves a
       { t: 'Never; the linker moves called functions to IRAM automatically', why: 'Placement is per function and explicit. The linker does not follow call graphs to relocate callees.' },
     ] },
     { q: 'What is the purpose of the `woken` flag and `portYIELD_FROM_ISR()` after `xQueueSendFromISR`?', kind: 'code', choices: [
-      { t: 'To switch straight to the unblocked task on leaving the ISR if it has higher priority than the interrupted one', ok: true, why: 'Without the yield, the higher-priority task would wait until the next scheduler tick to run.' },
-      { t: 'To acknowledge the interrupt in the GPIO peripheral', why: 'The GPIO ISR service clears the interrupt status itself. The flag concerns the scheduler, not the peripheral.' },
-      { t: 'To re-enable interrupts that the ISR disabled', why: 'Nothing was disabled by the handler. The flag only tells the scheduler whether a context switch is worthwhile.' },
+      { t: 'To switch to the unblocked task on leaving the ISR if it has higher priority', ok: true, why: 'Without the yield, the higher-priority task would wait until the next scheduler tick to run.' },
+      { t: 'To acknowledge the interrupt in the GPIO peripheral so that the same pin can fire again', why: 'The GPIO ISR service clears the interrupt status itself. The flag concerns the scheduler, not the peripheral.' },
+      { t: 'To re-enable the interrupts that were masked when the handler was entered', why: 'Nothing was disabled by the handler. The flag only tells the scheduler whether a context switch is worthwhile.' },
     ] },
     { q: 'A button interrupt on a falling edge reports 3–6 events per press. The most likely cause?', kind: 'circuit', choices: [
       { t: 'Contact bounce producing several real edges', ok: true, why: 'Mechanical contacts chatter for milliseconds, and each transition through the threshold is a genuine edge.' },
       { t: 'The queue is duplicating items', why: 'A FreeRTOS queue delivers each item exactly once. The extra events were generated before the queue.' },
-      { t: 'The internal pull-up is too strong', why: 'Pull-up strength affects current and rise time, not the number of times the contacts physically make and break.' },
+      { t: 'The internal pull-up is too strong, so the line rings on release', why: 'Pull-up strength affects current and rise time, not the number of times the contacts physically make and break.' },
     ] },
     { q: 'The queue in the worked example is created after `gpio_isr_handler_add`. What can happen?', kind: 'code', choices: [
       { t: 'An early interrupt calls `xQueueSendFromISR` with a NULL handle and crashes', ok: true, why: 'The interrupt is live as soon as the handler is added. Everything the handler uses must exist before that.' },
-      { t: 'Nothing; interrupts stay disabled until `app_main` returns', why: 'There is no such deferral. A pin interrupt is active from the moment it is enabled.' },
+      { t: 'Nothing; pin interrupts stay disabled until `app_main` returns to the scheduler', why: 'There is no such deferral. A pin interrupt is active from the moment it is enabled.' },
       { t: 'The queue is created with the wrong item size', why: 'Item size is set by the argument to xQueueCreate and does not depend on the order of the calls.' },
     ] },
   ],
@@ -1080,8 +1080,8 @@ adc_oneshot_new_unit(&cfg, &adc2);
 /* ... channel for GPIO26 configured ... */
 esp_err_t err = adc_oneshot_read(adc2, chan, &raw);`,
       choices: [
-        { t: 'Readings continue unchanged', why: 'That would require ADC2 to be independent of the radio. On this chip the Wi-Fi driver uses that converter.' },
-        { t: '`adc_oneshot_read` starts returning errors or timeouts while Wi-Fi is active', ok: true, why: 'ADC2 is shared with Wi-Fi on the ESP32; the driver arbitrates and the application read loses.' },
+        { t: 'Readings continue unchanged, because the ADC and the radio are separate blocks', why: 'That would require ADC2 to be independent of the radio. On this chip the Wi-Fi driver uses that converter.' },
+        { t: '`adc_oneshot_read` starts returning errors while Wi-Fi is active', ok: true, why: 'ADC2 is shared with Wi-Fi on the ESP32; the driver arbitrates and the application read loses.' },
         { t: 'Wi-Fi fails to connect because the ADC holds the pin', why: 'The radio has priority over the application in this arbitration, so Wi-Fi is not the side that suffers.' },
       ],
       reveal: `GPIO26 is an ADC2 pin. On the ESP32, S2 and S3, ADC2 is also used by Wi-Fi and \`adc_oneshot_read\` arbitrates between the two, so reads fail with a timeout error when Wi-Fi has the converter. The code above also ignores \`err\`, so \`raw\` would silently keep a stale or uninitialised value. Move the sensor to an ADC1 pin (GPIO32–39) and check the return value.` },
@@ -1108,17 +1108,17 @@ A temperature sensor outputs 0.1 V to 0.9 V. You could read it at 12 dB attenuat
     { q: 'Two ESP32 boards give different raw codes for the same input voltage. What mainly explains it?', kind: 'arch', choices: [
       { t: 'The internal ADC reference voltage varies from chip to chip', ok: true, why: 'The reference is nominally about 1.1 V but differs per device; factory-measured values in eFuse let the calibration driver correct for it.' },
       { t: 'The boards have different amounts of flash', why: 'Flash size has no connection to the analog front end or its reference.' },
-      { t: 'One board is running the ADC at a different bit width', why: 'The same firmware configures the same width on both. The difference is analog, inside the chip.' },
+      { t: 'One board is running the ADC at a different bit width by default', why: 'The same firmware configures the same width on both. The difference is analog, inside the chip.' },
     ] },
     { q: 'Why does a 100 nF capacitor at the ADC pin improve readings from a 100 kΩ + 100 kΩ divider?', kind: 'circuit', choices: [
-      { t: 'It supplies the brief charge the sampling capacitor draws, which the high-impedance divider cannot deliver quickly', ok: true, why: 'The sample-and-hold needs charge in a very short time; a local reservoir keeps the pin voltage from dipping during sampling.' },
-      { t: 'It increases the ADC reference voltage', why: 'The reference is internal to the chip and is not affected by a capacitor on an input pin.' },
-      { t: 'It raises the divider ratio', why: 'A capacitor to ground does not change the DC ratio set by the two resistors.' },
+      { t: 'It supplies the brief charge that the ADC\'s sampling capacitor draws', ok: true, why: 'The sample-and-hold needs charge in a very short time; a local reservoir keeps the pin voltage from dipping during sampling.' },
+      { t: 'It raises the ADC reference voltage, which widens the usable input range', why: 'The reference is internal to the chip and is not affected by a capacitor on an input pin.' },
+      { t: 'It increases the divider ratio, so the pin sits nearer mid-range', why: 'A capacitor to ground does not change the DC ratio set by the two resistors.' },
     ] },
     { q: 'Firmware written for an ESP32 uses `adc_cali_create_scheme_line_fitting`. On an ESP32-S3 the build fails at that call. Why?', kind: 'code', choices: [
-      { t: 'The S3 supports the curve-fitting calibration scheme, not line fitting', ok: true, why: 'Calibration schemes are chip-specific, which is why code guards them with the ADC_CALI_SCHEME_..._SUPPORTED macros.' },
-      { t: 'The S3 has no ADC', why: 'The S3 does have ADCs. What differs is how the calibration data is modelled.' },
-      { t: 'Calibration requires Wi-Fi to be initialised first', why: 'Calibration only reads eFuse values and has no dependency on the radio.' },
+      { t: 'The S3 supports curve-fitting calibration, not line fitting', ok: true, why: 'Calibration schemes are chip-specific, which is why code guards them with the ADC_CALI_SCHEME_..._SUPPORTED macros.' },
+      { t: 'The S3 has no ADC calibration data in eFuse at all', why: 'The S3 does have ADCs. What differs is how the calibration data is modelled.' },
+      { t: 'Calibration requires Wi-Fi to be initialised first on the S3', why: 'Calibration only reads eFuse values and has no dependency on the radio.' },
     ] },
     { q: 'You average 64 readings instead of 16. Roughly how does random noise in the result change?', kind: 'concept', choices: [
       { t: 'It halves', ok: true, why: 'Averaging N uncorrelated samples reduces noise by √N. √64/√16 = 2.' },
@@ -1127,8 +1127,8 @@ A temperature sensor outputs 0.1 V to 0.9 V. You could read it at 12 dB attenuat
     ] },
     { q: 'A signal that swings up to 3.2 V is read at 12 dB attenuation and the top of the range looks compressed. What is the sound fix?', kind: 'circuit', choices: [
       { t: 'Divide the signal down so it stays in the middle of the ADC range', ok: true, why: 'The usable range ends below the supply and the response flattens near the top. Keeping the signal away from the ends avoids the non-linear region.' },
-      { t: 'Switch to 0 dB attenuation to get more headroom', why: 'Lower attenuation gives a smaller input range, so the signal would clip much sooner.' },
-      { t: 'Increase the bit width', why: 'More bits subdivide the same range more finely. They do not extend the range or straighten the curve.' },
+      { t: 'Switch to 0 dB attenuation to get more headroom at the top of the range', why: 'Lower attenuation gives a smaller input range, so the signal would clip much sooner.' },
+      { t: 'Increase the bit width so the top of the range has more codes', why: 'More bits subdivide the same range more finely. They do not extend the range or straighten the curve.' },
     ] },
   ],
 });
@@ -1257,7 +1257,7 @@ A servo expects a 50 Hz signal whose high time runs from about 1.0 ms to 2.0 ms 
     { q: 'With a 13-bit timer, which duty value gives approximately 10 % high time?', kind: 'code', choices: [
       { t: '819', ok: true, why: '2^13 = 8192 counts per period, and 10 % of that is about 819.' },
       { t: '10', why: 'Duty is in timer counts, not percent. Ten counts out of 8192 is about 0.1 %.' },
-      { t: '26', why: 'That would be about 10 % of an 8-bit range. The range here is 0–8191.' },
+      { t: '1638', why: 'That would be about 10 % of an 8-bit range. The range here is 0–8191.' },
     ] },
     { q: '`ledc_timer_config` fails for 100 kHz at 14 bits from an 80 MHz clock. Which change makes it succeed while keeping the frequency?', kind: 'concept', choices: [
       { t: 'Reduce the resolution to 9 bits', ok: true, why: '80 MHz / 100 kHz = 800 counts per period. 2^9 = 512 fits; 2^10 = 1024 does not.' },
@@ -1265,14 +1265,14 @@ A servo expects a 50 Hz signal whose high time runs from about 1.0 ms to 2.0 ms 
       { t: 'Use a different GPIO', why: 'The limit comes from the counter and its clock. Pin routing has no part in it.' },
     ] },
     { q: 'Why is a duty change applied with a separate `ledc_update_duty` call?', kind: 'arch', choices: [
-      { t: 'So the new value is latched at a period boundary and the output never shows a truncated or stretched pulse', ok: true, why: 'Changing the compare value mid-period could produce a glitch pulse. Staging the value and applying it synchronously avoids that.' },
-      { t: 'Because writing duty requires the flash cache to be enabled', why: 'Duty registers are ordinary peripheral registers with no relation to flash or its cache.' },
-      { t: 'To give the application time to cancel', why: 'The split exists for waveform integrity, not as an undo mechanism.' },
+      { t: 'So the new value is latched at a period boundary and no pulse is cut short', ok: true, why: 'Changing the compare value mid-period could produce a glitch pulse. Staging the value and applying it synchronously avoids that.' },
+      { t: 'Because writing the duty register requires the flash cache to be enabled first', why: 'Duty registers are ordinary peripheral registers with no relation to flash or its cache.' },
+      { t: 'To give the application a window in which it can still cancel the change', why: 'The split exists for waveform integrity, not as an undo mechanism.' },
     ] },
     { q: 'A motor driven at 1 kHz PWM whines audibly. What is the trade-off in moving to 25 kHz?', kind: 'circuit', choices: [
-      { t: 'The whine leaves the audible band, but fewer duty steps are available and switching losses rise', ok: true, why: 'Higher frequency consumes clock budget that would otherwise provide resolution, and each transition of the power transistor dissipates energy.' },
-      { t: 'There is none; higher frequency is better in every respect', why: 'Every period needs its share of clock ticks, and the transistor switches more often. Both have costs.' },
-      { t: 'The motor receives a lower average voltage at the same duty', why: 'Average voltage depends on duty, not on frequency, for an ideal switch.' },
+      { t: 'The whine becomes inaudible, but fewer duty steps fit and switching losses rise', ok: true, why: 'Higher frequency consumes clock budget that would otherwise provide resolution, and each transition of the power transistor dissipates energy.' },
+      { t: 'There is none; a higher PWM frequency is better in every respect for a motor', why: 'Every period needs its share of clock ticks, and the transistor switches more often. Both have costs.' },
+      { t: 'The motor receives a lower average voltage at the same duty, so it slows down', why: 'Average voltage depends on duty, not on frequency, for an ideal switch.' },
     ] },
   ],
 });
@@ -1386,8 +1386,8 @@ void app_main(void)
     vTaskDelay(pdMS_TO_TICKS(5));
 }`,
       choices: [
-        { t: 'Every 5.2 ms', why: 'That assumes the delay has millisecond resolution. Delays are counted in scheduler ticks, and a tick here is 10 ms.' },
-        { t: 'Every 10 ms', why: 'That would be a delay of one tick. Work out what pdMS_TO_TICKS(5) evaluates to with integer division.' },
+        { t: 'Every 5.2 ms: the work plus the requested delay', why: 'That assumes the delay has millisecond resolution. Delays are counted in scheduler ticks, and a tick here is 10 ms.' },
+        { t: 'Every 10 ms, because the delay rounds up to one tick', why: 'That would be a delay of one tick. Work out what pdMS_TO_TICKS(5) evaluates to with integer division.' },
         { t: 'As fast as the loop can spin, with no real delay', ok: true, why: 'pdMS_TO_TICKS(5) is 5 × 100 / 1000 = 0 in integer arithmetic, and a delay of 0 ticks only yields to equal-priority tasks.' },
       ],
       reveal: `\`pdMS_TO_TICKS(5)\` with a 10 ms tick rounds down to **0**. \`vTaskDelay(0)\` does not sleep; the loop runs flat out, starves lower-priority tasks and eventually trips the task watchdog. Any delay shorter than one tick has this trap. Use a hardware timer for sub-tick periods, or accept one tick as the minimum.` },
@@ -1432,28 +1432,28 @@ An ultrasonic ranger outputs a pulse whose width is proportional to distance, fr
   quiz: [
     { q: 'A gptimer is created with `resolution_hz = 1000000` and an auto-reload alarm at count 250. How often does the alarm fire?', kind: 'code', choices: [
       { t: 'Every 250 µs (4 kHz)', ok: true, why: 'One count is 1 µs at 1 MHz resolution, so 250 counts is 250 µs.' },
-      { t: 'Every 250 ms', why: 'That would be the case at a 1 kHz count rate. The resolution here is a million counts per second.' },
-      { t: 'Every 4 µs', why: 'That divides the wrong way. The alarm period is the count multiplied by the tick time.' },
+      { t: 'Every 250 ms (4 Hz)', why: 'That would be the case at a 1 kHz count rate. The resolution here is a million counts per second.' },
+      { t: 'Every 4 µs (250 kHz)', why: 'That divides the wrong way. The alarm period is the count multiplied by the tick time.' },
     ] },
     { q: 'Which is safe inside a gptimer `on_alarm` callback?', kind: 'code', choices: [
-      { t: '`xQueueSendFromISR` followed by returning whether a task was woken', ok: true, why: 'The callback runs in interrupt context, where only the FromISR family of FreeRTOS calls is permitted.' },
-      { t: '`i2c_master_transmit_receive` to read a sensor', why: 'A bus transaction blocks waiting for the transfer to finish, which is impossible in interrupt context.' },
-      { t: '`ESP_LOGI` to record the event', why: 'Logging takes a lock and formats text. From an interrupt it can deadlock against the task it interrupted.' },
+      { t: '`xQueueSendFromISR`, then returning whether a task was woken', ok: true, why: 'The callback runs in interrupt context, where only the FromISR family of FreeRTOS calls is permitted.' },
+      { t: '`i2c_master_transmit_receive` to read one register from a sensor', why: 'A bus transaction blocks waiting for the transfer to finish, which is impossible in interrupt context.' },
+      { t: '`ESP_LOGI` to record the time at which the alarm fired', why: 'Logging takes a lock and formats text. From an interrupt it can deadlock against the task it interrupted.' },
     ] },
     { q: 'Why does a loop of "do work, then `vTaskDelay(period)`" drift relative to a true periodic schedule?', kind: 'concept', choices: [
-      { t: 'Each cycle lasts the work time plus the delay, so the period is longer than intended and varies with the work', ok: true, why: 'The delay starts when the work ends. A hardware timer, or vTaskDelayUntil, anchors each cycle to an absolute time instead.' },
-      { t: 'The FreeRTOS tick counter loses ticks at random', why: 'The tick interrupt is reliable. The inaccuracy comes from where the delay is measured from.' },
-      { t: 'vTaskDelay rounds every delay up to one second', why: 'Delays are quantised to the tick period (10 ms by default), not to seconds.' },
+      { t: 'Each cycle lasts the work time plus the delay, so the period stretches', ok: true, why: 'The delay starts when the work ends. A hardware timer, or vTaskDelayUntil, anchors each cycle to an absolute time instead.' },
+      { t: 'The FreeRTOS tick counter loses ticks at random whenever a task is delayed', why: 'The tick interrupt is reliable. The inaccuracy comes from where the delay is measured from.' },
+      { t: '`vTaskDelay` rounds every delay up to a whole second of ticks', why: 'Delays are quantised to the tick period (10 ms by default), not to seconds.' },
     ] },
     { q: 'You need thirty independent timeouts for thirty network sessions. Which facility fits?', kind: 'arch', choices: [
-      { t: '`esp_timer`, because it multiplexes any number of software timers onto one hardware timer', ok: true, why: 'Hardware timers are few; esp_timer keeps a sorted list and needs only memory per timer.' },
-      { t: 'Thirty `gptimer` instances', why: 'A chip has only a handful of hardware timers, so allocation would fail long before thirty.' },
-      { t: 'Thirty tasks each calling `vTaskDelay`', why: 'That works in principle but spends a whole stack per timeout, which is a poor use of RAM.' },
+      { t: '`esp_timer`, which multiplexes many software timers onto one hardware timer', ok: true, why: 'Hardware timers are few; esp_timer keeps a sorted list and needs only memory per timer.' },
+      { t: 'Thirty `gptimer` instances, one hardware timer per session for the best precision', why: 'A chip has only a handful of hardware timers, so allocation would fail long before thirty.' },
+      { t: 'Thirty tasks that each call `vTaskDelay` and then report the timeout', why: 'That works in principle but spends a whole stack per timeout, which is a poor use of RAM.' },
     ] },
     { q: 'What does `esp_timer_get_time()` return?', kind: 'concept', choices: [
       { t: 'Microseconds since boot as a 64-bit signed integer', ok: true, why: 'It is a monotonic microsecond clock, convenient for measuring durations by subtraction.' },
       { t: 'The number of FreeRTOS ticks since boot', why: 'That is xTaskGetTickCount, with 10 ms resolution by default.' },
-      { t: 'Wall-clock time in seconds since 1970', why: 'Wall-clock time needs to be set from a network or RTC; this function knows only time since start-up.' },
+      { t: 'Wall-clock time in seconds since 1970, set from the network', why: 'Wall-clock time needs to be set from a network or RTC; this function knows only time since start-up.' },
     ] },
   ],
 });
@@ -1540,7 +1540,7 @@ Because UART carries bytes and not messages, **you** define where a message ends
 
     { t: 'predict', q: 'A device sends the 12 bytes `TEMP=23.5C\\r\\n` once a second at 9600 baud. Your loop calls `uart_read_bytes(PORT, buf, 128, pdMS_TO_TICKS(5))` and prints what each call returns. With a 10 ms tick, what do you expect to see for one message?',
       choices: [
-        { t: 'One read returning all 12 bytes', why: 'That would need the whole message to be in the buffer before the read returns. At this speed 12 bytes take over 12 ms to arrive.' },
+        { t: 'One read returning all 12 bytes, since they belong together', why: 'That would need the whole message to be in the buffer before the read returns. At this speed 12 bytes take over 12 ms to arrive.' },
         { t: 'Several reads, each returning a fragment of the message', ok: true, why: 'Each byte takes about 1 ms at 9600 baud, and the read returns whatever has arrived when its short timeout expires.' },
         { t: 'Nothing, because the timeout is shorter than a message', why: 'A timeout does not discard data. Bytes that have arrived are returned, and the rest come out on later calls.' },
       ],
@@ -1595,14 +1595,14 @@ Connect UART1 of two ESP32 boards (TX to RX both ways, grounds joined). Design a
   ],
   quiz: [
     { q: 'Why should a peripheral not be wired to the dev board\'s TX0/RX0 pins?', kind: 'circuit', choices: [
-      { t: 'They are the console and flashing UART, already driven by the USB-UART chip and by ROM boot messages', ok: true, why: 'A second transmitter on those lines collides with the console and can block auto-reset flashing.' },
-      { t: 'UART0 runs at a fixed baud rate that cannot be changed', why: 'Its baud rate is configurable like any other port. The conflict is about who else is already using the wires.' },
-      { t: 'UART0 pins are input-only', why: 'GPIO1 and GPIO3 on the ESP32 are ordinary bidirectional pads; the input-only group is GPIO34–39.' },
+      { t: 'They are the console and flashing UART, already driven by the USB-UART chip', ok: true, why: 'A second transmitter on those lines collides with the console and can block auto-reset flashing.' },
+      { t: 'UART0 runs at a baud rate fixed by the ROM, which a peripheral cannot match', why: 'Its baud rate is configurable like any other port. The conflict is about who else is already using the wires.' },
+      { t: 'The UART0 pins are input-only pads, so the peripheral could never be sent data', why: 'GPIO1 and GPIO3 on the ESP32 are ordinary bidirectional pads; the input-only group is GPIO34–39.' },
     ] },
     { q: 'What is the role of the RX ring buffer given to `uart_driver_install`?', kind: 'arch', choices: [
-      { t: 'The UART interrupt copies bytes from the small hardware FIFO into it so the task can read later', ok: true, why: 'The hardware FIFO holds only a little data. The driver\'s ISR drains it into RAM so nothing is lost while the task is busy.' },
-      { t: 'It stores the baud rate and frame configuration', why: 'Those live in the UART\'s configuration registers. The ring buffer holds received data bytes.' },
-      { t: 'It is where log output is formatted', why: 'Logging has its own path. This buffer belongs to the driver instance for one port\'s received data.' },
+      { t: 'The UART interrupt moves bytes from the hardware FIFO into it for the task to read', ok: true, why: 'The hardware FIFO holds only a little data. The driver\'s ISR drains it into RAM so nothing is lost while the task is busy.' },
+      { t: 'It stores the baud rate and frame configuration that `uart_param_config` later applies', why: 'Those live in the UART\'s configuration registers. The ring buffer holds received data bytes.' },
+      { t: 'It is where log output is formatted before the driver sends it to the console', why: 'Logging has its own path. This buffer belongs to the driver instance for one port\'s received data.' },
     ] },
     { q: 'A receiver configured for 115200 baud is connected to a device sending at 9600. What arrives?', kind: 'concept', choices: [
       { t: 'Garbage bytes and framing errors', ok: true, why: 'The receiver samples twelve times too fast, reading one long transmitted bit as many bits, so start and stop bits fall in the wrong places.' },
@@ -1610,14 +1610,14 @@ Connect UART1 of two ESP32 boards (TX to RX both ways, grounds joined). Design a
       { t: 'Nothing at all', why: 'The line still toggles, so the receiver still detects start bits. It decodes them wrongly rather than staying silent.' },
     ] },
     { q: '`uart_read_bytes(port, buf, 100, pdMS_TO_TICKS(50))` returns 37. What does that mean?', kind: 'code', choices: [
-      { t: '37 bytes had arrived when the 50 ms timeout expired; more may follow', ok: true, why: 'The call returns early only when the requested length is reached; otherwise it returns what is available at timeout.' },
-      { t: 'An error occurred after 37 bytes', why: 'An error is reported by a negative return value. A positive count is a normal partial read.' },
-      { t: 'The message was exactly 37 bytes long', why: 'The driver has no notion of messages. A count only says how many bytes had arrived by then.' },
+      { t: '37 bytes had arrived when the 50 ms timeout expired', ok: true, why: 'The call returns early only when the requested length is reached; otherwise it returns what is available at timeout.' },
+      { t: 'An error occurred after 37 bytes had been received', why: 'An error is reported by a negative return value. A positive count is a normal partial read.' },
+      { t: 'The message from the device was exactly 37 bytes long', why: 'The driver has no notion of messages. A count only says how many bytes had arrived by then.' },
     ] },
     { q: 'A 5 V Arduino\'s TX is to be connected to an ESP32 RX pin. What is required?', kind: 'circuit', choices: [
-      { t: 'A level shifter or resistor divider on that line, plus a common ground', ok: true, why: 'ESP32 inputs are not 5 V tolerant. The idle-high UART line would sit at 5 V on the pin.' },
-      { t: 'Nothing, because UART idles low', why: 'UART idles high, so the pin would see 5 V almost all the time.' },
-      { t: 'Only matching baud rates', why: 'Matching baud is necessary for decoding, but it does nothing about the voltage on the pin.' },
+      { t: 'A level shifter or divider on that line, plus a common ground', ok: true, why: 'ESP32 inputs are not 5 V tolerant. The idle-high UART line would sit at 5 V on the pin.' },
+      { t: 'Nothing, because a UART line idles low and so rests at 0 V most of the time', why: 'UART idles high, so the pin would see 5 V almost all the time.' },
+      { t: 'Only matching baud rates and frame format on both sides', why: 'Matching baud is necessary for decoding, but it does nothing about the voltage on the pin.' },
     ] },
   ],
 });
@@ -1727,9 +1727,9 @@ The ESP32's internal pull-ups are tens of kilohms. They may get a single sensor 
 
     { t: 'predict', q: 'The sensor is wired correctly but SDA and SCL are swapped on the breadboard. `i2c_master_probe` is called. What is the most likely result?',
       choices: [
-        { t: 'It succeeds, because both lines are open-drain and equivalent', why: 'Electrically similar is not logically equivalent. The device looks for a specific pattern of one line changing while the other is high.' },
-        { t: 'It fails with a NACK or timeout, because the device never sees a valid start and address', ok: true, why: 'The device treats the controller\'s clock as data and vice versa, so it does not recognise its address and never acknowledges.' },
-        { t: 'The sensor is damaged', why: 'Both lines are open-drain at the same voltage, so swapping them stresses nothing. The fault is purely logical.' },
+        { t: 'It succeeds, because both lines are open-drain and electrically equivalent', why: 'Electrically similar is not logically equivalent. The device looks for a specific pattern of one line changing while the other is high.' },
+        { t: 'It fails with a NACK or timeout: the device never sees a valid start', ok: true, why: 'The device treats the controller\'s clock as data and vice versa, so it does not recognise its address and never acknowledges.' },
+        { t: 'The sensor is damaged, because its clock input is driven as a data line', why: 'Both lines are open-drain at the same voltage, so swapping them stresses nothing. The fault is purely logical.' },
       ],
       reveal: `No damage, no ACK. A swapped pair, a wrong address, a missing ground, an unpowered sensor and a missing pull-up all produce the same software symptom. That is why the troubleshooting order is physical first: power at the sensor's pins, both lines idle **high** on a multimeter (if not: pull-ups or a short), then a probe of every address to see whether anything answers anywhere, and only then the register code.` },
 
@@ -1763,9 +1763,9 @@ A display and a sensor share the bus. One task updates the display every 50 ms w
   ],
   quiz: [
     { q: 'Why does an I2C bus need pull-up resistors?', kind: 'circuit', choices: [
-      { t: 'Devices only pull the lines low; the resistors are the only thing that makes them high', ok: true, why: 'Open-drain outputs cannot drive high. Without pull-ups a released line floats or stays low and no valid signalling is possible.' },
+      { t: 'Devices only pull the lines low; the resistors provide the high level', ok: true, why: 'Open-drain outputs cannot drive high. Without pull-ups a released line floats or stays low and no valid signalling is possible.' },
       { t: 'To limit the current when two devices drive opposite levels', why: 'Open-drain outputs cannot drive opposite levels in the first place; that is the point of the scheme.' },
-      { t: 'To terminate the line against reflections', why: 'Termination matters for fast transmission lines. At I2C speeds the resistors exist to define the high level.' },
+      { t: 'To terminate the lines against reflections from the far end of the bus', why: 'Termination matters for fast transmission lines. At I2C speeds the resistors exist to define the high level.' },
     ] },
     { q: 'A datasheet lists "address 0xD0 (write), 0xD1 (read)". What goes in `device_address`?', kind: 'code', choices: [
       { t: '`0x68`', ok: true, why: '0xD0 is the 7-bit address shifted left with R/W = 0. Shifting right by one gives 0x68; the driver appends the R/W bit itself.' },
@@ -1775,17 +1775,17 @@ A display and a sensor share the bus. One task updates the display every 50 ms w
     { q: 'What does `i2c_master_transmit_receive(dev, &reg, 1, rx, 2, 100)` put on the bus between the register byte and the data bytes?', kind: 'arch', choices: [
       { t: 'A repeated start followed by the address with the read bit', ok: true, why: 'The direction must change from write to read, which requires re-addressing the device without releasing the bus.' },
       { t: 'A stop, then a 100 ms delay', why: 'The 100 is a timeout for the whole operation, not a delay inserted on the bus.' },
-      { t: 'Nothing; the device starts sending immediately', why: 'A device cannot begin transmitting in a transfer that was addressed as a write. The direction bit must be sent again.' },
+      { t: 'Nothing; the device starts sending as soon as it has the register number', why: 'A device cannot begin transmitting in a transfer that was addressed as a write. The direction bit must be sent again.' },
     ] },
     { q: 'A bus scan reports a device at every single address. What should you suspect?', kind: 'circuit', choices: [
       { t: 'SDA is stuck low, so every address byte appears to be acknowledged', ok: true, why: 'An ACK is just SDA low during the ninth clock. A line that is always low looks like a permanent ACK.' },
-      { t: 'There really are 112 devices on the bus', why: 'Possible in theory, but a stuck line is a far more likely explanation than a full address space.' },
-      { t: 'The pull-ups are too weak', why: 'Weak pull-ups make lines slow to rise, which tends to cause timeouts and corrupted data, not a clean ACK everywhere.' },
+      { t: 'There really are 112 devices on the bus, one for each valid address', why: 'Possible in theory, but a stuck line is a far more likely explanation than a full address space.' },
+      { t: 'The pull-ups are too weak, so every address looks acknowledged', why: 'Weak pull-ups make lines slow to rise, which tends to cause timeouts and corrupted data, not a clean ACK everywhere.' },
     ] },
     { q: 'Three breakout boards each have 4.7 kΩ pull-ups fitted. What is the effective pull-up on the shared bus?', kind: 'circuit', choices: [
       { t: 'About 1.6 kΩ, because the resistors are in parallel', ok: true, why: 'Three equal resistors in parallel give one third of the value. Stack enough boards and the pull-up becomes stronger than devices are specified to sink.' },
       { t: '14.1 kΩ, because they add up', why: 'Each resistor goes from the line to the supply, side by side. That is a parallel connection, which reduces resistance.' },
-      { t: '4.7 kΩ, because only the nearest one matters', why: 'All of them are connected to the same wire, so all conduct at once.' },
+      { t: '4.7 kΩ, because only the pull-up nearest the controller matters', why: 'All of them are connected to the same wire, so all conduct at once.' },
     ] },
   ],
 });
@@ -1903,9 +1903,9 @@ DMA imposes a condition: the buffers must be in memory the DMA hardware can reac
 
     { t: 'predict', q: 'A sensor specified for SPI mode 3 is configured in the driver as mode 0. Its ID register should read 0xD1. What kind of result do you expect?',
       choices: [
-        { t: 'A timeout error from the driver', why: 'SPI has no acknowledgement, so the controller cannot tell that the device disagreed. The transaction completes normally.' },
-        { t: 'A wrong but repeatable value, typically the right bits shifted by one position', ok: true, why: 'Sampling on the wrong edge catches each bit half a cycle off, which usually shows up as a one-bit shift.' },
-        { t: '0xD1, because modes only matter above 10 MHz', why: 'Mode defines which edge carries valid data at any speed. Lower speed does not make the wrong edge right.' },
+        { t: 'A timeout error from the driver, because the device never answers', why: 'SPI has no acknowledgement, so the controller cannot tell that the device disagreed. The transaction completes normally.' },
+        { t: 'A wrong but repeatable value, often the right bits shifted by one', ok: true, why: 'Sampling on the wrong edge catches each bit half a cycle off, which usually shows up as a one-bit shift.' },
+        { t: '0xD1, because the mode only matters above about 10 MHz', why: 'Mode defines which edge carries valid data at any speed. Lower speed does not make the wrong edge right.' },
       ],
       reveal: `\`spi_device_polling_transmit\` returns \`ESP_OK\` whatever comes back, because the controller generates the clock and simply records MISO. Mode errors therefore appear as plausible-looking wrong data: often shifted by a bit, sometimes correct for some values and wrong for others. A constant 0x00 or 0xFF points elsewhere: MISO not connected, CS not reaching the device, or the device not powered.` },
 
@@ -1941,27 +1941,27 @@ A 320×240 display (wants 40 MHz, mode 0) and a touch controller (maximum 2 MHz,
     { q: 'What does `spi_transaction_t.length = 24` mean?', kind: 'code', choices: [
       { t: '24 bits (three bytes) are clocked', ok: true, why: 'Transaction lengths are given in bits, which also allows transfers that are not whole bytes.' },
       { t: '24 bytes are clocked', why: 'The unit is bits. Treating it as bytes is the most common cause of truncated transfers.' },
-      { t: 'The clock runs at 24 MHz', why: 'Clock speed belongs to the device configuration, not to an individual transaction.' },
+      { t: 'The clock runs at 24 MHz for this transaction', why: 'Clock speed belongs to the device configuration, not to an individual transaction.' },
     ] },
     { q: 'An SPI read returns 0xFF for every register. Which cause fits best?', kind: 'circuit', choices: [
-      { t: 'MISO is not connected or the device is not selected, so the line just sits high', ok: true, why: 'A constant all-ones pattern means nothing is driving MISO low. Check CS, power and the MISO wire.' },
-      { t: 'The SPI mode is wrong', why: 'A wrong mode gives shifted or scrambled data that still varies with the register, not a constant value.' },
-      { t: 'The clock is too slow', why: 'SPI devices generally have no minimum clock rate; slow clocks are the safe direction.' },
+      { t: 'MISO is not connected or the device is not selected', ok: true, why: 'A constant all-ones pattern means nothing is driving MISO low. Check CS, power and the MISO wire.' },
+      { t: 'The SPI mode is wrong, so every bit is sampled on the wrong edge', why: 'A wrong mode gives shifted or scrambled data that still varies with the register, not a constant value.' },
+      { t: 'The clock is too slow for the device to respond', why: 'SPI devices generally have no minimum clock rate; slow clocks are the safe direction.' },
     ] },
     { q: 'Why can two devices with different clock speeds and modes share one SPI bus in ESP-IDF?', kind: 'arch', choices: [
-      { t: 'Speed, mode and CS are stored per device, and the driver reconfigures the controller for whichever device a transaction addresses', ok: true, why: 'Only the selected device listens, so the bus can change its timing between transactions.' },
-      { t: 'The driver always runs the bus at the slowest device\'s speed', why: 'Each device handle carries its own clock setting, and the controller is switched per transaction.' },
-      { t: 'They cannot; each device needs its own controller', why: 'Sharing a bus with one chip-select per device is the normal SPI arrangement and the reason the driver separates bus from device.' },
+      { t: 'Speed, mode and CS are per device; the driver switches them per transaction', ok: true, why: 'Only the selected device listens, so the bus can change its timing between transactions.' },
+      { t: 'The driver always runs the whole bus at the slowest device\'s speed and in mode 0', why: 'Each device handle carries its own clock setting, and the controller is switched per transaction.' },
+      { t: 'They cannot; each device with a different mode needs its own SPI controller', why: 'Sharing a bus with one chip-select per device is the normal SPI arrangement and the reason the driver separates bus from device.' },
     ] },
     { q: 'In the worked example, why is the register value taken from `rx_data[1]` and not `rx_data[0]`?', kind: 'arch', choices: [
-      { t: 'The first received byte was clocked in while the command was still being sent, before the device knew what to answer', ok: true, why: 'SPI shifts in both directions simultaneously. The reply can only begin after the command byte has been received by the device.' },
-      { t: 'SPI sends the least significant byte first', why: 'Byte order is not the issue; the first byte is simply not a reply to anything yet.' },
-      { t: 'The driver stores a status code in the first byte', why: 'The driver stores exactly what was on MISO. Nothing is added by software.' },
+      { t: 'It was clocked in while the command byte was still going out', ok: true, why: 'SPI shifts in both directions simultaneously. The reply can only begin after the command byte has been received by the device.' },
+      { t: 'SPI sends the least significant byte first, so the reply is the second byte', why: 'Byte order is not the issue; the first byte is simply not a reply to anything yet.' },
+      { t: 'The driver stores a status code for the transaction in the first byte', why: 'The driver stores exactly what was on MISO. Nothing is added by software.' },
     ] },
     { q: 'A 4 kB buffer for a DMA-enabled SPI transfer is declared as a `static const` array and the transfer misbehaves or is slow. Why might that be?', kind: 'arch', choices: [
-      { t: 'The constant lives in flash, which DMA cannot read directly, so the driver must copy it or fails', ok: true, why: 'DMA needs buffers in DMA-capable internal RAM. Allocating with MALLOC_CAP_DMA guarantees that.' },
-      { t: 'SPI cannot send more than 64 bytes', why: 'That limit applies only without DMA. With DMA enabled, much larger transactions are normal.' },
-      { t: '`const` data cannot be transmitted', why: 'The qualifier is a C-level promise and does not stop transmission. What matters is which memory region the linker placed the array in.' },
+      { t: 'The array lives in flash, outside the memory DMA can read directly', ok: true, why: 'DMA needs buffers in DMA-capable internal RAM. Allocating with MALLOC_CAP_DMA guarantees that.' },
+      { t: 'SPI cannot send more than 64 bytes in one transaction, even with DMA enabled', why: 'That limit applies only without DMA. With DMA enabled, much larger transactions are normal.' },
+      { t: 'Data declared `const` cannot be passed as a transmit buffer to the driver', why: 'The qualifier is a C-level promise and does not stop transmission. What matters is which memory region the linker placed the array in.' },
     ] },
   ],
 });
@@ -2164,18 +2164,18 @@ Remove the mutex from the worked example and let two tasks of **equal** priority
       { t: 'It runs at half speed', why: 'Priorities are not shares of CPU time. They are a strict ordering.' },
     ] },
     { q: 'Why is a queue of `sample_t` values safer than a queue of pointers to a `sample_t` local variable?', kind: 'code', choices: [
-      { t: 'The queue copies the value, so the receiver\'s data cannot change or disappear after sending', ok: true, why: 'A pointer to a local refers to stack memory the sender will overwrite or leave; a copied value is owned by the queue and then by the receiver.' },
-      { t: 'Pointers are larger than the struct', why: 'A pointer is four bytes, smaller than this struct. Size is not the concern; lifetime and sharing are.' },
-      { t: 'Queues cannot hold pointers', why: 'They can hold any fixed-size item, pointers included. Doing so is valid when the pointed-to memory is managed carefully.' },
+      { t: 'The queue copies the value, so the receiver\'s data cannot change or vanish', ok: true, why: 'A pointer to a local refers to stack memory the sender will overwrite or leave; a copied value is owned by the queue and then by the receiver.' },
+      { t: 'Pointers are larger than the struct, so fewer of them fit in the same queue', why: 'A pointer is four bytes, smaller than this struct. Size is not the concern; lifetime and sharing are.' },
+      { t: 'A FreeRTOS queue cannot hold pointers, only plain values up to 32 bits', why: 'They can hold any fixed-size item, pointers included. Doing so is valid when the pointed-to memory is managed carefully.' },
     ] },
     { q: 'Shared data is updated by a task and by a GPIO ISR. Why can a mutex not protect it?', kind: 'arch', choices: [
-      { t: 'An ISR cannot block, and taking a mutex may require waiting for the task that holds it', ok: true, why: 'The holder cannot run until the ISR returns, so the ISR would wait forever. Data shared with an ISR needs a critical section instead.' },
-      { t: 'Mutexes only work between tasks on different cores', why: 'Mutexes work on any number of cores. Their limitation is that the taker must be able to sleep.' },
-      { t: 'Mutexes are slower than interrupts', why: 'Speed is not the obstacle. The operation is simply not permitted from interrupt context.' },
+      { t: 'An ISR cannot block, and taking a mutex may mean waiting for its holder', ok: true, why: 'The holder cannot run until the ISR returns, so the ISR would wait forever. Data shared with an ISR needs a critical section instead.' },
+      { t: 'Mutexes only work between tasks on different cores, and an ISR shares a core', why: 'Mutexes work on any number of cores. Their limitation is that the taker must be able to sleep.' },
+      { t: 'Mutexes are slower than interrupts, so the ISR would miss edges', why: 'Speed is not the obstacle. The operation is simply not permitted from interrupt context.' },
     ] },
     { q: 'On a dual-core ESP32, what does disabling interrupts on core 0 guarantee about a task running on core 1?', kind: 'arch', choices: [
       { t: 'Nothing; it keeps running and can touch the same data', ok: true, why: 'Each core has its own interrupt enable state. This is why ESP-IDF critical sections also take a spinlock.' },
-      { t: 'It is paused until interrupts are re-enabled', why: 'One core has no means of freezing the other merely by masking its own interrupts.' },
+      { t: 'It is paused until interrupts are re-enabled on core 0', why: 'One core has no means of freezing the other merely by masking its own interrupts.' },
       { t: 'It is migrated to core 0', why: 'Masking interrupts does not move tasks. The scheduler on the other core continues independently.' },
     ] },
   ],
@@ -2275,9 +2275,9 @@ void app_main(void)
     }
 }`,
       choices: [
-        { t: 'Nothing; the task runs silently', why: 'Something is watching for exactly this: a core whose idle task has not run for several seconds.' },
-        { t: 'An immediate Guru Meditation panic', why: 'The code does nothing illegal, so no CPU exception occurs. The symptom takes several seconds to appear and is a report, not a crash.' },
-        { t: 'A task watchdog message about every five seconds naming IDLE as not having reset the watchdog', ok: true, why: 'The task never blocks, the idle task never runs, and the TWDT reports the starved idle task and the task that was running.' },
+        { t: 'Nothing; the task computes silently and the monitor stays quiet', why: 'Something is watching for exactly this: a core whose idle task has not run for several seconds.' },
+        { t: 'An immediate Guru Meditation panic naming `crunch_task`', why: 'The code does nothing illegal, so no CPU exception occurs. The symptom takes several seconds to appear and is a report, not a crash.' },
+        { t: 'A task watchdog report about every five seconds, naming IDLE', ok: true, why: 'The task never blocks, the idle task never runs, and the TWDT reports the starved idle task and the task that was running.' },
       ],
       reveal: `The idle task is starved. By default the TWDT prints its report every timeout period and the program continues; with the panic option enabled the chip would reset instead. The repair is not to feed the watchdog inside the loop. It is to let other tasks run: do the computation in chunks with a \`vTaskDelay(1)\` between them, or lower the task's priority to 0 so it shares time with idle.` },
 
@@ -2316,9 +2316,9 @@ Three tasks cooperate: sensor, control and communications. Design a scheme in wh
   ],
   quiz: [
     { q: 'Why does the task watchdog watch the idle tasks by default?', kind: 'arch', choices: [
-      { t: 'Idle runs only when no other task needs the CPU, so a starved idle task reveals a task that never blocks', ok: true, why: 'It turns "is any task hogging a core?" into a simple check that needs no cooperation from application tasks.' },
-      { t: 'The idle task is the most likely to crash', why: 'The idle task is tiny and robust. It is watched as an indicator of what other tasks are doing.' },
-      { t: 'Idle tasks perform the Wi-Fi processing', why: 'Wi-Fi has its own high-priority task. Idle does housekeeping such as freeing deleted tasks\' memory.' },
+      { t: 'A starved idle task shows that some task is running without ever blocking', ok: true, why: 'It turns "is any task hogging a core?" into a simple check that needs no cooperation from application tasks.' },
+      { t: 'The idle task is the most likely to crash, since it runs at the lowest priority', why: 'The idle task is tiny and robust. It is watched as an indicator of what other tasks are doing.' },
+      { t: 'Idle tasks perform the Wi-Fi processing, which must never be starved', why: 'Wi-Fi has its own high-priority task. Idle does housekeeping such as freeing deleted tasks\' memory.' },
     ] },
     { q: 'A TWDT report lists `IDLE0 (CPU 0)` as not reset, and "Tasks currently running: CPU 0: net_task". Where do you look first?', kind: 'code', choices: [
       { t: 'In `net_task`, for a loop that does not block', ok: true, why: 'The running task at the moment of the timeout is the prime suspect for having starved idle on that core.' },
@@ -2326,19 +2326,19 @@ Three tasks cooperate: sensor, control and communications. Design a scheme in wh
       { t: 'In the watchdog timeout setting, to increase it', why: 'A longer timeout delays the report without changing the fact that a task is monopolising the CPU.' },
     ] },
     { q: 'A periodic `esp_timer` callback calls `esp_task_wdt_reset()` on behalf of the main control task. What is wrong?', kind: 'arch', choices: [
-      { t: 'The feed no longer depends on the control task working, so a hung control task is never detected', ok: true, why: 'A watchdog is only as meaningful as the condition under which it is fed. A feed that happens unconditionally proves nothing.' },
-      { t: 'Timer callbacks run too slowly to feed in time', why: 'A periodic timer can easily meet a multi-second deadline. Timing is not the flaw.' },
-      { t: 'Nothing; this is the recommended pattern', why: 'It defeats the purpose: the application could be deadlocked while the timer keeps reporting that all is well.' },
+      { t: 'The feed no longer depends on the control task, so a hang there goes undetected', ok: true, why: 'A watchdog is only as meaningful as the condition under which it is fed. A feed that happens unconditionally proves nothing.' },
+      { t: 'Timer callbacks are dispatched too slowly and irregularly to feed a 5 s watchdog in time', why: 'A periodic timer can easily meet a multi-second deadline. Timing is not the flaw.' },
+      { t: 'Nothing; feeding from a timer is the pattern the documentation recommends', why: 'It defeats the purpose: the application could be deadlocked while the timer keeps reporting that all is well.' },
     ] },
     { q: 'What typically triggers the **interrupt** watchdog?', kind: 'concept', choices: [
-      { t: 'A long critical section or an ISR that takes too long to return', ok: true, why: 'It detects interrupts being blocked or monopolised for hundreds of milliseconds, which the task watchdog cannot see.' },
-      { t: 'A task that forgets to call `vTaskDelay`', why: 'A non-blocking task still allows interrupts to run, so the tick keeps firing. That case belongs to the task watchdog.' },
-      { t: 'A GPIO interrupt that never occurs', why: 'The absence of an interrupt is not a fault the system can detect. The watchdog concerns interrupts being prevented from running.' },
+      { t: 'A long critical section or an ISR that is slow to return', ok: true, why: 'It detects interrupts being blocked or monopolised for hundreds of milliseconds, which the task watchdog cannot see.' },
+      { t: 'A task that loops for seconds without ever calling `vTaskDelay`', why: 'A non-blocking task still allows interrupts to run, so the tick keeps firing. That case belongs to the task watchdog.' },
+      { t: 'A GPIO interrupt that is enabled but whose edge never occurs', why: 'The absence of an interrupt is not a fault the system can detect. The watchdog concerns interrupts being prevented from running.' },
     ] },
     { q: 'After an unexplained restart in the field, which piece of information is most valuable and cheapest to collect?', kind: 'concept', choices: [
       { t: 'The value of `esp_reset_reason()` logged or stored at boot', ok: true, why: 'It distinguishes power loss, brownout, panic and watchdog resets, which point to completely different causes.' },
-      { t: 'The size of the application binary', why: 'Image size does not change between restarts and says nothing about why one happened.' },
-      { t: 'The Wi-Fi signal strength', why: 'It may be relevant to connectivity, but it cannot tell a power problem from a software hang.' },
+      { t: 'The size of the application binary that was running at the time', why: 'Image size does not change between restarts and says nothing about why one happened.' },
+      { t: 'The Wi-Fi signal strength reported just before the restart', why: 'It may be relevant to connectivity, but it cannot tell a power problem from a software hang.' },
     ] },
   ],
 });
@@ -2428,9 +2428,9 @@ To examine or reset stored data during development: \`idf.py erase-flash\` wipes
 
     { t: 'predict', q: 'The boot counter program is changed so that the key is `"number_of_boots_total"`. What happens?',
       choices: [
-        { t: 'It works exactly as before', why: 'Count the characters in the new key and compare with the limit NVS places on key names.' },
-        { t: '`nvs_set_u32` returns an error because the key name is too long', ok: true, why: 'Keys are limited to 15 characters. This one has 21, so the call is rejected.' },
-        { t: 'The key is silently truncated to 15 characters', why: 'Silent truncation would let two long keys collide. The library rejects the name instead.' },
+        { t: 'It works exactly as before, because keys are arbitrary strings', why: 'Count the characters in the new key and compare with the limit NVS places on key names.' },
+        { t: '`nvs_set_u32` returns an error because the key is too long', ok: true, why: 'Keys are limited to 15 characters. This one has 21, so the call is rejected.' },
+        { t: 'The key is silently truncated to 15 characters and stored', why: 'Silent truncation would let two long keys collide. The library rejects the name instead.' },
       ],
       reveal: `NVS keys and namespace names may be at most 15 characters. The call fails with a key-too-long error, and because the example wraps it in \`ESP_ERROR_CHECK\`, the device aborts and reboots, fails again, and so on: a boot loop caused by a string length. It shows both the limit and the hazard of aborting on storage errors.` },
 
@@ -2455,29 +2455,29 @@ A device stores a two-part setting: \`mode\` and \`limit\`, which must always be
   ],
   quiz: [
     { q: 'Why can a flash-based store not simply overwrite an old value with a new one?', kind: 'arch', choices: [
-      { t: 'Programming can only clear bits to 0; restoring 1s needs an erase of a whole sector', ok: true, why: 'That asymmetry is why stores append new entries and reclaim space sector by sector.' },
-      { t: 'Flash is read-only after the firmware is installed', why: 'Flash can be written at run time. The restriction is on how bits can change, not on whether they can.' },
-      { t: 'The CPU cannot address flash for writing', why: 'Writes go through the SPI flash driver. Addressing is not the obstacle.' },
+      { t: 'Programming only clears bits to 0; getting 1s back means erasing a whole sector', ok: true, why: 'That asymmetry is why stores append new entries and reclaim space sector by sector.' },
+      { t: 'Flash becomes read-only once the firmware has been installed and verified', why: 'Flash can be written at run time. The restriction is on how bits can change, not on whether they can.' },
+      { t: 'The CPU cannot address flash for writing, only for reading through the cache', why: 'Writes go through the SPI flash driver. Addressing is not the obstacle.' },
     ] },
     { q: 'After `nvs_set_i32(h, "limit", 42)` the device loses power before `nvs_commit`. What can you rely on at next boot?', kind: 'code', choices: [
       { t: 'Nothing about the new value: only a commit guarantees it reached flash', ok: true, why: 'The API contract is that changes are durable after nvs_commit. Code must not depend on what happens without it.' },
-      { t: 'The new value is certainly stored', why: 'That assumes every set is flushed synchronously, which the API does not promise.' },
-      { t: 'The whole namespace is erased', why: 'An interrupted write does not wipe existing data; the previous value of the key remains valid.' },
+      { t: 'The new value is certainly stored, because every set is written at once', why: 'That assumes every set is flushed synchronously, which the API does not promise.' },
+      { t: 'The whole namespace is erased, because the page was left half-written', why: 'An interrupted write does not wipe existing data; the previous value of the key remains valid.' },
     ] },
     { q: 'New firmware is flashed with `idf.py flash` and the device still connects to the old Wi-Fi network without being configured. Why?', kind: 'concept', choices: [
-      { t: 'Flashing rewrites the app, bootloader and partition table but leaves the NVS partition, where the credentials are, untouched', ok: true, why: 'Data partitions persist across firmware updates unless explicitly erased.' },
-      { t: 'The credentials are compiled into the bootloader', why: 'The bootloader has no Wi-Fi functionality and was itself rewritten by the flash operation.' },
-      { t: 'Wi-Fi credentials are stored in the router', why: 'A station must present the passphrase itself. It had to come from somewhere on the device.' },
+      { t: 'Flashing rewrites the app but leaves the NVS partition, which holds the credentials', ok: true, why: 'Data partitions persist across firmware updates unless explicitly erased.' },
+      { t: 'The credentials are compiled into the bootloader, which `idf.py flash` does not rewrite', why: 'The bootloader has no Wi-Fi functionality and was itself rewritten by the flash operation.' },
+      { t: 'Wi-Fi credentials are stored in the router, which recognises the device by its MAC', why: 'A station must present the passphrase itself. It had to come from somewhere on the device.' },
     ] },
     { q: '`nvs_get_u16(h, "level", &v)` fails although `nvs_set_u8(h, "level", 3)` succeeded earlier. Why?', kind: 'code', choices: [
-      { t: 'NVS values are typed; the key holds a u8 and must be read as a u8', ok: true, why: 'The stored entry records its type, and a read with a different type does not match.' },
-      { t: 'Values below 256 cannot be stored', why: 'Small values are perfectly valid. The mismatch is between the type written and the type requested.' },
-      { t: 'The key was deleted by the commit', why: 'Committing makes entries durable. It never removes them.' },
+      { t: 'NVS values are typed; a key written as u8 must be read as u8', ok: true, why: 'The stored entry records its type, and a read with a different type does not match.' },
+      { t: 'A value as small as 3 is treated as "unset" and is not stored', why: 'Small values are perfectly valid. The mismatch is between the type written and the type requested.' },
+      { t: 'The key was deleted when the earlier write was committed', why: 'Committing makes entries durable. It never removes them.' },
     ] },
     { q: 'An attacker has the device in hand and a USB cable. With default settings, what protects an API key stored in NVS?', kind: 'security', choices: [
       { t: 'Nothing: the flash can be read out and the key found in plain bytes', ok: true, why: 'Without flash and NVS encryption, the contents of external flash are readable with standard tools.' },
-      { t: 'The NVS namespace acts as a password', why: 'A namespace is only a label for grouping keys. It is stored in the clear next to the data.' },
-      { t: 'The partition table hides the NVS partition', why: 'The partition table is itself readable and tells the attacker exactly where NVS is.' },
+      { t: 'The NVS namespace name acts as a password for reading the keys in it', why: 'A namespace is only a label for grouping keys. It is stored in the clear next to the data.' },
+      { t: 'The partition table hides the NVS partition from external tools', why: 'The partition table is itself readable and tells the attacker exactly where NVS is.' },
     ] },
   ],
 });
@@ -2621,8 +2621,8 @@ Experiment only on networks and devices that are yours.` },
 
     { t: 'predict', q: 'The password in the example is wrong. With the handler as written, what does the serial log show?',
       choices: [
-        { t: 'One error, then silence', why: 'Look at what the handler does on every disconnect event. It does not stop after the first.' },
-        { t: 'A repeating stream of "disconnected ... retrying" lines, with no "got ip"', ok: true, why: 'Each failed authentication produces a disconnected event, and the handler immediately tries again, for ever.' },
+        { t: 'One "disconnected" line, then silence while the driver gives up', why: 'Look at what the handler does on every disconnect event. It does not stop after the first.' },
+        { t: 'A repeating stream of "disconnected ... retrying" lines', ok: true, why: 'Each failed authentication produces a disconnected event, and the handler immediately tries again, for ever.' },
         { t: 'A panic, because authentication failure is fatal', why: 'A failed connection is an ordinary event delivered to the handler, not an exception.' },
       ],
       reveal: `Authentication failure arrives as \`WIFI_EVENT_STA_DISCONNECTED\` with a reason code indicating the handshake or authentication failed, and the handler retries without limit or delay. The device never gets an address, the log scrolls, and the radio stays busy. A better policy: count retries, back off (1 s, 2 s, 4 s ... capped), and treat an authentication-type reason differently from "access point not found", for instance by re-entering provisioning after several failures.` },
@@ -2674,29 +2674,29 @@ A coin-cell-class sensor must report once every 10 minutes for a year. Compare t
   ],
   quiz: [
     { q: 'After `WIFI_EVENT_STA_CONNECTED`, a socket connection attempt fails. Why?', kind: 'arch', choices: [
-      { t: 'The station is associated but DHCP has not yet assigned an IP address', ok: true, why: 'Association and addressing are separate steps. Network traffic is possible only after the got-IP event.' },
+      { t: 'The station is associated but has no IP address yet', ok: true, why: 'Association and addressing are separate steps. Network traffic is possible only after the got-IP event.' },
       { t: 'Sockets are not supported in station mode', why: 'Station mode is the normal mode for client sockets. The attempt was simply made one step too early.' },
       { t: 'The event loop must be deleted before using sockets', why: 'The event loop keeps running for the life of the connection; it is how you learn about later disconnects.' },
     ] },
     { q: 'An ESP32 resets with a brownout message exactly when Wi-Fi starts. What is the most likely cause?', kind: 'circuit', choices: [
       { t: 'The 3.3 V supply sags during radio transmit current bursts', ok: true, why: 'Transmit bursts draw far more current than idle. A weak source, cable or regulator lets the rail dip below the brownout threshold.' },
-      { t: 'The Wi-Fi password is wrong', why: 'A wrong password yields disconnect events with a reason code. It does not affect the supply voltage.' },
-      { t: 'The application binary is too large', why: 'An oversized image is caught at build time and has no connection with supply voltage at run time.' },
+      { t: 'The Wi-Fi password is wrong, and the driver resets to retry', why: 'A wrong password yields disconnect events with a reason code. It does not affect the supply voltage.' },
+      { t: 'The application binary is too large for the radio to start', why: 'An oversized image is caught at build time and has no connection with supply voltage at run time.' },
     ] },
     { q: 'In BLE terms, a temperature sensor that a phone connects to and subscribes to is normally…', kind: 'concept', choices: [
       { t: 'A peripheral acting as GATT server, sending notifications', ok: true, why: 'It advertises (peripheral), holds the data (server), and pushes new values to the subscribed client.' },
-      { t: 'A central acting as GATT client', why: 'That describes the phone: it scans, initiates the connection and reads the data.' },
-      { t: 'A broadcaster with no GATT table', why: 'A pure broadcaster cannot be connected to or subscribed to; the scenario describes a connection.' },
+      { t: 'A central acting as GATT client, reading the phone\'s data', why: 'That describes the phone: it scans, initiates the connection and reads the data.' },
+      { t: 'A broadcaster with no GATT table, sending only advertisements', why: 'A pure broadcaster cannot be connected to or subscribed to; the scenario describes a connection.' },
     ] },
     { q: 'Firmware makes HTTPS requests with certificate verification skipped "because it works". What is the actual exposure?', kind: 'security', choices: [
-      { t: 'Anyone who can intercept the connection can impersonate the server and read or alter the traffic', ok: true, why: 'Encryption without authentication protects the data only from passive observers, not from an active attacker who terminates the TLS session.' },
-      { t: 'None; the traffic is still encrypted', why: 'It is encrypted to whoever answered. Without verification the device cannot know that this is the intended server.' },
-      { t: 'Only that the connection is slower', why: 'Skipping verification saves a little time. The cost is the loss of server authentication.' },
+      { t: 'Anyone who can intercept the connection can impersonate the server', ok: true, why: 'Encryption without authentication protects the data only from passive observers, not from an active attacker who terminates the TLS session.' },
+      { t: 'None; the traffic is still encrypted, so nobody else can read it', why: 'It is encrypted to whoever answered. Without verification the device cannot know that this is the intended server.' },
+      { t: 'Only that the connection is slower, because the handshake is repeated', why: 'Skipping verification saves a little time. The cost is the loss of server authentication.' },
     ] },
     { q: 'Why should long work not be done inside a Wi-Fi event handler?', kind: 'arch', choices: [
-      { t: 'Handlers run in the single event loop task, so a slow one delays every other event', ok: true, why: 'Events are dispatched one after another. A handler that blocks for seconds stalls disconnect and IP events behind it.' },
-      { t: 'Handlers run in interrupt context', why: 'Default event loop handlers run in a task and may call ordinary APIs. The limitation is that they share one task.' },
-      { t: 'Handlers have no access to global variables', why: 'They are ordinary C functions with normal access to program state.' },
+      { t: 'Handlers share one event loop task, so a slow one delays every other event', ok: true, why: 'Events are dispatched one after another. A handler that blocks for seconds stalls disconnect and IP events behind it.' },
+      { t: 'Handlers run in interrupt context, where any blocking call crashes the system', why: 'Default event loop handlers run in a task and may call ordinary APIs. The limitation is that they share one task.' },
+      { t: 'Handlers have no access to global variables or to the heap', why: 'They are ordinary C functions with normal access to program state.' },
     ] },
   ],
 });
@@ -2774,9 +2774,9 @@ RISC-V chips do not print a \`Backtrace:\` line by default. They print the regis
 
     { t: 'predict', q: 'A panic shows cause `InstrFetchProhibited`, `PC: 0x00000000`, and a backtrace whose second entry decodes to `dispatch_command` in your code. What most likely happened?',
       choices: [
-        { t: '`dispatch_command` called through a function pointer that was NULL', ok: true, why: 'The CPU tried to fetch an instruction from address 0. The caller in the backtrace is the function that made the bad call.' },
-        { t: '`dispatch_command` read a NULL data pointer', why: 'Reading data through a bad pointer is a load fault with a normal PC inside the function. Here the program counter itself is the bad address.' },
-        { t: 'The flash chip is faulty', why: 'A flash fault would not produce a clean jump to exactly address zero from one particular function.' },
+        { t: '`dispatch_command` called through a NULL function pointer', ok: true, why: 'The CPU tried to fetch an instruction from address 0. The caller in the backtrace is the function that made the bad call.' },
+        { t: '`dispatch_command` read a struct field through a NULL data pointer', why: 'Reading data through a bad pointer is a load fault with a normal PC inside the function. Here the program counter itself is the bad address.' },
+        { t: 'The flash chip is faulty and returned zeros for the code', why: 'A flash fault would not produce a clean jump to exactly address zero from one particular function.' },
       ],
       reveal: `\`InstrFetchProhibited\` with PC = 0 means the processor jumped to address 0 and could not fetch code there. The first backtrace entry is the bogus address; the second is the caller. Look in \`dispatch_command\` for a call through a table of function pointers or a callback field, and find which entry was never set. The defence is a check before the call: an unknown command should produce an error reply, not an indirect call.` },
 
@@ -2803,28 +2803,28 @@ In any working project, add a function that writes through a NULL struct pointer
   quiz: [
     { q: 'A panic reports `LoadProhibited` with `EXCVADDR: 0x00000008`. What is the most likely bug?', kind: 'code', choices: [
       { t: 'Reading a struct field through a NULL pointer', ok: true, why: 'A read from an address a few bytes above zero is a field offset added to a pointer whose value is zero.' },
-      { t: 'A stack overflow', why: 'ESP-IDF reports a detected stack overflow with its own message naming the task. A tiny fault address points at a zero-valued pointer.' },
-      { t: 'A wrong baud rate', why: 'A baud mismatch garbles the text you see but cannot cause a CPU exception.' },
+      { t: 'A stack overflow in the task that was running', why: 'ESP-IDF reports a detected stack overflow with its own message naming the task. A tiny fault address points at a zero-valued pointer.' },
+      { t: 'A wrong baud rate corrupting received data', why: 'A baud mismatch garbles the text you see but cannot cause a CPU exception.' },
     ] },
     { q: 'Why does a crash log from a deployed device need the ELF file from exactly that build?', kind: 'concept', choices: [
-      { t: 'Only that ELF maps the addresses in the dump to the functions and lines that were actually at those addresses', ok: true, why: 'Any change in code or compiler options moves functions, so a different build decodes the same addresses to the wrong places.' },
-      { t: 'The ELF contains the device\'s log history', why: 'The ELF is a build product on the PC. It holds code, data and symbols, not anything recorded at run time.' },
-      { t: 'The device cannot boot without it', why: 'Only the binary images are flashed. The ELF never leaves the development machine.' },
+      { t: 'Only that ELF maps the dump\'s addresses to the right functions and lines', ok: true, why: 'Any change in code or compiler options moves functions, so a different build decodes the same addresses to the wrong places.' },
+      { t: 'The ELF file contains the device\'s log history up to the moment of the crash', why: 'The ELF is a build product on the PC. It holds code, data and symbols, not anything recorded at run time.' },
+      { t: 'The device cannot boot again until the matching ELF is flashed', why: 'Only the binary images are flashed. The ELF never leaves the development machine.' },
     ] },
     { q: 'The log ends with `abort() was called at PC ...`, preceded by `ESP_ERROR_CHECK failed: esp_err_t 0x105 (ESP_ERR_NOT_FOUND) ... file "main.c" line 42`. What is the correct reading?', kind: 'code', choices: [
-      { t: 'A function called on line 42 returned an error, and the macro deliberately aborted', ok: true, why: 'This is a software-initiated stop with the cause, file and line already printed. Look at what line 42 called and why it could fail.' },
-      { t: 'The CPU executed an illegal instruction on line 42', why: 'An illegal instruction is a hardware exception with its own panic cause. Here the program chose to stop.' },
-      { t: 'The flash is corrupted near address 0x105', why: '0x105 is the numeric error code, not an address in memory or flash.' },
+      { t: 'A call on line 42 returned an error and the macro aborted', ok: true, why: 'This is a software-initiated stop with the cause, file and line already printed. Look at what line 42 called and why it could fail.' },
+      { t: 'The CPU hit an illegal instruction while executing line 42 of main.c', why: 'An illegal instruction is a hardware exception with its own panic cause. Here the program chose to stop.' },
+      { t: 'The flash is corrupted near address 0x105, where the item should be', why: '0x105 is the numeric error code, not an address in memory or flash.' },
     ] },
     { q: 'Monitor output is a stream of unreadable characters from the moment of reset, on an otherwise working board. What do you check first?', kind: 'concept', choices: [
-      { t: 'That the monitor\'s baud rate matches the console baud rate', ok: true, why: 'Consistent garbage from the first character is the signature of a bit-time mismatch.' },
-      { t: 'The partition table', why: 'A bad partition table produces readable error text from the bootloader, not unreadable bytes.' },
-      { t: 'The task stack sizes', why: 'Stack problems appear later, during application execution, and are reported in readable text.' },
+      { t: 'That the monitor baud rate matches the console baud rate', ok: true, why: 'Consistent garbage from the first character is the signature of a bit-time mismatch.' },
+      { t: 'That the partition table offset matches the bootloader', why: 'A bad partition table produces readable error text from the bootloader, not unreadable bytes.' },
+      { t: 'That every task stack is large enough for the logging calls', why: 'Stack problems appear later, during application execution, and are reported in readable text.' },
     ] },
     { q: 'On an ESP32-C3 the panic output has no `Backtrace:` line. How do you get the call chain?', kind: 'arch', choices: [
-      { t: 'Use `idf.py monitor`, which reconstructs it from the printed stack dump and the ELF', ok: true, why: 'RISC-V targets print registers and stack memory by default; the IDF monitor does the unwinding on the host.' },
-      { t: 'It is impossible on RISC-V chips', why: 'The information is in the stack dump. It needs host-side processing, which the IDF tooling provides.' },
-      { t: 'Switch the project to the Xtensa toolchain', why: 'The toolchain must match the CPU in the chip. A C3 cannot run Xtensa code.' },
+      { t: 'Use `idf.py monitor`, which rebuilds it from the stack dump and the ELF', ok: true, why: 'RISC-V targets print registers and stack memory by default; the IDF monitor does the unwinding on the host.' },
+      { t: 'It is impossible, because RISC-V chips keep no return addresses on the stack', why: 'The information is in the stack dump. It needs host-side processing, which the IDF tooling provides.' },
+      { t: 'Switch the project to the Xtensa toolchain, which emits a backtrace', why: 'The toolchain must match the CPU in the chip. A C3 cannot run Xtensa code.' },
     ] },
   ],
 });

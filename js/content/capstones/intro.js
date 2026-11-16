@@ -224,6 +224,7 @@ const troubleshooting = [
 const refs = [
   { org: 'MITRE', title: 'eCTF reference designs (mitre-cyber-academy, 2016–2025)', url: 'https://github.com/mitre-cyber-academy', note: 'Public insecure example designs; the shape these capstones are modelled on. Not official challenge material.' },
   { org: 'MITRE', title: 'eCTF 2026 insecure example (ectfmitre)', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example', note: 'The 2026 HSM reference design (TI MSPM0L2228).' },
+  { org: 'MITRE', title: 'eCTF rules site (2026 current; 2024 and 2025 archived)', url: 'https://rules.ectf.mitre.org/', note: 'The official functional and security requirements, board and bootloader instructions for each of those years. The 2026 board is the custom MSP-LITO-L2228 (not sold); the LP-MSPM0L2228 LaunchPad is described as largely interchangeable.' },
   { org: 'Espressif', title: 'ESP-IDF (programming guide sources under docs/en)', url: 'https://github.com/espressif/esp-idf', note: 'The SDK the board-based capstones target; check the version tag you install.' },
   { org: 'FreeRTOS', title: 'FreeRTOS-Kernel', url: 'https://github.com/FreeRTOS/FreeRTOS-Kernel', note: 'Kernel source for queues, semaphores, timers and the stack high-water-mark API used in capstone 3.' },
   { org: 'NSA', title: 'Ghidra', url: 'https://github.com/NationalSecurityAgency/ghidra', note: 'Open-source reverse-engineering suite; the real-tool analogue of capstone 5.' },

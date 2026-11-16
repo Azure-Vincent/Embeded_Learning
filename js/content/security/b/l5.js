@@ -121,8 +121,8 @@ Every product has paths that carry code in and paths that can carry memory out. 
 ## How it appears on actual hardware
 
 - **ESP32 family.** Secure Boot V2 has the ROM verify the second-stage bootloader, which verifies the application; flash encryption protects the external flash contents. Both are off until enabled by programming eFuses (ESP-IDF security documentation; part A covers the procedure).
-- **MSPM0L2228** (2026 eCTF MCU). The NONMAIN boot configuration exposed in TI's SDK includes debug access (enabled, enabled with password, or disabled), SWD port enable, bootstrap-loader options, and mass-erase and factory-reset policy. These are configuration words programmed with the image; check TI's documentation for the exact semantics of each setting before relying on one.
-- **MAX78000** (2024 and 2025 eCTF MCU). Check the device user guide for its debug-lock and ROM bootloader options; this course does not state them.
+- **MSPM0L2228** (2026 eCTF MCU). The NONMAIN boot configuration exposed in TI's SDK includes debug access (enabled, enabled with password, or disabled), SWD port enable, bootstrap-loader options, and mass-erase and factory-reset policy. These are configuration words programmed with the image. TI's technical reference manual (SLAU847F, sections 1.4.2 and 1.4.3) gives the semantics: three SWD security levels (no restrictions, which is the factory default; custom; SW-DP fully disabled); a ROM bootstrap loader on UART or I2C that is enabled by default and always requires a 256-bit password; and static write protection that an SWD mass erase or factory reset overrides unless those commands are password-protected or disabled. The boot configuration routine's own application check is a 32-bit CRC, which detects corruption and does not authenticate.
+- **MAX78000** (2024 and 2025 eCTF MCU). Check the device user guide for its debug-lock and ROM bootloader options; this course has not verified them. (MITRE's 2025 rules do show that a serial boot ROM interface exists, entered by holding the UART0 RX and SWDCLK pads low at power-up.)
 
 In every case the pattern is the same: the secure setting exists, it is not the default, and some settings are irreversible, so teams postpone them — sometimes past shipment.
 
@@ -233,7 +233,7 @@ ${BOOT_FIXED}\`\`\`
 The jump is inside the success branch and every other path ends in recovery, so the structure fails closed; lesson 7 hardens the decision itself. **Tests on the product:** the image matrix from "Verifying the defences" above, plus a UART break held during reset, which must no longer open a loader that flashes unverified code.` },
     `## Harder application
 
-For the 2026 eCTF reference design, the linker script places a MITRE bootloader in the first 0x6000 bytes of flash and the team's firmware after it, and notes that the file allocation table address is fixed because the bootloader must know it. Using only that, list the questions you would need answered about that bootloader before you could say what your firmware may assume at start-up (what was verified, what state the debug port is in, what the bootloader leaves in RAM). Where would you look for each answer? Do not guess: the competition's own documentation is the source.`,
+For the 2026 eCTF reference design, the linker script places a MITRE bootloader in the first 0x6000 bytes of flash and the team's firmware after it, and notes that the file allocation table address is fixed because the bootloader must know it. Using only that, list the questions you would need answered about that bootloader before you could say what your firmware may assume at start-up (what was verified, what state the debug port is in, what the bootloader leaves in RAM). Where would you look for each answer? Do not guess: the competition's own documentation is the source. The 2026 rules describe the bootloaders' outside behaviour (an insecure bootloader that you flash yourself with UniFlash on development boards; a keyed secure bootloader on attack boards that loads encrypted \`.prot\` images and "functions as a CSC and issues INITDONE"). What the secure bootloader verifies internally is not published, so some of your questions will stay open, and your design must not depend on the answers.`,
     { t: 'refs', items: [
       { title: 'CWE-494: Download of Code Without Integrity Check', url: 'https://cwe.mitre.org/data/definitions/494.html' },
       { title: 'CWE-1328: Security Version Number Mutable to Older Versions', url: 'https://cwe.mitre.org/data/definitions/1328.html' },
@@ -241,6 +241,8 @@ For the 2026 eCTF reference design, the linker script places a MITRE bootloader 
       { title: 'ESP-IDF v6.1: Secure Boot V2', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/security/secure-boot-v2.rst' },
       { title: 'TI MSPM0 SDK: boot_config.h for LP_MSPM0L2228 (NONMAIN options)', url: 'https://github.com/TexasInstruments/mspm0-sdk/blob/main/examples/nortos/LP_MSPM0L2228/boot_manager/customer_secure_image_with_bootloader/boot_config.h' },
       { title: 'MITRE eCTF 2026 insecure example design', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example' },
+      { title: 'MITRE eCTF 2026 rules: bootloader', url: 'https://rules.ectf.mitre.org/2026/system/bootloader.html' },
+      { title: 'TI: MSPM0 L-Series Technical Reference Manual (SLAU847)', url: 'https://www.ti.com/lit/pdf/slau847', note: 'Sections 1.4.2 and 1.4.3.' },
     ] },
   ],
   quiz: [

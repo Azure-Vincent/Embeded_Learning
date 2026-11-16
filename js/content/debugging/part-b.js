@@ -260,7 +260,7 @@ Probes differ in three ways:
 | **Built-in USB Serial/JTAG** | Not a separate box: logic inside ESP32-S3/C3/C6 that appears on USB as a serial port and a JTAG adapter | Espressif's OpenOCD |`,
       `## On real hardware: the course platforms
 
-**MAX78000FTHR.** The board has an integrated **MAX32625PICO** debug adapter. It runs DAPLink firmware, so it enumerates as a CMSIS-DAP probe, a serial port and a drive named DAPLINK. Copying a binary to the drive programs the target, and according to Analog Devices' board documentation, dropping a file named \`erase.act\` on the drive mass-erases the target. Holding SW5 while plugging in puts the *adapter* into MAINTENANCE mode for updating its own firmware. The 2024 eCTF reference flow used this drag-and-drop path to install the competition bootloader; the 2025 flow likewise required the MITRE bootloader to be on the board before team firmware could be flashed through it.
+**MAX78000FTHR.** The board has an integrated **MAX32625PICO** debug adapter. It runs DAPLink firmware, so it enumerates as a CMSIS-DAP probe, a serial port and a drive named DAPLINK. Copying a binary to the drive programs the target, and according to Analog Devices' board documentation, dropping a file named \`erase.act\` on the drive mass-erases the target. Holding SW5 while plugging in puts the *adapter* into MAINTENANCE mode for updating its own firmware. The 2024 eCTF reference flow used this drag-and-drop path to install the competition bootloader; the 2025 flow likewise required the MITRE bootloader to be on the board before team firmware could be flashed through it. In both years the board enters update mode when it is reset with SW1 (or, in 2024, the breakout board's Bootloader Button) held, and the LED blinks blue (2024 and 2025 rules, bootloader pages).
 
 **MSPM0L2228.** TI's debug-probe documentation for the MSPM0 SDK lists the XDS110 alongside SEGGER, PEmicro and Lauterbach probes. Upstream OpenOCD has a board file that pairs \`interface/xds110.cfg\` with the MSPM0 target. Which probe you have depends on the board. TI's LP-MSPM0L2228 LaunchPad has an XDS110 on board, with a back-channel UART over the same USB cable. The 2026 eCTF board is not the LaunchPad: it is the custom MSP-LITO-L2228, which is not sold and has no probe on it. Per the 2026 rules you connect an **external XDS110** with eight female-to-female jumper wires, matching the silkscreen labels on both ends, and it enumerates as a serial device. The rules describe the LaunchPad as "largely interchangeable" for teams that buy extra boards. Development boards arrive without a bootloader: the 2026 flow flashes MITRE's insecure bootloader with **TI UniFlash** through the XDS110 (a separate image exists for LaunchPad boards), and team firmware then goes in through that bootloader with the eCTF tools.
 
@@ -315,6 +315,9 @@ Write down which step failed. "It doesn't connect" is five different problems wi
         { title: 'MAX78000 Feather board documentation (MAX32625PICO, DAPLINK drive, erase.act)', url: 'https://github.com/analogdevicesinc/MaximAI_Documentation/blob/main/MAX78000_Feather/README.md' },
         { title: 'TI MSPM0 SDK: debug and programming tools guide (XDS110)', url: 'https://github.com/TexasInstruments/mspm0-sdk/tree/main/docs/english/tools/doc_guide/_sources/doc_guide-srcs' },
         { title: 'OpenOCD: MSPM0 LaunchPad board file', url: 'https://github.com/openocd-org/openocd/blob/master/tcl/board/ti/mspm0-launchpad.cfg' },
+        { title: 'MITRE eCTF 2026 rules: the MSP-LITO-L2228 board and connecting the external XDS110', url: 'https://rules.ectf.mitre.org/2026/getting_started/mspm0l2228.html' },
+        { title: 'TI: LP-MSPM0L2228 LaunchPad (on-board XDS110)', url: 'https://www.ti.com/tool/LP-MSPM0L2228' },
+        { title: 'TI: XDS110 debug probe user\'s guide (SPRUI94)', url: 'https://www.ti.com/lit/sprui94' },
       ] },
     ],
     quiz: [
@@ -1143,6 +1146,12 @@ const refs = [
   { org: 'Analog Devices', title: 'MSDK (includes the OpenOCD build and MAX78000 target files)', url: 'https://github.com/analogdevicesinc/msdk' },
   { org: 'Analog Devices', title: 'MAX78000 Feather board documentation', url: 'https://github.com/analogdevicesinc/MaximAI_Documentation/blob/main/MAX78000_Feather/README.md' },
   { org: 'Texas Instruments', title: 'MSPM0 SDK', url: 'https://github.com/TexasInstruments/mspm0-sdk' },
+  { org: 'Texas Instruments', title: 'MSPM0L222x, MSPM0L122x datasheet (SLASF94A)', url: 'https://www.ti.com/lit/ds/symlink/mspm0l2228.pdf', note: 'Table 8-4: memory map, including the three views of SRAM.' },
+  { org: 'Texas Instruments', title: 'MSPM0 L-Series Technical Reference Manual (SLAU847)', url: 'https://www.ti.com/lit/pdf/slau847', note: 'Section 1.4.2: SWD security levels and passwords. Section 1.4.3: bootstrap loader.' },
+  { org: 'Texas Instruments', title: 'UniFlash', url: 'https://www.ti.com/tool/UNIFLASH' },
+  { org: 'MITRE', title: 'eCTF 2026 rules: MSP-LITO-L2228 board and external XDS110', url: 'https://rules.ectf.mitre.org/2026/getting_started/mspm0l2228.html' },
+  { org: 'MITRE', title: 'eCTF 2026 rules: OpenOCD (debugging)', url: 'https://rules.ectf.mitre.org/2026/getting_started/openocd.html' },
+  { org: 'MITRE', title: 'eCTF 2026 rules: bootloader (UniFlash, update mode, eCTF tools)', url: 'https://rules.ectf.mitre.org/2026/system/bootloader.html' },
   { org: 'Espressif', title: 'ESP-IDF (JTAG debugging, fatal errors and core dump guides under docs/en/api-guides)', url: 'https://github.com/espressif/esp-idf' },
 ];
 

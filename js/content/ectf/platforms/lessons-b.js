@@ -183,21 +183,23 @@ DL_UART_Main_enable(UART0);`,
 
 The firmware build is a **Docker** image (\`firmware/Dockerfile\`, \`FROM ubuntu:24.04\`) containing the **TI MSPM0 SDK** at tag \`mspm0_sdk_2_06_00_05\` and **TI Arm Clang** \`ti-cgt-armllvm_4.0.3.LTS\` (\`tiarmclang\`, \`tiarmobjcopy\`). It is **not** \`arm-none-eabi-gcc\`${src('2026 Dockerfile', S.y2026docker, '2026 firmware Makefile', S.y2026make)}.`,
 
-    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'eCTF 2026 reference build, from the repository and the rules. The volume mounts of docker run are elided: copy the full command from the rules. Not run here.', code: `# 1. build the container image
-docker build -t build-hsm ./firmware/
+    { t: 'code', lang: 'bash', status: 'reviewed', caption: 'eCTF 2026 reference build, from the repository and the rules. Not run here.', code: `# 1. build the container image
+docker build -t build-hsm ./firmware
 
 # 2. generate global secrets for your groups (ectf26_design needs Python >= 3.12)
 uvx --with-editable ./ectf26_design --from ectf26_design secrets global.secrets <groups>
 
 # 3. build one HSM image with its PIN and permissions
-docker run ... -e HSM_PIN='1a2b3c' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
-#   build.sh runs secrets_to_c_header.py, then make -> /out/hsm.elf and /out/hsm.bin`,
+docker run --rm -v ./firmware:/hsm -v ./global.secrets:/secrets/global.secrets:ro -v ./build:/out \\
+    -e HSM_PIN='1a2b3c' -e PERMISSIONS='1234=R--:4321=RWC' build-hsm
+#   build.sh runs secrets_to_c_header.py, then make -> ./build/hsm.elf and ./build/hsm.bin`,
       explain: [
+        { lines: '8', md: 'Three mounts: the firmware source, the Global Secrets file **read-only** (`:ro`), and the output directory. The build can read the secrets but cannot change them.' },
         { lines: '5', md: 'Global Secrets are produced once per deployment by the team’s own Python package and are read-only afterwards. Whatever ends up in `global.secrets` is shared by every HSM built from it.' },
-        { lines: '8-9', md: 'The PIN and the permission string are per-device build inputs passed as environment variables; a script turns the secrets into a C header that is compiled into the image. Anything in that header is in flash in plain form unless your design does something about it.' },
+        { lines: '9-10', md: 'The PIN and the permission string are per-device build inputs passed as environment variables; a script turns the secrets into a C header that is compiled into the image. Anything in that header is in flash in plain form unless your design does something about it.' },
       ] },
 
-    `Source for the commands${src('2026 README', S.y2026readme, 'root Makefile', S.y2026rootmake, '2026 functional requirements', S.r26func)}.`,
+    `Source for the commands${src('2026 README', S.y2026readme, 'root Makefile', S.y2026rootmake, '2026 functional requirements', S.r26func, '2026 boot reference', S.r26bootref)}.`,
 
     { t: 'callout', kind: 'decision', title: 'Stay on TI Arm Clang unless you have a reason', md: `TI's SDK supports several compilers — TI Arm Clang, GCC, IAR and Keil${src('SDK tools docs', S.tiTools)} — so building with \`arm-none-eabi-gcc\` is possible in principle. The reference design chose TI Arm Clang, and its linker script, startup code and flags are written for it. Switching compiler means porting those, re-checking code size against a 208 KB team region and a 256-byte stack, and owning every difference in code generation. On a Cortex-M0+ with no divide instruction and no FPU, library routines for division and floating point are supplied by the toolchain, so their size *and timing* depend on the compiler. Make that switch deliberately and early, or not at all.` },
 
@@ -423,35 +425,35 @@ For each axis below, do three things: read the row in the widget, read the notes
 
 | Axis | ESP32 family | MAX78000 (eCTF 2024, 2025) | MSPM0L2228 (eCTF 2026) |
 |---|---|---|---|
-| CPU architecture | Xtensa (ESP32, S3) or RISC-V (C3, C6); 1 or 2 cores | Arm Cortex-M4 with FPU and MPU, plus a RISC-V core started by the Arm core | Arm Cortex-M0+ with MPU; single core |
+| CPU architecture | Xtensa (LX6 in the ESP32, LX7 in the S3) or RISC-V (C3, C6); 1 or 2 cores | Arm Cortex-M4 with FPU and MPU, plus a RISC-V core started by the Arm core | Arm Cortex-M0+ with MPU; single core, 32 MHz maximum |
 | Instruction set | Xtensa or RISC-V | ARMv7-M Thumb-2 with hardware floating point; RV32 on the second core (variant: check datasheet) | ARMv6-M Thumb, soft-float; no divide instruction |
-| Memory organisation | Program in **external** SPI flash mapped through a cache; internal RAM split into DRAM/IRAM regions | Internal flash \`0x10000000\`, 512 KB, 8 KB pages; SRAM \`0x20000000\`, 128 KB | Internal flash \`0x0\`, 256 KB; SRAM \`0x20200000\`, 32 KB; NONMAIN at \`0x41C00000\` |
-| Peripherals | Wi-Fi/Bluetooth radios; pin rules such as strapping pins and input-only pins on the original ESP32 | UART ×4, I2C ×3, SPI ×2, timers ×6, camera interface, CNN accelerator, inter-core semaphores | UART ×5, I2C ×3, SPI ×2, LCD controller, RTC, LFSS, tamper I/O (per SDK examples) |
-| Debug interface | JTAG (GPIO12–15 on the original ESP32); built-in USB Serial/JTAG on S3/C3/C6 | On-board MAX32625PICO DAPLink adapter for the Arm core; separate JTAG port for the RISC-V core | XDS110 named by TI's docs, SWD; SWD can be disabled by boot configuration. 2026 board's probe: check rules |
-| Development environment | ESP-IDF (v6.1 current at research time), installed with EIM | MSDK with GNU Arm Embedded, RISC-V GCC, ADI OpenOCD; eCTF 2024 Nix + Poetry, 2025 Docker | MSPM0 SDK with driverlib and SysConfig; eCTF 2026 Docker with TI Arm Clang |
+| Memory organisation | Program in **external** SPI flash mapped through a cache; internal RAM split into DRAM/IRAM regions | Internal flash \`0x10000000\`, 512 KB, 8 KB pages; SRAM \`0x20000000\`, 128 KB | Internal flash \`0x0\`, 256 KB in two banks, 1 KB sectors; **one** 32 KB SRAM seen at \`0x20000000\` (ECC), \`0x20100000\` (parity) and \`0x20200000\` (unchecked, used by the linker files); NONMAIN at \`0x41C00000\` |
+| Peripherals | Wi-Fi/Bluetooth radios; pin rules such as strapping pins and input-only pins on the original ESP32 | UART ×4, I2C ×3, SPI ×2, timers ×6, camera interface, CNN accelerator, inter-core semaphores | UART ×5, I2C ×3, SPI ×2, 12-bit ADC, LCD controller, RTC, LFSS with up to 3 tamper inputs |
+| Debug interface | JTAG (GPIO12–15 on the original ESP32); built-in USB Serial/JTAG on S3/C3/C6 | On-board MAX32625PICO DAPLink adapter for the Arm core; separate JTAG port for the RISC-V core | SWD through an **external** XDS110 on 8 jumper wires (eCTF 2026 MSP-LITO-L2228 board); three SWD security levels set in NONMAIN |
+| Development environment | ESP-IDF (v6.1 current at research time), installed with EIM | MSDK with GNU Arm Embedded, RISC-V GCC, ADI OpenOCD; eCTF 2024 Nix + Poetry, 2025 Docker | MSPM0 SDK with driverlib and SysConfig; eCTF 2026 Docker with TI Arm Clang, \`uv\` for the tools, UniFlash for the bootloader |
 | RTOS support | ESP-IDF is built on FreeRTOS | Check the MSDK \`Libraries\` directory and that year's reference design | Check the MSPM0 SDK examples and the 2026 reference design |
-| Security features | Secure Boot V2 (RSA-3072 by default), flash encryption (two schemes), eFuse key storage | AES engine with key registers, TRNG, CRC, MPU. Secure boot / ROM bootloader: check datasheet and user guide | AESADV, TRNG, KEYSTORECTL, CRC, MPU; NONMAIN boot policy; TI's CSC secure-boot stage; firewalls |
-| Boot process | Mask ROM → second-stage bootloader at a ROM-fixed offset (\`0x1000\` or \`0x0\`) → partition table → app | ROM at \`0x0\` (behaviour: check user guide) → in eCTF 2024/2025, MITRE bootloader at \`0x10000000\` → team image at \`0x1000E000\` | Boot configuration from NONMAIN → in eCTF 2026, bootloader region at \`0x0\` → team image at \`0x6000\` (bootloader details: check rules) |
-| Hardware attack surface | External flash bus, strapping pins, serial download mode, JTAG, documented EMFI advisory for v3.0/v3.1 | On-board debug adapter and its mass-erase, second core, I2C bus between boards (2024), serial bootloader | SWD, BSL invoke pin, NONMAIN writes, two UARTs facing different parties (2026), serial bootloader |
+| Security features | Secure Boot V2 (RSA-3072 by default), flash encryption (two schemes), eFuse key storage | AES engine (128/192/256-bit keys) with key registers, TRNG, CRC, MPU. Secure boot / ROM bootloader variants: check datasheet and user guide | AESADV (128/256-bit keys), TRNG, keystore for 4 AES keys, CRC, MPU; NONMAIN boot policy with SWD levels and a password-protected BSL; TI's CSC secure-boot stage; firewalls |
+| Boot process | Mask ROM → second-stage bootloader at a ROM-fixed offset (\`0x1000\` or \`0x0\`) → partition table → app | ROM at \`0x0\` (a serial boot interface exists; the rest: check user guide) → in eCTF 2024/2025, MITRE bootloader at \`0x10000000\` (update mode: SW1 at reset) → team image at \`0x1000E000\` | ROM boot configuration routine applies NONMAIN policy → in eCTF 2026, MITRE bootloader at \`0x0\` (update mode: S2 at reset) → team image at \`0x6000\` |
+| Hardware attack surface | External flash bus, strapping pins, serial download mode, JTAG, documented EMFI advisory for v3.0/v3.1 | On-board debug adapter and its mass-erase, serial boot ROM entered from two pads, second core, I2C bus between boards (2024), serial bootloader | SWD and its mass-erase / factory-reset commands, BSL (UART or I2C, password), NONMAIN writes, two UARTs facing different parties (2026), serial bootloader |
 
-Sources: ESP32${src('Kconfig', S.idfKconfig, 'soc.h', S.idfSoc, 'secure-boot-v2', S.idfSb2, 'flash-encryption', S.idfFe, 'GPIO notes', S.idfGpio, 'USB Serial/JTAG', S.idfUsbJtag, 'release', S.idfRelease)}; MAX78000${src('max78000.h', S.maxHdr, 'MSDK user guide', S.msdkGuide, 'MSDK README', S.msdkReadme, 'Feather README', S.maxFthr, '2025 firmware.ld', S.y2025ld)}; MSPM0L2228${src('mspm0l222x.h', S.tiHdr, 'mspm0l2228.cmd', S.tiCmd, 'boot_config.h', S.tiBootCfg, 'CSC guide', S.tiCsc, 'SDK examples', S.tiExamples, '2026 firmware.ld', S.y2026ld)}. The instruction-set rows for the two Arm cores follow from the core type (Cortex-M4 implements ARMv7-M, Cortex-M0+ implements ARMv6-M) and the 2026 Makefile's \`-march=thumbv6m -mfloat-abi=soft\`.`,
+Sources: ESP32${src('Kconfig', S.idfKconfig, 'soc.h', S.idfSoc, 'secure-boot-v2', S.idfSb2, 'flash-encryption', S.idfFe, 'GPIO notes', S.idfGpio, 'USB Serial/JTAG', S.idfUsbJtag, 'release', S.idfRelease)}; MAX78000${src('max78000.h', S.maxHdr, 'MSDK user guide', S.msdkGuide, 'MSDK README', S.msdkReadme, 'Feather README', S.maxFthr, '2025 firmware.ld', S.y2025ld)}; MSPM0L2228${src('datasheet SLASF94A', S.tiDs, 'TRM SLAU847F', S.tiTrm, 'mspm0l222x.h', S.tiHdr, 'mspm0l2228.cmd', S.tiCmd, 'boot_config.h', S.tiBootCfg, 'CSC guide', S.tiCsc, '2026 firmware.ld', S.y2026ld, '2026 board page', S.r26board, '2026 bootloader page', S.r26boot)}; MAX78000 additions${src('aes.h', S.maxAes, '2025 bootloader page', S.r25boot, '2025 secure-bootloader removal', S.r25sbl)}; ESP32 core names${src('ESP32 datasheet', S.esp32ds)}. The instruction-set rows for the two Arm cores follow from the core type (Cortex-M4 implements ARMv7-M, Cortex-M0+ implements ARMv6-M) and the 2026 Makefile's \`-march=thumbv6m -mfloat-abi=soft\`.`,
 
     { t: 'callout', kind: 'sim', title: 'What kind of laboratory this is', md: `This is a documentation laboratory. You compare what primary sources say about three chips; the widgets render that information and nothing in them is a measurement. No statement in this lesson comes from running code on any of the three boards.` },
 
     `## Axis notes: where "the same" hides a difference
 
-**Two Arm cores, two architectures.** The M4 and M0+ share the Cortex-M exception model in outline — a vector table, automatic stacking, an NVIC — which is why porting feels easy. The differences are the ones that bite security code: the M0+ has fewer interrupt priority levels (2 priority bits on this part), no hardware divide, no FPU, and a smaller instruction set, so the same C compiles to different sequences with different timing and size.
+**Two Arm cores, two architectures.** The M4 and M0+ share the Cortex-M exception model in outline — a vector table, automatic stacking, an NVIC — which is why porting feels easy. The differences are the ones that bite security code: the M0+ has fewer interrupt priority levels (2 priority bits on this part, against 3 on the MAX78000), no hardware divide, no FPU, and a smaller instruction set, so the same C compiles to different sequences with different timing and size.
 
-**Memory organisation.** Three different answers to "where is flash": external at an offset, internal at \`0x10000000\`, internal at \`0x0\`. Two different answers to "where is RAM" among the Arm parts alone. And a 4× difference in RAM between the two eCTF parts.
+**Memory organisation.** Three different answers to "where is flash": external at an offset, internal at \`0x10000000\`, internal at \`0x0\`. "Where is RAM" has one answer on the MAX78000 and three on the MSPM0L2228, whose single 32 KB SRAM appears at three addresses with different error checking — so on that part the question becomes "through which view?". And there is a 4× difference in RAM between the two eCTF parts.
 
-**Erase granularity.** 8 KB pages on the MAX78000; the 2026 reference design uses a 1024-byte page size on the MSPM0L2228. Any scheme that stores counters, logs or wrapped keys in flash is designed around this number.
+**Erase granularity.** 8 KB pages on the MAX78000; 1 KB sectors on the MSPM0L2228, most of them rated for 10 000 program/erase cycles. Any scheme that stores counters, logs or wrapped keys in flash is designed around this number.
 
-**Security features with similar names.** All three have "AES" and a random number generator. The ESP32's AES is tied into flash encryption with keys in eFuses; the MAX78000 has an AES engine with key registers whose properties you must read; the MSPM0L2228 has an AES accelerator with a separate key store controller. None of these is a drop-in replacement for another: what matters is where the key lives, who can read it back, and what survives reset.
+**Security features with similar names.** All three have "AES" and a random number generator. The ESP32's AES is tied into flash encryption with keys in eFuses; the MAX78000 has an AES engine with key registers whose properties you must read; the MSPM0L2228 has an AES accelerator with a separate keystore for four keys, meant to be loaded by a stage that runs before the application. Even the key sizes differ: 128/192/256 bits in the MAX78000 driver, 128/256 only on the MSPM0L2228. None of these is a drop-in replacement for another: what matters is where the key lives, who can read it back, and what survives reset.
 
 **Boot.** Each chip has code or configuration that runs before yours and that you cannot change (mask ROM; ROM; NONMAIN-driven boot). In the eCTF years there is additionally a MITRE bootloader that owns the start of flash. Your design's root of trust is whichever of these the *rules* let you rely on.`,
 
     { t: 'predict', q: `Your MAX78000 design defends against PIN brute force with a counter of failed attempts, stored in its own flash page and erased/rewritten on each failure. You port it to the MSPM0L2228 keeping "one page per counter". Before reading on: name two things about this mechanism that change on the new chip, and one that does not.`,
-      reveal: `**Changes.** (1) The page is 1024 bytes in the 2026 reference design instead of 8 KB, so the flash cost per counter falls by a factor of eight — but so does the amount of other data that could share the page. (2) Everything about *how* flash is written changes: a different flash controller, different driver calls, different erase/program timing and endurance, and possibly protection features (ECC, write protection) that were absent before. Erase and program times, and how many cycles a page endures, are datasheet numbers you have not read yet for the new part.
+      reveal: `**Changes.** (1) The page is 1024 bytes in the 2026 reference design instead of 8 KB, so the flash cost per counter falls by a factor of eight — but so does the amount of other data that could share the page. (2) Everything about *how* flash is written changes: a different flash controller, different driver calls, different erase/program timing and endurance, and possibly protection features (ECC, write protection) that were absent before. Endurance is now a hard constraint: outside its lowest 32 KB the MSPM0L2228's flash is rated for 10 000 program/erase cycles, so a sector erased on every wrong PIN wears out after ten thousand guesses. Erase and program *times* are datasheet numbers still to be read.
 
 **Does not change.** The logic of the defence and its weakness: if an attacker can cut power between "PIN was wrong" and "counter is committed", the attempt is not counted. That is a property of the design's ordering, not of the chip — and it must be re-tested on the new chip because the *window* is set by the new flash's timing.
 
@@ -490,7 +492,7 @@ Use this as the checklist the opening estimate was missing.
 
 **(b) Redesign.** The 2026 reference linker script sets a stack size of 256; a routine needing about 1 KB of stack does not fit that budget, and running it in an interrupt handler means the worst case stacks on top of whatever was interrupted. Move it out of the handler and size the stack deliberately — and measure, because without an FPU or divide instruction the routine's stack use and run time will both differ from the M4 build.
 
-**(c) Redesign of the decision, not just the code.** The MAX78000's AES key registers and the MSPM0L2228's AESADV plus KEYSTORECTL are different mechanisms. Until you have read the TRM on what the key store protects against, you do not know whether the old argument ("keys are in the hardware key registers") has an equivalent. Also check the rules on whether the feature may be used.
+**(c) Redesign of the decision, not just the code.** The MAX78000's AES key registers and the MSPM0L2228's AESADV plus KEYSTORECTL are different mechanisms. The keystore is designed to be loaded by a Customer Secure Code stage before the application runs, and on eCTF 2026 attack boards that stage is MITRE's bootloader, not your code. So the old argument ("keys are in the hardware key registers") has no automatic equivalent: establish from the TRM and the rules whether your firmware can use the keystore at all before designing around it. Note too that a 192-bit key from the old design has no home here.
 
 **(d) Ports with a cost.** Rewrite the HAL's UART backend against TI's driverlib (power enable, pin mux, clock, baud divisors), then re-test framing and timeouts at 115200 with the new clock. The protocol logic itself is unchanged.
 
@@ -505,6 +507,9 @@ Pick one defence from the security section of this course — a constant-time PI
       { title: 'Analog Devices MSDK: MAX78000 device header', url: S.maxHdr },
       { title: 'TI MSPM0 SDK: MSPM0L222x device header', url: S.tiHdr },
       { title: 'TI MSPM0 SDK: MSPM0L2228 linker command file', url: S.tiCmd },
+      { title: 'TI MSPM0L222x datasheet, SLASF94A', url: S.tiDs },
+      { title: 'TI MSPM0 L-series technical reference manual, SLAU847F', url: S.tiTrm },
+      { title: 'ESP32 Series Datasheet', url: S.esp32ds },
       { title: 'Arm documentation (Cortex-M4 and Cortex-M0+ user guides, ARMv7-M and ARMv6-M reference manuals)', url: N.armDocs, note: 'Not load-tested.' },
     ] },
   ],
@@ -558,7 +563,7 @@ const docs = {
 
 Kick-off day. You receive a rules site with a functional specification, security requirements and getting-started pages; a reference repository with firmware, host tools and build scripts; and a box with a board in it. Three weeks later the teams that are ahead are not the ones who typed fastest. They are the ones who, in the first two days, extracted the right dozen facts and wrote them down where everyone could see them.
 
-This lesson is a method for that extraction. It uses the public reference repositories as the worked material, because those are what this course could actually read. The rules documents themselves were not reachable, so wherever the method says "from the rules", you are being told where to look, not what it says.`,
+This lesson is a method for that extraction. It uses the public reference repositories and the rules pages for 2024–2026 as the worked material. Where this lesson summarises a rules page it links it; the page, not the summary, is what you would be held to.`,
 
     `## Two documents, two kinds of authority
 
@@ -570,7 +575,7 @@ This lesson is a method for that extraction. It uses the public reference reposi
 
 When they disagree, the rules win over the reference design, and the datasheet wins over everyone on questions of silicon. A constant in the reference code is a *fact about the reference code* until the specification says it is a requirement.`,
 
-    { t: 'callout', kind: 'mistake', title: 'Treating reference-design behaviour as the specification', md: `The 2025 reference decoder defines \`MAX_CHANNEL_COUNT 8\` and always decodes channel 0${src('decoder.c', S.y2025dec)}. Is "8 channels" a requirement or an implementation choice? Is "channel 0 always decodes" a functional requirement or a convenience? You cannot tell from the code. Teams lose points both ways: by breaking a requirement they thought was optional, and by faithfully reimplementing an insecure behaviour they thought was required. Every constant you take from the reference design goes in your notes with a column: "confirmed in spec section …" — empty until you have found it.` },
+    { t: 'callout', kind: 'mistake', title: 'Treating reference-design behaviour as the specification', md: `The 2025 reference decoder defines \`MAX_CHANNEL_COUNT 8\` and always decodes channel 0${src('decoder.c', S.y2025dec)}. Is "8 channels" a requirement or an implementation choice? Is "channel 0 always decodes" a functional requirement or a convenience? You cannot tell from the code. (As it happens the 2025 functional requirements do define channel 0 as an emergency channel that is always decoded without a subscription${src('2025 functional requirements', S.r25func)} — which you know only because you read them.) Teams lose points both ways: by breaking a requirement they thought was optional, and by faithfully reimplementing an insecure behaviour they thought was required. Every constant you take from the reference design goes in your notes with a column: "confirmed in spec section …" — empty until you have found it.` },
 
     `## Extraction 1: functional requirements
 
@@ -592,12 +597,22 @@ Security requirements say what an attacker must *not* be able to do. They live i
 
 Then map every functional operation to the requirements that constrain it. An operation constrained by none is suspicious: either you missed a requirement or the operation is an unguarded entry point.
 
-For 2024, 2025 and 2026 the named requirements are not reproduced in this course because the rules site could not be opened. The reference repositories give you only hints: in 2026, the firmware headers define a PIN, per-group permissions \`R\`/\`W\`/\`C\` and a file store${src('security.h', S.y2026sec, 'filesystem.h', S.y2026fs)}, so expect the requirements to be about who may read, write and receive which files, and what the PIN protects — then go and read what they actually say.`,
+Worked example, eCTF 2026. The repository alone gives only hints: the firmware headers define a PIN, per-group permissions \`R\`/\`W\`/\`C\` and a file store${src('security.h', S.y2026sec, 'filesystem.h', S.y2026fs)}, so you would *expect* requirements about who may read, write and receive which files, and what the PIN protects. The rules confirm that shape and make it precise${src('2026 security requirements', S.r26sec)}:
+
+| Requirement (summary) | Asset | Attacker to assume | Where to look in the reference design |
+|---|---|---|---|
+| SR1: no file action without a provisioned HSM holding the matching group permission | File contents; the ability to read, write, receive | Someone holding a legitimate HSM for a *different* group | Where permissions are stored, and every place a command checks them — or does not |
+| SR2: no PIN-protected action without the PIN; the PIN must not leak | The PIN, and every action behind it | Someone at the control UART, or with the device on the bench | The PIN comparison, what is sent before it succeeds, how long a wrong guess takes |
+| SR3: only receive files generated by a valid HSM with write permission for that group | Integrity and authenticity of stored files | A modified or simulated neighbour on the transfer UART | What a received file carries to prove who made it |
+
+The inference from the headers was right in outline and silent on the part that matters most: *which attacker*. That is what the requirements page and the attack-flag descriptions add, and why they are read first.`,
 
     { t: 'predict', q: `From the 2026 firmware headers alone you know there are six host-visible commands (LIST, READ, WRITE, RECEIVE, INTERROGATE, LISTEN), a 6-hex-character PIN, and two UARTs: one facing the host, one facing another HSM. Before reading the specification: which interface do you expect an attacker to find more interesting, and what question would you take to the rules to find out whether you are right?`,
       reveal: `There is no certain answer without the rules — which is the point — but an engineer's prior is that the **HSM-to-HSM transfer interface** deserves at least as much attention as the host interface. The host interface is the obvious front door and is where a PIN is naturally checked. The transfer interface connects your device to *another device*, which in an attack phase may be one the attacker controls or has modified. Commands like RECEIVE, INTERROGATE and LISTEN${src('commands.h', S.y2026cmds)} suggest one HSM asking another for data.
 
 Questions to take to the rules: Which operations require the PIN, and on which device is it entered? What may an HSM learn from a peer without any PIN? What does the specification say an attacker-controlled peer must not be able to obtain? Is the peer assumed to be a genuine HSM from the same deployment?
+
+What the rules answer${src('2026 functional requirements', S.r26func)}: List, Read, Write, Interrogate and Receive all require the PIN on the local HSM; **Listen requires none** and serves exactly one request from the neighbour. So the listening HSM answers a peer it cannot see, with no user present — the prior was a good one.
 
 Forming the question first is what makes a forty-page document quick to read: you are searching, not absorbing.` },
 
@@ -610,7 +625,7 @@ From the repository's build files you can pin down the hardware more reliably th
 - **Pins and interfaces:** board or configuration headers. 2026: two UARTs with their pins, an LED, a button${src('ti_msp_dl_config.h', S.y2026dl)}. 2024: which I2C instance and at what speed${src('simple_i2c_controller.h', S.y2024i2c)}.
 - **SDK and versions:** the Dockerfile or environment file.
 
-What the repository will *not* tell you: the board's name, its on-board debugger, its jumpers, what else is on the PCB, and what is in the kit. That is the rules' hardware page and the board's user guide. The 2026 board name is the standing example: the repository proves the MCU only.`,
+What the repository will *not* tell you: the board's name, its on-board debugger, its jumpers, what else is on the PCB, and what is in the kit. That is the rules' hardware page and the board's user guide. The 2026 board is the standing example: the repository proves the MCU only, the MCU's usual evaluation board is TI's LaunchPad with a debug probe built in, and the actual kit is the custom MSP-LITO-L2228 with an *external* XDS110 on jumper wires${src('2026 board page', S.r26board)}. Guessing the board from the MCU would have given you the wrong button, the wrong LED colour and the wrong bootloader file.`,
 
     `## Extraction 4: the build and flash flow
 
@@ -627,7 +642,11 @@ Write the flow as a pipeline with inputs and outputs at every stage, because eve
                                                              ▼
                                                            make ──► hsm.elf, hsm.bin
                                                                         │
-                                              [flash procedure: see 2026 rules] ──► board`, caption: 'Every box is a tool, every label on an arrow is an artefact. The last arrow is deliberately unspecified: the 2026 flashing procedure was not verified.' },
+                                                                        ▼
+             [MITRE bootloader, update mode (S2 at reset)] ◄── uvx ectf hw <port> flash
+                 installed once with TI UniFlash + XDS110            │
+                                                                     ▼
+                                                                   board`, caption: 'Every box is a tool, every label on an arrow is an artefact. The last stage is from the 2026 rules’ bootloader page; the bootloader itself is MITRE’s, not yours.' },
 
     `Questions this diagram makes you ask: Who can read \`global.secrets\`? Is it the same for every HSM in a deployment? What exactly ends up in the generated header, and is it in the binary in plain form? Is the PIN stored, or something derived from it? Does anything differ between two HSMs built from the same secrets other than PIN and permissions? You answer these by reading \`secrets_to_c_header.py\` and the generated header — then by looking for those bytes in \`hsm.bin\`.
 
@@ -676,7 +695,7 @@ Steps 5–7 need the board. Steps 1–4 and 8–12 need only documents, and can 
 
 Attacker-controlled fields that must be validated: essentially all of them, but the instructive ones are the **channel number** in a decode request (the reference design has 8 channel slots and treats channel 0 specially — what happens for channel 9, or 0xFFFFFFFF?), the **timestamps** in both subscriptions and frames, and the **device ID** in a subscription (is this subscription really for *this* decoder?). An update-subscription message is the most valuable target because it changes what the decoder will agree to decode later.
 
-Still to confirm in the 2025 specification before calling anything a requirement: the maximum channel count, the special status of channel 0, the frame size, the exact subscription format, and the baud rate. All five are true of the reference code; this course did not open the specification to see which are mandated.` },
+Which of these are requirements? The 2025 rules confirm two: channel 0 is an emergency channel that is always decoded and takes no subscription, and frames are 64 bytes (the throughput requirement is stated as 1,000 64-byte frames per second)${src('2025 functional requirements', S.r25func, '2025 detailed specifications', S.r25detail)}. The maximum channel count, the exact subscription format and the baud rate are true of the reference code and were not checked against the specification for this course — confirm them there before relying on them.` },
 
     `## Harder application
 
@@ -687,8 +706,10 @@ Choose a reference repository from a year you have *not* studied in this track �
       { title: 'MITRE eCTF 2025 insecure example', url: S.y2025 },
       { title: 'MITRE eCTF 2024 insecure example', url: S.y2024 },
       { title: 'MITRE eCTF 2023 insecure example', url: S.y2023 },
-      { title: 'MITRE eCTF rules site', url: S.rules, note: 'Not load-tested; the authority for requirements, hardware and procedures.' },
-      { title: 'MITRE eCTF home page', url: N.ectf, note: 'Not load-tested.' },
+      { title: 'MITRE eCTF rules site (2026; 2024 and 2025 archived)', url: S.rules, note: 'The authority for requirements, hardware and procedures.' },
+      { title: 'eCTF 2026 rules: functional requirements', url: S.r26func },
+      { title: 'eCTF 2026 rules: security requirements', url: S.r26sec },
+      { title: 'eCTF 2025 rules: functional requirements', url: S.r25func },
     ] },
   ],
   quiz: [

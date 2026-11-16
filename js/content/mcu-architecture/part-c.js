@@ -452,7 +452,7 @@ designer. The **memory map** is the table of what lives where.`,
       { t: 'widget', name: 'memory-map', props: { platform: 'max78000' }, title: 'MAX78000 address space',
         caption: 'Take the "where does this address live?" quiz until you can place an address by its top hex digits alone.' },
       { t: 'widget', name: 'memory-map', props: { platform: 'mspm0l2228' }, title: 'MSPM0L2228 address space',
-        caption: 'Note the SRAM row. The datasheet memory map (SLASF94A, Table 8-4) shows the same 32 KB at three addresses: 0x2000_0000 (ECC-checked), 0x2010_0000 (parity-checked) and 0x2020_0000 (unchecked). TI\'s linker file and the 2026 eCTF reference design choose 0x2020_0000. The explorer may draw only that view. Do not carry a RAM address or length over from another chip: read the map, then see which view the linker script uses.' },
+        caption: 'Note the SRAM row. The datasheet memory map (SLASF94A, Table 8-4) shows the same 32 KB at three addresses: 0x2000_0000 (ECC-checked), 0x2010_0000 (parity-checked) and 0x2020_0000 (unchecked). TI\'s linker file and the 2026 eCTF reference design choose 0x2020_0000. Find all three views in the explorer and confirm they describe one memory, not three. Do not carry a RAM address or length over from another chip: read the map, then see which view the linker script uses.' },
 
       `### Sections
 

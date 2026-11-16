@@ -336,12 +336,13 @@ int main(void)
     }),
     `## Harder application
 
-In the 2025 eCTF the reference decoder handles frames that carry a 64-bit timestamp (\`timestamp_t\` in the reference source), and a commonly cited design goal for such a system is that frames are only decoded in increasing timestamp order. Treat that as a design exercise rather than a statement of the official rules, which you should read on the competition's own site. Sketch the receive-side state and checks for a broadcast, one-way link with several channels: what is stored, per what, where; what the MAC or AEAD covers; and what must happen at power-up. Then list the tests you would write first.`,
+In the 2025 eCTF the reference decoder handles frames that carry a 64-bit timestamp (\`timestamp_t\` in the reference source), and the 2025 rules make ordering a security requirement: paraphrased, a Decoder decodes only frames with strictly increasing timestamps, and the property need not hold across power cycles (2025 Security Requirement 3; the other two cover valid, active subscriptions and frames from the Satellite System the Decoder was provisioned for). Read the exact wording on the [2025 rules site](https://rules.ectf.mitre.org/2025/specs/security_reqs.html). What follows is a course design exercise, not official material. Sketch the receive-side state and checks for a broadcast, one-way link with several channels: what is stored, per what, where; what the MAC or AEAD covers; and what must happen at power-up. Then list the tests you would write first.`,
     { t: 'refs', items: [
       { title: 'CWE-294: Authentication Bypass by Capture-replay', url: 'https://cwe.mitre.org/data/definitions/294.html' },
       { title: 'CWE-757: Selection of Less-Secure Algorithm During Negotiation ("Algorithm Downgrade")', url: 'https://cwe.mitre.org/data/definitions/757.html' },
       { title: 'CWE-345: Insufficient Verification of Data Authenticity', url: 'https://cwe.mitre.org/data/definitions/345.html' },
       { title: 'MITRE eCTF 2025 insecure example design (decoder source)', url: 'https://github.com/mitre-cyber-academy/2025-ectf-insecure-example', note: 'Reference design only; the competition rules are published separately by MITRE.' },
+      { title: 'MITRE eCTF 2025 rules: security requirements', url: 'https://rules.ectf.mitre.org/2025/specs/security_reqs.html' },
     ] },
   ],
   quiz: [

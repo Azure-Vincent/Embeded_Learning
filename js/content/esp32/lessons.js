@@ -484,7 +484,7 @@ Three consequences:
 
 Nearly every ESP-IDF function returns \`esp_err_t\`, an integer where \`ESP_OK\` is zero. The compiler does not force you to look at it. There are three things you can do with it, and choosing between them is an engineering decision:`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Three ways to treat an error', code: R`#include "esp_err.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'Three ways to treat an error', code: R`#include "esp_err.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -913,7 +913,7 @@ void app_main(void)
       { lines: '31-35', md: 'Debounce in the task: ignore events closer than 50 ms to the last accepted one. Logging is safe here because this is task context.' },
       { lines: '42-43', md: 'Create the queue and the task **before** enabling the interrupt. An interrupt that fires first would post to a NULL queue.' },
       { lines: '49', md: 'Falling edge: the pin is pulled up and the button pulls it low.' },
-      { lines: '49', md: '`gpio_config` writes the edge type into the pin\'s `GPIO_PINn` register. From now on a falling edge sets the pin\'s bit in `GPIO_STATUS`, but no CPU interrupt is connected to it yet.' },
+      { lines: '51', md: '`gpio_config` writes the edge type into the pin\'s `GPIO_PINn` register. From now on a falling edge sets the pin\'s bit in `GPIO_STATUS`, but no CPU interrupt is connected to it yet.' },
       { lines: '52', md: '`gpio_install_isr_service` allocates one CPU interrupt (with `esp_intr_alloc`, on the core that calls it) for the GPIO peripheral\'s interrupt source and attaches the driver\'s own dispatcher to it. On each interrupt the dispatcher reads `GPIO_STATUS`, clears the bits it is handling through `GPIO_STATUS_W1TC`, and calls the handler registered for each pin. The argument is the interrupt flags; 0 is the default. Call it once in the whole program.' },
       { lines: '53', md: 'Stores the handler and its argument in the dispatcher\'s table and sets this pin\'s interrupt-enable bits in `GPIO_PINn`, so its status bit now reaches the CPU.' },
     ] },
@@ -1231,7 +1231,7 @@ With an 80 MHz source at 5 kHz, 80 000 000 / 5 000 = 16 000 counts are available
 
     `## Worked example`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'LEDC: fixed duty, then a hardware fade', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'LEDC: fixed duty, then a hardware fade', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/ledc.h"
 #include "esp_err.h"
@@ -1277,10 +1277,10 @@ void app_main(void)
     }
 }`, explain: [
       { lines: '7', md: '`LEDC_LOW_SPEED_MODE` exists on every chip. The classic ESP32 also has `LEDC_HIGH_SPEED_MODE`; newer chips do not, so low-speed mode is the portable choice.' },
-      { lines: '15-22', md: 'Configures the counter: 13 bits wide, wrapping 5000 times a second. If the pair cannot be met from any clock source, this call fails with a message telling you to reduce one of them.' },
+      { lines: '15-22', md: 'Configures the counter: 13 bits wide, wrapping 5000 times a second. On the ESP32 `LEDC_AUTO_CLK` picks among the 80 MHz APB clock, the 8 MHz RC oscillator and the 1 MHz REF_TICK; the driver then computes a divider with 8 fractional bits and writes it, with the counter width, to this timer\'s configuration register. If the pair cannot be met from any clock source, the call fails with a message telling you to reduce one of them. The ESP32 has 4 timers and 8 channels in each speed mode, and timers up to 20 bits wide.' },
       { lines: '24-32', md: 'Binds a channel to a GPIO and a timer. The GPIO matrix routes the channel output to the pad, so most output-capable pins work. `hpoint` is the count at which the output goes high, normally 0.' },
       { lines: '34-35', md: 'Two steps on purpose: `ledc_set_duty` stores the new value, `ledc_update_duty` latches it into the hardware at a period boundary so no pulse is cut short.' },
-      { lines: '38', md: 'Installs the fade interrupt service. Needed once before any fade function.' },
+      { lines: '38', md: 'Installs the driver\'s handler on the LEDC interrupt, which the hardware raises when a fade finishes. Needed once before any fade function. Until this line the driver used no interrupt at all.' },
       { lines: '40-41', md: 'Asks the hardware to step the duty from its current value to the target over 1500 ms, and blocks this task until done. The stepping is done by the peripheral, not by a software loop.' },
     ] },
 
@@ -1307,6 +1307,34 @@ void app_main(void)
       solution: `3200 counts per period. 2^11 = 2048 fits; 2^12 = 4096 does not. So **11 bits**, a duty range of 0–2047. The driver uses a fractional divider to hit 25 kHz with 2048 counts.`,
       answer: { type: 'number', value: 11, tol: 0, unit: 'bits' } },
 
+    { t: 'exercise', prompt: `**Find the bug, then use the fix.** The worked example was changed to drive a fan at 25 kHz and half speed. It builds and every call returns \`ESP_OK\`, yet the fan runs flat out. Find the wrong line. Then, with the bug fixed, what duty value gives 30 %? (Give the number of counts.)`,
+      code: R`#define PWM_BITS   LEDC_TIMER_10_BIT
+#define PWM_MAX    ((1 << 13) - 1)
+
+/* timer_cfg as in the worked example, except:
+       .duty_resolution = PWM_BITS,
+       .freq_hz         = 25000,                                    */
+
+ESP_ERROR_CHECK(ledc_set_duty(PWM_MODE, PWM_CHAN, PWM_MAX / 2));   /* meant: 50 % */
+ESP_ERROR_CHECK(ledc_update_duty(PWM_MODE, PWM_CHAN));`,
+      hints: [
+        `How many counts does one period of this timer have now? What number is actually passed as the duty?`,
+        `The timer is 10 bits: it counts 0 to 1023. \`PWM_MAX / 2\` is still computed from 13 bits.`,
+        `The output is high while count < duty. If duty is 4095 and the count never exceeds 1023, when does the output go low? For the second part: 30 % of 1024 counts.`,
+      ],
+      solution: `**\`PWM_MAX\` was left at 13 bits** when the resolution was lowered to 10. \`PWM_MAX / 2\` is 4095, but the counter wraps at 1024, so the count is always below the duty and the output never goes low: 100 %. In v6.1 \`ledc_set_duty\` does not range-check the duty, so nothing reports it.
+
+Derive both constants from one number so they cannot drift apart:
+
+\`\`\`c
+#define PWM_BITS_N 10
+#define PWM_BITS   ((ledc_timer_bit_t)PWM_BITS_N)   /* LEDC_TIMER_10_BIT has the value 10 */
+#define PWM_MAX    ((1 << PWM_BITS_N) - 1)
+\`\`\`
+
+With the fix, 30 % is 0.30 × 1024 ≈ **307** counts.`,
+      answer: { type: 'number', value: 307, tol: 1, unit: 'counts' } },
+
     `## Harder: driving a servo
 
 A servo expects a 50 Hz signal whose high time runs from about 1.0 ms to 2.0 ms across its travel (check your servo's datasheet for exact limits). With a 14-bit LEDC timer at 50 Hz, compute the duty counts for 1.0 ms, 1.5 ms and 2.0 ms, and how many distinct positions that gives. (The period is 20 ms and 16 384 counts, so about 819, 1229 and 1638: roughly 820 steps of travel.) Then say what would happen to the step count if you had lazily chosen 8 bits, and why that makes the servo move in visible jerks.`,
@@ -1324,7 +1352,7 @@ A servo expects a 50 Hz signal whose high time runs from about 1.0 ms to 2.0 ms 
     { q: 'With a 13-bit timer, which duty value gives approximately 10 % high time?', kind: 'code', choices: [
       { t: '819', ok: true, why: '2^13 = 8192 counts per period, and 10 % of that is about 819.' },
       { t: '10', why: 'Duty is in timer counts, not percent. Ten counts out of 8192 is about 0.1 %.' },
-      { t: '1638', why: 'That would be about 10 % of an 8-bit range. The range here is 0–8191.' },
+      { t: '1638', why: 'That is 10 % of a 14-bit period of 16 384 counts. Work out how many counts this timer has per period.' },
     ] },
     { q: '`ledc_timer_config` fails for 100 kHz at 14 bits from an 80 MHz clock. Which change makes it succeed while keeping the frequency?', kind: 'concept', choices: [
       { t: 'Reduce the resolution to 9 bits', ok: true, why: '80 MHz / 100 kHz = 800 counts per period. 2^9 = 512 fits; 2^10 = 1024 does not.' },
@@ -1379,7 +1407,7 @@ A timer is a counter driven by a clock through a prescaler. If the count advance
 
     `## Worked example: a 1 kHz gptimer that wakes a task`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'gptimer alarm deferred to a task with a task notification', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'gptimer alarm deferred to a task with a task notification', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gptimer.h"
 #include "esp_attr.h"
@@ -1438,13 +1466,13 @@ void app_main(void)
       { lines: '10-17', md: 'The alarm callback runs in interrupt context. It gives a task notification, the lightest way to wake one specific task, and returns `true` if a higher-priority task was woken so the driver requests a context switch.' },
       { lines: '23', md: 'The task blocks until notified. `pdTRUE` clears the count on exit, so if several alarms arrived while the task was busy it wakes once: you can detect overruns by using `pdFALSE` and checking the returned count.' },
       { lines: '33', md: 'The task is created first and its handle stored, because the callback uses it.' },
-      { lines: '36-40', md: '`resolution_hz` asks for a 1 MHz count: one tick per microsecond. The driver computes the prescaler from the source clock.' },
-      { lines: '43-46', md: 'Callbacks must be registered while the timer is still in its initial state, before `gptimer_enable`.' },
+      { lines: '36-40', md: '`resolution_hz` asks for a 1 MHz count: one tick per microsecond. `gptimer_new_timer` claims a free hardware timer (the ESP32 has four: two timer groups of two, each a 64-bit counter behind a 16-bit prescaler) and writes the prescaler, here 80 for the 80 MHz APB clock.' },
+      { lines: '43-46', md: 'Stores the callback and installs the driver\'s interrupt handler on this timer\'s interrupt source. Callbacks must be registered while the timer is still in its initial state, before `gptimer_enable`.' },
       { lines: '48-52', md: 'Alarm at count 1000, then reload the counter to 0 automatically: an exact 1 ms period with no accumulated error.' },
       { lines: '54-55', md: '`enable` arms the interrupt and takes any power-management lock; `start` lets the counter run.' },
     ] },
 
-    { t: 'callout', kind: 'note', md: `**Old tutorials.** Before ESP-IDF v5 the API was \`timer_init(TIMER_GROUP_0, TIMER_0, &config)\` with \`timer_isr_callback_add\`, from \`driver/timer.h\`. That legacy driver has been replaced by \`gptimer\`; code using it will not build on current releases. The concept (group, prescaler, alarm, auto-reload) is the same.` },
+    { t: 'callout', kind: 'note', md: `**Old tutorials.** Before ESP-IDF v5 the API was \`timer_init(TIMER_GROUP_0, TIMER_0, &config)\` with \`timer_isr_callback_add\`, from \`driver/timer.h\`. That legacy driver was deprecated in v5.0 and removed in v6.0; code using it does not build on v6.1. The concept (group, prescaler, alarm, auto-reload) is the same.` },
 
     { t: 'callout', kind: 'mistake', md: `**Doing the work in the alarm callback.** Reading a sensor over I2C, logging, or filling a large buffer inside \`on_alarm\` breaks the ISR rules and holds off other interrupts. At 1 kHz a callback that takes 300 µs also consumes 30 % of a core in interrupt context. Wake a task and return.` },
 
@@ -1549,7 +1577,7 @@ The classic ESP32 has three UART controllers (UART0–2); smaller chips have few
 
 Each controller has small hardware FIFOs for transmit and receive. The driver adds an interrupt handler that moves bytes between the hardware FIFO and larger **ring buffers** in RAM, so your task can read and write at its own pace.`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'UART1 on chosen pins: echo with a line counter', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'UART1 on chosen pins: echo with a line counter', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/uart.h"
 #include "esp_log.h"
@@ -1588,8 +1616,8 @@ void app_main(void)
     }
 }`, explain: [
       { lines: '15-22', md: 'The frame format: 9600 baud, 8 data bits, no parity, 1 stop bit ("8N1"). It must match the other device exactly.' },
-      { lines: '23', md: 'Allocates the driver and its interrupt handler. Arguments: port, RX ring buffer size (must be larger than the hardware FIFO), TX ring buffer size (0 means writes block until the bytes are in the FIFO), event queue length and handle (none here), interrupt flags.' },
-      { lines: '24', md: 'Writes the baud rate divider and frame settings to the UART registers.' },
+      { lines: '23', md: 'Allocates the ring buffers and installs the driver\'s handler on this UART\'s interrupt, which the hardware raises when the 128-byte receive FIFO passes a threshold or the line goes quiet. Arguments: port, RX ring buffer size (must be larger than the hardware FIFO), TX ring buffer size (0 means writes block until the bytes are in the FIFO), event queue length and handle (none here), interrupt flags.' },
+      { lines: '24', md: 'Writes the baud rate divider (source clock ÷ baud, with a fractional part) and the frame settings to this UART\'s clock-divider and configuration registers.' },
       { lines: '25-26', md: 'Routes UART1 TX and RX to the chosen pads through the GPIO matrix. RTS and CTS are not used.' },
       { lines: '30', md: 'Returns as soon as the buffer is full **or** after 100 ms, with however many bytes arrived (possibly 0). It does not wait for a line or a message; UART is a byte stream.' },
       { lines: '32', md: 'Copies bytes to the transmitter. With no TX buffer this returns when the data has been pushed to the hardware FIFO.' },
@@ -1651,6 +1679,34 @@ while (1) {
 
 The bound check \`len < sizeof(line) - 1\` is what stands between a noisy or malicious serial peer and a stack buffer overflow. Input from a wire is untrusted input; the security section returns to exactly this pattern.` },
 
+    { t: 'exercise', prompt: `**Find the bug.** This loop is meant to log whatever text arrives. It works in every bench test with short messages and corrupts memory in the field. There are two inputs for which the marked line writes outside \`buf\`. Find both, then give the largest length argument (a number) that makes the terminator write safe for every non-negative return value.`,
+      code: R`char buf[64];
+while (1) {
+    int n = uart_read_bytes(PORT, buf, sizeof(buf), pdMS_TO_TICKS(100));
+    buf[n] = '\0';                      /* <-- */
+    ESP_LOGI(TAG, "got: %s", buf);
+}`,
+      hints: [
+        `List every value \`uart_read_bytes\` can return, not only the ones you saw on the bench.`,
+        `It returns the number of bytes read, which can be as large as the length you asked for, or −1 on error.`,
+        `If 64 bytes arrive, where does \`buf[64]\` point? If the call fails, where does \`buf[-1]\` point? Leave one byte for the terminator, and test \`n\` before using it as an index.`,
+      ],
+      solution: `- When a burst fills the buffer, \`n\` is 64 and \`buf[64]\` is one byte **past the end** of the array: a stack overwrite triggered by whoever is on the other end of the wire.
+- When the call fails, \`n\` is −1 and \`buf[-1]\` is one byte **before** the array.
+
+Read at most **63** bytes and check the result:
+
+\`\`\`c
+int n = uart_read_bytes(PORT, buf, sizeof(buf) - 1, pdMS_TO_TICKS(100));
+if (n > 0) {
+    buf[n] = '\\0';
+    ESP_LOGI(TAG, "got: %s", buf);
+}
+\`\`\`
+
+Short bench messages never reach 64 bytes in one read, which is why testing did not find it. The data may also contain a zero byte or half a message; that is the parser's job, as in the previous exercise.`,
+      answer: { type: 'number', value: 63, tol: 0, unit: 'bytes' } },
+
     `## Harder: two boards, one link
 
 Connect UART1 of two ESP32 boards (TX to RX both ways, grounds joined). Design a small framed protocol so that one board can send a command with a payload of up to 32 bytes and know whether the other received it intact: choose a start byte, a length field, a check value and an acknowledgement, and decide what the sender does after no reply for 200 ms. Then list what goes wrong if the receiving board's task is busy for 300 ms while a burst arrives at 115200 baud (count the bytes against the ring buffer size) and which UART event would tell you.`,
@@ -1682,7 +1738,7 @@ Connect UART1 of two ESP32 boards (TX to RX both ways, grounds joined). Design a
       { t: 'The device\'s message was exactly 37 bytes long', why: 'The driver has no notion of messages. A count only says how many bytes had arrived by then.' },
     ] },
     { q: 'A 5 V Arduino\'s TX is to be connected to an ESP32 RX pin. What is required?', kind: 'circuit', choices: [
-      { t: 'A level shifter or divider on that line, plus a common ground', ok: true, why: 'ESP32 inputs are not 5 V tolerant. The idle-high UART line would sit at 5 V on the pin.' },
+      { t: 'A level shifter or divider on that line, plus a common ground', ok: true, why: 'The datasheet limits an input to VDD + 0.3 V. The idle-high UART line would sit at 5 V on the pin.' },
       { t: 'Nothing, because a UART line idles low and so rests at 0 V most of the time', why: 'UART idles high, so the pin would see 5 V almost all the time.' },
       { t: 'Only matching baud rates and frame format on both sides', why: 'Matching baud is necessary for decoding, but it does nothing about the voltage on the pin.' },
     ] },
@@ -1720,7 +1776,7 @@ The driver models the bus and each device on it as separate handles:
 
 On the ESP32 the I2C signals go through the GPIO matrix, so any two free bidirectional pins work. GPIO21/22 are conventional on ESP32 dev boards.`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Probe, then read a 16-bit register (TMP102-style sensor at 0x48)', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'Probe, then read a 16-bit register (TMP102-style sensor at 0x48)', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
@@ -1765,24 +1821,24 @@ void app_main(void)
         err = i2c_master_transmit_receive(dev, &reg, 1, rx, 2, 100);
         if (err == ESP_OK) {
             int16_t raw = (int16_t)((rx[0] << 8) | rx[1]) >> 4;
-            ESP_LOGI(TAG, "raw %d = %d.%02d C", raw,
-                     (raw * 625) / 10000, ((raw * 625) % 10000) / 100);
+            ESP_LOGI(TAG, "raw %d = %d milli-degC", raw, (raw * 625) / 10);
         } else {
             ESP_LOGW(TAG, "read failed: %s", esp_err_to_name(err));
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }`, explain: [
-      { lines: '15-22', md: 'Claims controller 0 and two pins. `glitch_ignore_cnt` is the width of the input glitch filter (7 is the documented typical value). `enable_internal_pullup` turns on the weak internal pull-ups, which is only a stopgap.' },
-      { lines: '26-30', md: '`i2c_master_probe` sends just the address and reports whether anything ACKed. Doing this first separates "nothing is there" from "my register code is wrong". The last argument is a timeout in milliseconds.' },
+      { lines: '15-24', md: '`i2c_new_master_bus` claims controller 0 (the ESP32 has two), configures both pads as open-drain with their inputs enabled, routes SDA and SCL to them through the GPIO matrix and installs the driver\'s handler on the controller\'s interrupt. A transfer is then run by the hardware and that interrupt while the calling task blocks.' },
+      { lines: '15-22', md: 'The bus settings. `glitch_ignore_cnt` is the width of the input glitch filter (7 is the documented typical value). `enable_internal_pullup` turns on the weak internal pull-ups, which is only a stopgap.' },
+      { lines: '26-30', md: '`i2c_master_probe` sends just the address and reports whether anything ACKed. Doing this first separates "nothing is there" from "my register code is wrong". The last argument is a timeout in milliseconds. A NACK gives `ESP_ERR_NOT_FOUND`; `ESP_ERR_TIMEOUT` from a probe usually means the lines cannot go high, so check the pull-ups.' },
       { lines: '32-36', md: 'The device: a 7-bit address (**not** shifted left; the driver adds the R/W bit) and its SCL frequency. 100 kHz is standard mode.' },
-      { lines: '43', md: 'One call performs the whole register read: start, address+W, the register byte, repeated start, address+R, two data bytes with the controller NACKing the last, stop.' },
+      { lines: '43', md: 'One call performs the whole register read: start, address+W, the register byte, repeated start, address+R, two data bytes with the controller NACKing the last, stop. If the device NACKs its address or the register byte, the call returns `ESP_ERR_INVALID_RESPONSE`.' },
       { lines: '45', md: 'The sensor sends the high byte first. Its 12-bit reading is left-justified in 16 bits, so combine and shift right by 4. Casting to `int16_t` before shifting keeps the sign for temperatures below zero.' },
-      { lines: '46-47', md: 'One count is 0.0625 °C. Integer arithmetic (625/10000) avoids floating point; the sign handling of the fraction is simplified for clarity.' },
-      { lines: '49', md: 'A failed read is reported and retried next second. One NACK should not reboot a product.' },
+      { lines: '46', md: 'One count is 0.0625 °C, which is 62.5 thousandths of a degree, so `raw * 625 / 10` is the temperature in milli-degrees with no floating point and the right sign: 25 °C is raw 400 and prints 25000.' },
+      { lines: '48', md: 'A failed read is reported and retried next second. One NACK should not reboot a product.' },
     ] },
 
-    { t: 'callout', kind: 'note', md: `**Old tutorials.** The previous I2C API (\`driver/i2c.h\`: \`i2c_param_config\`, \`i2c_driver_install\`, \`i2c_cmd_link_create\`, \`i2c_master_write_byte\` ...) built each transaction from commands by hand. It was replaced in ESP-IDF v5.2 by \`driver/i2c_master.h\` shown here, and the legacy driver is deprecated; the two cannot be used together in one program. Old code also often writes the address as \`(0x48 << 1) | READ_BIT\`. With the new driver you give the plain 7-bit address.` },
+    { t: 'callout', kind: 'note', md: `**Old tutorials.** The previous I2C API (\`driver/i2c.h\`: \`i2c_param_config\`, \`i2c_driver_install\`, \`i2c_cmd_link_create\`, \`i2c_master_write_byte\` ...) built each transaction from commands by hand. \`driver/i2c_master.h\`, shown here, replaced it in ESP-IDF v5.2. The legacy driver still ships in v6.1 but was declared end-of-life in v6.0 and is scheduled for removal in v7.0; the two cannot be used together in one program. Old code also often writes the address as \`(0x48 << 1) | READ_BIT\`. With the new driver you give the plain 7-bit address.` },
 
     `## Pull-ups
 
@@ -1818,6 +1874,23 @@ ESP_LOGI(TAG, "%d device(s) found", found);
 \`\`\`
 
 Interpreting the result is the useful part. **Nothing found:** wiring, power, pull-ups or pins. **Found at an unexpected address:** an address-select pin is strapped differently from what you assumed, or you had the 8-bit form. **Every address "found":** SDA is stuck low (short, or a device holding it), so every address appears acknowledged. **Each probe times out slowly:** SCL is stuck low or there are no pull-ups.` },
+
+    { t: 'exercise', prompt: `**Read the code, then find the bug.** Someone "simplified" the conversion line of the worked example. At 25 °C the sensor returns the bytes \`0x19\` and \`0x00\` (the correct raw value is 400). What value does this line give \`raw\`? Answer in decimal.`,
+      code: R`uint8_t rx[2];                               /* rx[0] = 0x19, rx[1] = 0x00 */
+int16_t raw = rx[0] << 8 | rx[1] >> 4;`,
+      hints: [
+        `There are no parentheses. In which order does C apply \`<<\`, \`>>\` and \`|\`?`,
+        `Both shifts bind more tightly than \`|\`. So the right shift applies to \`rx[1]\` alone.`,
+        `Evaluate \`(0x19 << 8) | (0x00 >> 4)\`, then convert to decimal.`,
+      ],
+      solution: `Shifts have higher precedence than \`|\`, so the line computes \`(rx[0] << 8) | (rx[1] >> 4)\` = \`0x1900\` = **6400**. Multiplied by 0.0625 that is 400 °C. The intended expression combines first and shifts the 16-bit result:
+
+\`\`\`c
+int16_t raw = (int16_t)((rx[0] << 8) | rx[1]) >> 4;      /* 0x1900 >> 4 = 0x190 = 400 */
+\`\`\`
+
+The cast matters too: \`rx[0] << 8\` is computed as an \`int\`, so without the cast to \`int16_t\` a reading below zero (top bit of \`rx[0]\` set) would come out as a large positive number. A value that is exactly 16 times too big, or off by 4096 counts below zero, points at this line and not at the bus.`,
+      answer: { type: 'number', value: 6400, tol: 0 } },
 
     `## Harder: two tasks, one bus
 
@@ -1896,7 +1969,7 @@ ESP-IDF's SPI master driver separates what is shared from what is per device:
 
 The general-purpose controllers are \`SPI2_HOST\` and, where present, \`SPI3_HOST\`. (\`SPI0\`/\`SPI1\` serve the flash chip.) Each has a set of **IO MUX** pins with a direct, fast connection; any other pins are routed through the GPIO matrix, which limits the maximum clock. The SPI master documentation tabulates the native pins and speed limits per chip. For a sensor at 1 MHz it makes no difference.`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Read one register from an SPI sensor (bit 7 of the first byte = read)', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'Read one register from an SPI sensor (bit 7 of the first byte = read)', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/spi_master.h"
 #include "esp_log.h"
@@ -1952,8 +2025,8 @@ void app_main(void)
       { lines: '20', md: 'Asserts CS, clocks 16 bits, releases CS, and waits by polling. `spi_device_transmit` does the same using an interrupt and blocks the task instead: better for long transfers, slower for short ones.' },
       { lines: '22', md: 'Full duplex: byte 0 of the reply was clocked in while the command went out and is meaningless. The answer is byte 1.' },
       { lines: '29-35', md: 'The bus. Unused signals are set to −1. Leaving the quad pins at their zero default would claim GPIO0.' },
-      { lines: '36', md: 'Initialises controller SPI2 and lets the driver pick a DMA channel.' },
-      { lines: '38-43', md: 'The device: 1 MHz, mode 0, CS on `PIN_CS` driven automatically by the driver around each transaction.' },
+      { lines: '36', md: 'Initialises controller SPI2, lets the driver pick a DMA channel and connects the three signals to the pads. On the ESP32 these particular pins are not SPI2\'s IO MUX pins (those are GPIO14, 13 and 12), so the driver routes them through the GPIO matrix: fine at 1 MHz, a limit at tens of megahertz.' },
+      { lines: '38-43', md: 'The device: 1 MHz, mode 0, CS on `PIN_CS` driven automatically by the driver around each transaction. `spi_bus_add_device` computes the clock divider for 1 MHz and stores it with the mode; the controller\'s registers are rewritten from that record whenever a transaction addresses a different device. GPIO5 is a strapping pin that must be high at reset; a chip select idles high, so it is compatible, but do not hang anything on it that pulls low.' },
     ] },
 
     `## DMA and buffers
@@ -1962,7 +2035,7 @@ Without DMA the controller transfers data through a small internal buffer (64 by
 
 DMA imposes a condition: the buffers must be in memory the DMA hardware can reach, and it is best that they are word-aligned. A buffer in external PSRAM or a \`const\` array in flash may not qualify; the driver then allocates a temporary copy, or fails. Allocate large SPI buffers with \`heap_caps_malloc(size, MALLOC_CAP_DMA)\`.`,
 
-    { t: 'callout', kind: 'decision', md: `**Let the driver own CS unless the device forbids it.** Giving \`spics_io_num\` makes CS frame every transaction exactly, and the driver's bus lock keeps two devices from being selected at once. Drive CS yourself as a GPIO (set \`spics_io_num = -1\`) only when a device needs CS held low across several transactions or needs unusual timing; the flag \`SPI_TRANS_CS_KEEP_ACTIVE\` covers some of those cases while keeping the driver in charge.` },
+    { t: 'callout', kind: 'decision', md: `**Let the driver own CS unless the device forbids it.** Giving \`spics_io_num\` makes CS frame every transaction exactly, and the driver's bus lock keeps two devices from being selected at once. Drive CS yourself as a GPIO (set \`spics_io_num = -1\`) only when a device needs CS held low across several transactions or needs unusual timing; the flag \`SPI_TRANS_CS_KEEP_ACTIVE\` covers some of those cases while keeping the driver in charge (the bus must first be claimed with \`spi_device_acquire_bus\`, or the transaction is rejected).` },
 
     { t: 'callout', kind: 'mistake', md: `**Setting \`length\` in bytes.** \`.length = 2\` clocks two bits, not two bytes. The device sees a truncated command, and the reply is zeros or nonsense. Write \`8 * n\`.` },
 
@@ -1995,6 +2068,32 @@ static esp_err_t write_reg(spi_device_handle_t dev, uint8_t reg, uint8_t value)
 \`\`\`
 
 During a write the device drives nothing meaningful on MISO, so the received bytes are ignored by omitting the RX flag. There is no acknowledgement in SPI: a successful return means sixteen clocks were generated, not that the device accepted the value. The only verification is to read the register back.` },
+
+    { t: 'exercise', prompt: `**Find the bug.** This function should read three consecutive registers in one transaction: one command byte out, then three bytes back. It returns \`ESP_OK\` and \`out\` is always zeros or noise. Which field is wrong, and what value should it have?`,
+      code: R`static esp_err_t read3(spi_device_handle_t dev, uint8_t reg, uint8_t out[3])
+{
+    spi_transaction_t t = {
+        .flags   = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA,
+        .length  = 4,
+        .tx_data = { (uint8_t)(reg | 0x80), 0x00, 0x00, 0x00 },
+    };
+    esp_err_t err = spi_device_polling_transmit(dev, &t);
+    if (err == ESP_OK) {
+        out[0] = t.rx_data[1];
+        out[1] = t.rx_data[2];
+        out[2] = t.rx_data[3];
+    }
+    return err;
+}`,
+      hints: [
+        `How many clock pulses does the device need to see for one command byte and three reply bytes?`,
+        `Check the unit of every number in the structure against the driver documentation.`,
+        `\`length\` is in bits. Four bytes are 4 × 8 clocks.`,
+      ],
+      solution: `**\`.length\` must be 32.** As written the controller generates four clock pulses: the device receives half a command byte, CS rises, and it discards the fragment. The controller has no way to know, because SPI has no acknowledge, so the call succeeds and \`rx_data\` holds whatever MISO did during four clocks.
+
+On a logic analyser this is unmistakable: count the SCLK pulses between CS falling and rising. Counting clocks is the first check for any SPI transfer that "returns OK but reads rubbish".`,
+      answer: { type: 'number', value: 32, tol: 0, unit: 'bits' } },
 
     `## Harder: display and touch controller on one bus
 
@@ -2067,7 +2166,7 @@ ESP-IDF uses its own FreeRTOS port. If you have used FreeRTOS elsewhere, note:
 
     `## Worked example: producer, consumer and a shared counter`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Two tasks, a queue and a mutex', code: R`#include <inttypes.h>
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'Two tasks, a queue and a mutex', code: R`#include <inttypes.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -2135,7 +2234,7 @@ void app_main(void)
       { lines: '37', md: 'The consumer is blocked here, using no CPU, until an item arrives. This is what a healthy task looks like.' },
       { lines: '38-40', md: '`s_total += ...` is read, add, write: three steps. A mutex makes them indivisible with respect to other tasks that take the same mutex. The section held under the lock is as short as possible.' },
       { lines: '47-49', md: 'Create every queue and lock **before** the tasks that use them. `configASSERT` stops immediately if the heap could not supply them.' },
-      { lines: '51-52', md: 'Arguments: function, name (shown in crash dumps), stack size **in bytes**, argument, priority, optional handle. The consumer has the higher priority so it drains the queue as soon as data arrives.' },
+      { lines: '51-52', md: '`xTaskCreate` allocates a task control block and the stack from the heap, builds an initial register frame on that stack so the task can be "resumed" into its function, and puts it on the ready list. No hardware is touched; a task exists only as RAM and scheduler bookkeeping. Arguments: function, name (shown in crash dumps), stack size **in bytes**, argument, priority, optional handle. The consumer has the higher priority so it drains the queue as soon as data arrives.' },
       { lines: '56-58', md: 'Copy the shared value out under the lock, then log outside it. Never hold a mutex across something slow such as logging.' },
       { lines: '60', md: 'The high-water mark is the smallest amount of stack that has ever been free for this task, in bytes on ESP-IDF. Near zero means the stack is too small.' },
     ] },
@@ -2157,7 +2256,7 @@ void app_main(void)
 
     { t: 'callout', kind: 'mistake', md: `**Waiting with a busy loop.** \`while (!flag) { }\` or a counted delay loop keeps the task permanently ready. Lower-priority tasks on that core, including idle, never run; the task watchdog fires after a few seconds. Block instead: \`vTaskDelay\`, or better, wait on the queue or semaphore that the event will signal.` },
 
-    { t: 'callout', kind: 'decision', md: `**Leave tasks unpinned unless there is a reason.** With no affinity the scheduler uses whichever core is free. Pin a task when it must not share a core with something (keeping a timing-sensitive task off the core that runs the Wi-Fi stack, typically core 0), or when it uses a resource tied to one core, such as an interrupt allocated there. On single-core chips (C3, C6) \`xTaskCreatePinnedToCore\` with core 1 fails, so portable code passes \`tskNO_AFFINITY\` or uses \`xTaskCreate\`.` },
+    { t: 'callout', kind: 'decision', md: `**Leave tasks unpinned unless there is a reason.** With no affinity the scheduler uses whichever core is free. Pin a task when it must not share a core with something (keeping a timing-sensitive task off the core that runs the Wi-Fi stack, typically core 0), or when it uses a resource tied to one core, such as an interrupt allocated there. On single-core chips (C3, C6) there is no core 1 and \`xTaskCreatePinnedToCore\` with that core number is an error, so portable code passes \`tskNO_AFFINITY\` or uses \`xTaskCreate\`.` },
 
     { t: 'predict', q: 'This task is created with `xTaskCreate(report_task, "report", 1024, NULL, 5, NULL)`. What happens?', code: R`static void report_task(void *arg)
 {
@@ -2270,6 +2369,8 @@ A **watchdog** is a timer that resets the system unless the software keeps provi
 | **Task watchdog (TWDT)** | Subscribed tasks that have not reset it within the timeout (5 s by default). By default it watches each core's **idle task** | Prints a warning naming the tasks; resets only if configured to panic |
 | **RTC watchdog** | The bootloader and early start-up taking too long | Reset |
 
+These are three separate hardware timers. On the ESP32 the task watchdog uses the watchdog of Timer Group 0, the interrupt watchdog the one of Timer Group 1, and the RTC watchdog a timer in the always-on RTC domain. The interrupt watchdog is fed from the tick interrupt on each core, so it expires when tick interrupts stop being serviced. The task watchdog's hardware timer is restarted only when **every** subscribed task has called \`esp_task_wdt_reset()\` since the last restart, so one silent subscriber is enough to let it expire.
+
 Watching the idle task is a neat trick: idle runs only when nothing else wants the CPU, so if idle has not run for five seconds, some task has been hogging a core without blocking.
 
 A triggered TWDT prints something like this (illustrative):`,
@@ -2287,7 +2388,7 @@ After a watchdog reset, the ROM's first line and \`esp_reset_reason()\` report w
 
     `## Subscribing your own task`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'A task that must complete a cycle every few seconds', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'A task that must complete a cycle every few seconds', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_task_wdt.h"
 #include "esp_system.h"
@@ -2320,7 +2421,8 @@ void app_main(void)
     ESP_LOGI(TAG, "reset reason: %d", (int)esp_reset_reason());
     xTaskCreate(control_task, "control", 4096, NULL, 5, NULL);
 }`, explain: [
-      { lines: '17', md: 'Subscribes the calling task to the task watchdog. From now on this task must call `esp_task_wdt_reset()` within the timeout.' },
+      { lines: '17', md: 'Subscribes the calling task to the task watchdog: the driver adds it to its list of tasks that must check in. From now on this task must call `esp_task_wdt_reset()` within the timeout.' },
+      { lines: '21', md: 'Marks this task as having checked in. If all other subscribers (here: the idle tasks) have too, the driver restarts the hardware watchdog timer.' },
       { lines: '19-21', md: 'The feed sits **after** the work that proves the system is functioning: a successful sensor read and a completed control cycle.' },
       { lines: '22-24', md: 'If the sensor fails repeatedly the task is still running, yet it stops feeding. After the timeout the watchdog reports it (and resets, if configured to panic). That is the intended behaviour: the device is alive but not doing its job.' },
       { lines: '31', md: 'Records why the chip last reset. Compare the value with the `esp_reset_reason_t` enumeration. A field device should store or transmit this.' },
@@ -2442,7 +2544,7 @@ NVS is ESP-IDF's key-value store for small items: settings, counters, calibratio
 - Changes are guaranteed to be on flash only after **\`nvs_commit\`**.
 - NVS is for small values. For files or large data, use a file-system partition (SPIFFS, LittleFS or FAT with wear levelling).`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'A boot counter in NVS', code: R`#include <inttypes.h>
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'A boot counter in NVS', code: R`#include <inttypes.h>
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "esp_log.h"
@@ -2485,7 +2587,7 @@ void app_main(void)
 
     `## Wear and write frequency
 
-Each \`nvs_set\` of a small value consumes one 32-byte entry; a page holds on the order of a hundred entries before it must be erased. So NVS divides your write rate by a large factor before it reaches erase cycles, and spreads the erases over all its pages. Still, the right design is to **write when the value changes, not periodically**, and for values that change constantly (an energy counter) to save on a schedule of minutes, or on a power-fail warning, not on every sample.
+Each \`nvs_set\` of a small value consumes one 32-byte entry; a 4 kB page holds 126 entries before it must be erased. So NVS divides your write rate by a large factor before it reaches erase cycles, and spreads the erases over all its pages. Still, the right design is to **write when the value changes, not periodically**, and for values that change constantly (an energy counter) to save on a schedule of minutes, or on a power-fail warning, not on every sample.
 
 To examine or reset stored data during development: \`idf.py erase-flash\` wipes everything including NVS; \`esptool read-flash\` can dump the partition.`,
 
@@ -2501,14 +2603,34 @@ To examine or reset stored data during development: \`idf.py erase-flash\` wipes
       ],
       reveal: `NVS keys and namespace names may be at most 15 characters. The call fails with a key-too-long error, and because the example wraps it in \`ESP_ERROR_CHECK\`, the device aborts and reboots, fails again, and so on: a boot loop caused by a string length. It shows both the limit and the hazard of aborting on storage errors.` },
 
-    { t: 'exercise', prompt: `An NVS partition is written by a design that updates one small value every 10 seconds, all day. Suppose (illustratively) that one page holds 120 such entries, the partition has 5 usable pages, and each page tolerates 100 000 erases. Roughly how many **years** until the erase budget is exhausted? Give a whole number.`,
+    { t: 'exercise', prompt: `An NVS partition is written by a design that updates one small value every 10 seconds, all day. One page holds 126 such entries. Suppose the default 24 kB partition gives 5 usable pages (the sixth is kept in reserve) and, illustratively, that each page tolerates 100 000 erases. Roughly how many **years** until the erase budget is exhausted? Give a whole number.`,
       hints: [
         `How many writes can be made per page erase, and how many page erases does the whole partition allow?`,
-        `Total writes ≈ 120 entries × 5 pages × 100 000 erases = 60 000 000.`,
+        `Total writes ≈ 126 entries × 5 pages × 100 000 erases = 63 000 000.`,
         `Writes per year at one every 10 s: 6 per minute × 60 × 24 × 365 = 3 153 600.`,
       ],
-      solution: `60 000 000 / 3 153 600 ≈ **19 years**. The same write rate with a naive erase-per-write scheme on one sector would last 100 000 × 10 s ≈ 11.6 days. The log structure and wear levelling are worth a factor of several hundred here. The numbers are illustrative: real page capacity depends on entry types, and endurance on the flash part, so check both before promising a lifetime. A larger NVS partition extends life proportionally.`,
-      answer: { type: 'number', value: 19, tol: 1, unit: 'years' } },
+      solution: `63 000 000 / 3 153 600 ≈ **20 years**. The same write rate with a naive erase-per-write scheme on one sector would last 100 000 × 10 s ≈ 11.6 days. The log structure and wear levelling are worth a factor of several hundred here. The endurance figure is illustrative and the rest is simplified: strings and blobs take several entries each, and endurance depends on the flash part, so check both before promising a lifetime. A larger NVS partition extends life proportionally.`,
+      answer: { type: 'number', value: 20, tol: 1, unit: 'years' } },
+
+    { t: 'exercise', prompt: `**Find the bugs.** This is a "tidied" version of the boot counter. On a freshly erased chip it aborts at the first marked line. After that line is repaired by hand it aborts at the second. Explain each abort, then name the error the second call returns.`,
+      code: R`nvs_handle_t h;
+ESP_ERROR_CHECK(nvs_open("app", NVS_READONLY, &h));     /* 1 */
+
+uint32_t boots = 0;
+nvs_get_u32(h, "boots", &boots);
+boots++;
+ESP_ERROR_CHECK(nvs_set_u32(h, "boots", boots));        /* 2 */
+nvs_close(h);`,
+      hints: [
+        `What does a freshly erased NVS partition contain? What did the worked example say a read-only open does when the namespace is not there?`,
+        `Look at the second argument of \`nvs_open\` and then at what the code does with the handle.`,
+        `A handle opened read-only cannot be written. Once both are fixed there is still a third defect, which does not abort: compare the end of this fragment with the worked example.`,
+      ],
+      solution: `1. \`NVS_READONLY\` cannot create a namespace. On an erased chip \`app\` does not exist, \`nvs_open\` returns \`ESP_ERR_NVS_NOT_FOUND\`, and \`ESP_ERROR_CHECK\` aborts: a boot loop on every new device, and on none of the developer's boards, which already had the namespace.
+2. With the namespace present, \`nvs_set_u32\` on a read-only handle returns **\`ESP_ERR_NVS_READ_ONLY\`**.
+
+Open with \`NVS_READWRITE\`. Two more defects remain that abort nothing: there is no \`nvs_commit\`, so the new count is not guaranteed to be on flash before power is lost, and the result of \`nvs_get_u32\` is ignored, so a real read error is treated like "first boot". The worked example handles all four.`,
+      answer: { type: 'text', accept: ['read.?only'], nudge: 'How was the handle opened, and what is the code then trying to do with it?' } },
 
     `## Harder: power fails mid-update
 
@@ -2578,7 +2700,7 @@ In **station** (STA) mode the ESP32 joins an existing access point. (It can also
 
 And at any later time: \`WIFI_EVENT_STA_DISCONNECTED\`, with a reason code. Your handler decides what happens next. If it does nothing, the device stays offline for ever, which is the opening problem.`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'Station mode with reconnection', code: R`#include <string.h>
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'Station mode with reconnection', code: R`#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_wifi.h"
@@ -2642,9 +2764,9 @@ void app_main(void)
       { lines: '23-25', md: 'The interface has an address. This is the earliest moment network code can run.' },
       { lines: '31-36', md: 'NVS first: the Wi-Fi driver needs it.' },
       { lines: '38-40', md: 'Start the TCP/IP stack, create the default event loop, and create a network interface bound to the station.' },
-      { lines: '42-43', md: 'Allocates the driver with default buffer sizes taken from sdkconfig. This is where tens of kilobytes of RAM go.' },
+      { lines: '42-43', md: 'Allocates the driver with default buffer sizes taken from sdkconfig and creates the Wi-Fi driver task. This is where tens of kilobytes of RAM go. The radio is still off.' },
       { lines: '45-48', md: 'Subscribe to all Wi-Fi events and to the got-IP event.' },
-      { lines: '50-58', md: 'Set station mode and credentials, then start. `esp_wifi_start` returns at once; everything after it happens through events.' },
+      { lines: '50-58', md: 'Set station mode and credentials, then start. `esp_wifi_start` powers up the radio and its PHY (calibrating it, with data kept in NVS) and returns at once; everything after it happens through events, beginning with `WIFI_EVENT_STA_START`.' },
     ] },
 
     { t: 'callout', kind: 'note', md: `**Old tutorials.** Before ESP-IDF v4.1 the network layer was \`tcpip_adapter\` (\`tcpip_adapter_init()\`), the handler was registered with \`esp_event_loop_init(callback, ...)\`, and events were named \`SYSTEM_EVENT_STA_GOT_IP\`. All of that is gone; \`esp_netif\` and \`esp_event\` replaced it. Code in that style will not build.` },
@@ -2678,7 +2800,7 @@ ESP-IDF offers two BLE host stacks, **NimBLE** (smaller, BLE only) and Bluedroid
 
     { t: 'callout', kind: 'security', md: `**Three basics.**
 
-1. **Credentials do not belong in source code.** The \`#define\` above ends up in the binary, in version control and in every device. Products obtain credentials at set-up through **provisioning** (ESP-IDF's \`wifi_provisioning\` component over BLE or a temporary access point) and store them in NVS, which, as you saw, is itself readable unless encrypted.
+1. **Credentials do not belong in source code.** The \`#define\` above ends up in the binary, in version control and in every device. Products obtain credentials at set-up through **provisioning** over BLE or a temporary access point (Espressif's \`network_provisioning\` component from the ESP Component Registry; it was called \`wifi_provisioning\` and shipped inside ESP-IDF until v6.0 removed it from the tree) and store them in NVS, which, as you saw, is itself readable unless encrypted.
 2. **TLS without certificate verification is not security.** An HTTPS or MQTT-over-TLS connection that does not verify the server's certificate is encrypted to whoever answers, including an attacker in the middle. Supply a CA certificate, or attach ESP-IDF's certificate bundle (\`.crt_bundle_attach = esp_crt_bundle_attach\`), and never ship an option that skips verification.
 3. **BLE characteristics are readable by any nearby device** unless they require pairing and encryption. Mark sensitive characteristics accordingly and test with a generic BLE scanner app on a phone you own.
 
@@ -2726,6 +2848,27 @@ xTaskCreate(report_task, "report", 8192, NULL, 5, NULL);
 
 The task blocks with no CPU use while offline and resumes by itself when the link returns. The network call can still fail if the link drops mid-request, so its error must be handled too: the bit only says the link was up when you looked. The 8192-byte stack allows for TLS.` },
 
+    { t: 'exercise', prompt: `**Find the bug.** The end of \`app_main\` in the worked example was reordered as below. The firmware builds and starts, and then nothing happens: no "disconnected", no "got ip", no connection. Which event did the handler never receive? Give its name.`,
+      code: R`    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &cfg));
+    ESP_ERROR_CHECK(esp_wifi_start());
+
+    vTaskDelay(pdMS_TO_TICKS(500));          /* "let the driver settle" */
+
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        WIFI_EVENT, ESP_EVENT_ANY_ID, &on_event, NULL, NULL));
+    ESP_ERROR_CHECK(esp_event_handler_instance_register(
+        IP_EVENT, IP_EVENT_STA_GOT_IP, &on_event, NULL, NULL));`,
+      hints: [
+        `Which line of the whole program actually asks the driver to join the network? What causes that line to run?`,
+        `\`esp_wifi_connect()\` is only ever called from the handler. An event posted while no handler is registered is delivered to nobody; it is not kept for later.`,
+        `List the events in order from the "pieces" section and ask which one is posted within the first half second after \`esp_wifi_start()\`.`,
+      ],
+      solution: `**\`WIFI_EVENT_STA_START\`.** The driver posts it shortly after \`esp_wifi_start()\`. With no handler registered yet, the event loop has nobody to call and drops it. The handler is registered half a second later and waits for an event that has already gone, so \`esp_wifi_connect()\` is never called; and since nothing ever connects, no disconnect event arrives to trigger a retry either.
+
+Register handlers **before** starting whatever produces the events. It is the same ordering rule as creating the queue before enabling the interrupt, and the delay "to let things settle" is what turned a narrow race into a certain failure.`,
+      answer: { type: 'text', accept: ['STA_?START'], nudge: 'Which event makes the handler call esp_wifi_connect() the first time?' } },
+
     `## Harder: a battery budget
 
 A coin-cell-class sensor must report once every 10 minutes for a year. Compare two designs: staying associated in modem sleep, and deep sleep with a full reconnect for each report. For each, list what consumes energy (sleep current, the reconnect and DHCP time at full radio power, TLS handshake) and what you would need from the datasheet to put numbers on it. Then consider BLE advertising of the reading instead of Wi-Fi: which role and GATT design would you use, what receives the data, and what did you give up? There is no universal answer; the exercise is to see that the radio protocol is a system design decision.`,
@@ -2736,7 +2879,7 @@ A coin-cell-class sensor must report once every 10 minutes for a year. Compare t
       { title: 'ESP-IDF ESP HTTP Client', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/protocols/esp_http_client.html' },
       { title: 'ESP-IDF Bluetooth API and NimBLE host', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/bluetooth/index.html' },
       { title: 'ESP-IDF RF Coexistence', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-guides/coexist.html' },
-      { title: 'ESP-IDF Wi-Fi Provisioning', url: 'https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/provisioning/wifi_provisioning.html' },
+      { title: 'network_provisioning component (ESP Component Registry)', url: 'https://components.espressif.com/component/espressif/network_provisioning', note: 'Successor of wifi_provisioning, which ESP-IDF v6.0 removed from the tree' },
     ] },
   ],
   quiz: [
@@ -2788,7 +2931,7 @@ Everything on the console comes from one of three stages, and knowing which stag
 2. **Second-stage bootloader.** Lines tagged \`boot:\`: the partition table and the image being loaded.
 3. **Application.** ESP-IDF start-up lines, then your \`ESP_LOGx\` output.
 
-\`idf.py monitor\` is more than a terminal. It has the ELF file of your build, so it **decodes code addresses** it sees into function names and source lines, colours log levels, and can reset the chip (Ctrl-T Ctrl-R) or rebuild and flash (Ctrl-T Ctrl-A). Exit with Ctrl-]. If the output is unreadable garbage, the baud rate is wrong; if a crash decodes to nonsense, the monitor's ELF does not match the firmware on the chip.`,
+\`idf.py monitor\` is more than a terminal. It has the ELF file of your build, so it **decodes code addresses** it sees into function names and source lines, colours log levels, and can reset the chip (Ctrl-T Ctrl-R) or rebuild and flash the application (Ctrl-T Ctrl-A). Exit with Ctrl-]. If the output is unreadable garbage, the baud rate is wrong; if a crash decodes to nonsense, the monitor's ELF does not match the firmware on the chip.`,
 
     `## Anatomy of a panic
 
@@ -2856,6 +2999,42 @@ RISC-V chips do not print a \`Backtrace:\` line by default. They print the regis
       solution: `The PC is in **IROM**: ordinary application code in flash, so the program counter is sane and the fault is in what that instruction did. It attempted to **write** to address \`0x10\`, which is not RAM. That is a **NULL pointer** dereference: something like \`cfg->timeout = 5;\` where \`timeout\` is 16 bytes into the struct and \`cfg\` is NULL. The usual origins are an allocation or handle-creation call whose failure was not checked, or a handle used before initialisation (a queue or driver handle that is still NULL because the init order is wrong). Decode \`0x400d2b14\` with addr2line to get the line, then ask where that pointer was supposed to be set.`,
       answer: { type: 'text', accept: ['null\\s*-?\\s*pointer', 'null\\s+deref', 'nullptr'], nudge: 'What does a write to an address just above zero tell you about the pointer that was used?' } },
 
+    { t: 'exercise', prompt: `**Read the code against the dump.** This code panics with \`LoadProhibited\`, \`EXCVADDR: 0x00000008\`, and the innermost backtrace entry decodes to the marked line. (a) Which pointer was NULL, and which field was being read? (b) If the marked line had instead been \`j->timeout_ms = 0;\`, the cause would be \`StoreProhibited\`. What EXCVADDR would be reported? Answer (b) as a number.`,
+      code: R`typedef struct {
+    int      id;                 /* offset 0 */
+    uint32_t timeout_ms;         /* offset 4 */
+    void   (*on_done)(int id);   /* offset 8 */
+} job_t;
+
+static job_t s_jobs[4];
+
+static job_t *find_job(int id)
+{
+    for (int i = 0; i < 4; i++) {
+        if (s_jobs[i].id == id) {
+            return &s_jobs[i];
+        }
+    }
+    return NULL;
+}
+
+void job_finish(int id)
+{
+    job_t *j = find_job(id);
+    j->on_done(id);              /* <-- */
+}`,
+      hints: [
+        `EXCVADDR is the address the instruction tried to read. Which field of \`job_t\` sits 8 bytes from the start?`,
+        `The address is the pointer's value plus the field's offset. If the sum is 8 and the offset is 8, what was the pointer?`,
+        `For part (b) use the same sum with the offset of \`timeout_ms\`.`,
+      ],
+      solution: `(a) \`j\` was NULL: \`find_job\` found no job with that id and returned NULL, and \`job_finish\` used the result unchecked. The CPU faulted while **loading** the function pointer \`on_done\` from address 0 + 8. It never got as far as calling it, which is why the cause is \`LoadProhibited\` and the PC is still inside \`job_finish\`. (Had \`j\` been valid and \`on_done\` itself NULL, you would see \`InstrFetchProhibited\` with PC = 0, as in the prediction above.)
+
+(b) \`timeout_ms\` is at offset 4, so the failed write is to address **4** (\`0x00000004\`).
+
+The repair is in the caller: \`if (j == NULL) { /* unknown id: report it */ return; }\`. The offset in EXCVADDR tells you which field, and therefore which line, even when two dereferences share a function.`,
+      answer: { type: 'number', value: 4, tol: 0 } },
+
     `## Harder: a crash you plant yourself
 
 In any working project, add a function that writes through a NULL struct pointer, call it three levels deep from a task you created, and trigger it from a button or after ten seconds. Before running it, write down what you expect: the cause, the approximate EXCVADDR (compute the field offset), the order of functions in the backtrace, and the reset reason reported at the next boot. Then flash, capture the dump, decode it with \`addr2line\` by hand without the monitor's help, and compare each prediction with what you see. Repeat with a 2 kB local array in a task with a 2048-byte stack and predict which message appears instead. Planting known faults is how you learn to trust, and to read, the tools before a real crash arrives.`,
@@ -2908,7 +3087,7 @@ const glossary = [
   { term: 'SoC', def: 'System on chip. Here, the ESP32 silicon itself: CPU cores, RAM, ROM, radio and peripherals in one package, usually without program flash.' },
   { term: 'Module', def: 'A small shielded PCB carrying an ESP32 chip together with SPI flash, crystal and antenna, for example ESP32-WROOM-32E or ESP32-S3-WROOM-1.' },
   { term: 'Dev board', def: 'A development board carrying a module plus USB connection, regulator, buttons and headers. LED pin, USB-UART chip and button wiring are board-specific.' },
-  { term: 'Xtensa', def: 'The CPU architecture of the ESP32, ESP32-S2 and ESP32-S3.' },
+  { term: 'Xtensa', def: 'The CPU architecture of the ESP32 (LX6 cores) and the ESP32-S3 (LX7 cores); the ESP32-S2 is also an Xtensa chip.' },
   { term: 'RISC-V', def: 'The open CPU architecture used by the ESP32-C3, C6 and H2.' },
   { term: 'Strapping pin', def: 'A GPIO sampled at reset to select boot behaviour. On the ESP32: GPIO0, 2, 5, 12 and 15. Normal GPIOs afterwards, but external circuits must not disturb them during reset.' },
   { term: 'Download mode', def: 'The ROM serial bootloader state in which esptool can write flash. Entered by holding GPIO0 low at reset.' },
@@ -2955,7 +3134,7 @@ const glossary = [
   { term: 'esp_netif', def: 'The network interface abstraction between drivers (Wi-Fi, Ethernet) and the TCP/IP stack.' },
   { term: 'Event loop', def: 'The `esp_event` task that delivers system events such as Wi-Fi and IP changes to registered handlers, one at a time.' },
   { term: 'Station mode (STA)', def: 'Wi-Fi mode in which the ESP32 joins an existing access point as a client.' },
-  { term: 'Provisioning', def: 'Delivering Wi-Fi credentials to a device at set-up time, over BLE or a temporary access point, instead of compiling them in.' },
+  { term: 'Provisioning', def: 'Delivering Wi-Fi credentials to a device at set-up time, over BLE or a temporary access point, instead of compiling them in. Espressif\'s implementation is the `network_provisioning` component (formerly `wifi_provisioning`, removed from the ESP-IDF tree in v6.0).' },
   { term: 'GATT', def: 'Generic Attribute Profile: the BLE data model of services containing characteristics, each a value with properties such as read, write and notify.' },
   { term: 'NimBLE', def: 'The smaller of the two BLE host stacks available in ESP-IDF; BLE only.' },
   { term: 'Coexistence', def: 'Time-sharing of the single 2.4 GHz radio between Wi-Fi, Bluetooth and, on some chips, 802.15.4.' },
@@ -3009,7 +3188,7 @@ const troubleshooting = [
   { symptom: 'Rare panic: "Cache disabled but cached memory region accessed"', area: 'Crash',
     causes: 'An interrupt handler registered as IRAM-safe (or a callback with a cache-safe option enabled) reached code or constant data stored in flash while a flash write or erase was in progress.',
     fix: 'Mark the handler and everything it calls `IRAM_ATTR`, and constants it reads `DRAM_ATTR`; or keep the handler trivial; or register it without the IRAM flag and accept delay during flash operations.' },
-  { symptom: 'I2C transfers fail with ESP_ERR_NOT_FOUND / NACK', area: 'I2C',
+  { symptom: 'I2C probe returns ESP_ERR_NOT_FOUND, or transfers return ESP_ERR_INVALID_RESPONSE (NACK)', area: 'I2C',
     causes: 'No device acknowledged the address: wrong address (often an 8-bit address used where 7-bit is expected, or address-select pins strapped differently), SDA and SCL swapped, device unpowered, or no common ground.',
     fix: 'Measure the device\'s supply. Scan all addresses with `i2c_master_probe` to see what answers. Convert 8-bit addresses by shifting right one bit. Check the address-select pins against the datasheet.' },
   { symptom: 'I2C transfers fail with ESP_ERR_TIMEOUT, or the bus scan is very slow', area: 'I2C',

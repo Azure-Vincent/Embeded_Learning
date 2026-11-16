@@ -344,7 +344,7 @@ You should see the ROM's boot messages, then the second-stage bootloader's log, 
 
 - **Serial log first.** \`idf.py monitor\` shows the boot chain's own messages, so you can tell *which stage* failed — the single most useful fact in a boot problem.
 - **JTAG when you need to stop the CPU.** On the original ESP32, JTAG is on GPIO12–15 and needs an external probe or a board with one built in; \`idf.py openocd\` starts Espressif's OpenOCD and \`idf.py gdb\` connects GDB to it${src('using-debugger.rst', S.idfJtagUse, 'JTAG guide', S.idfJtag)}. The board configuration file depends on your hardware (the guide's example for the ESP-WROVER-KIT is \`board/esp32-wrover-kit-3.3v.cfg\`). The S3, C3 and C6 need no probe: their USB Serial/JTAG controller does it over the USB cable.
-- **JTAG is also an attack surface.** Secure boot and flash encryption in release mode disable it by burning eFuses; that is one of the irreversible steps to rehearse on a spare board.
+- **JTAG is also an attack surface.** By default, enabling Secure Boot or flash encryption makes the bootloader disable JTAG permanently by eFuse on the first boot${src('secure-boot-v2.rst', S.idfSb2, 'flash-encryption.rst', S.idfFe)}; that is one of the irreversible steps to rehearse on a spare board.
 
 ## Hardware limitations to design around
 
@@ -449,19 +449,18 @@ Analog Devices describes the MAX78000 as an "Artificial Intelligence Microcontro
 
     { t: 'widget', name: 'mcu-block-diagram', props: { platform: 'max78000' }, caption: 'Locate the two cores, the flash, the SRAM and the security peripherals. Which blocks does the Cortex-M4 own at reset?' },
 
-    { t: 'callout', kind: 'note', title: 'Not verified here — look these up before you rely on them', md: `The fact sheet behind this lesson was built from the SDK on GitHub; analog.com was unreachable. The following are therefore **not stated** in this lesson, and here is where to find each:
+    { t: 'callout', kind: 'note', title: 'Still not verified — look these up before you rely on them', md: `The MAX78000 facts in this lesson come from Analog Devices' SDK on GitHub and from MITRE's rules pages. Analog Devices' own site returned an empty reply to every request when the fact sheet was checked, so **no MAX78000 datasheet or user guide was read**. The following are therefore not stated here:
 
 | Item | Where to confirm |
 |---|---|
-| Maximum CPU frequency as a specification | MAX78000 datasheet, electrical characteristics |
-| Which RV32 variant the RISC-V core is | MAX78000 datasheet, features / detailed description; MAX78000 user guide, RISC-V chapter |
-| AES key sizes supported by the AES engine | MAX78000 user guide, AES chapter; \`aes\` driver headers in the MSDK |
-| Whether the ROM implements secure boot or a ROM bootloader, and in which part variants | MAX78000 datasheet ordering information and user guide, bootloader chapter |
-| ADC resolution and channel count | MAX78000 datasheet, ADC electrical characteristics |
-| CNN accelerator details | MAX78000 datasheet and user guide, CNN chapter |
-| The feather board's camera, microphone, PMIC and SD parts | MAX78000FTHR board datasheet and schematic (the BSP only implies them through power-control function names) |
+| Maximum CPU frequency as a specification (only the 100 MHz and 60 MHz oscillator constants are verified) | MAX78000 datasheet, electrical characteristics |
+| Which RV32 variant the RISC-V core is | MAX78000 datasheet, features; user guide, RISC-V chapter |
+| Secure-boot and ROM bootloader variants (only the *existence* of a serial boot ROM interface is verified, through MITRE's procedure) | MAX78000 datasheet ordering information; user guide, bootloader chapter |
+| ADC resolution (the driver header shows inputs AIN0–AIN3 plus internal selections, not the resolution) | MAX78000 datasheet, ADC electrical characteristics |
+| TRNG and CNN accelerator details | MAX78000 datasheet and user guide |
+| The feather board's microphone part number | MAX78000FTHR board data sheet and schematic |
 
-Product page candidate (not load-tested): ${N.max78000}.` },
+Verified since the first version of this lesson: the AES driver's key sizes (128, 192 and 256 bits)${src('aes.h', S.maxAes)}, and the board parts the BSP builds drivers for (see below). Product page (not read): ${N.max78000}.` },
 
     `## The board: MAX78000FTHR
 
@@ -470,7 +469,9 @@ The board support package the 2024 and 2025 reference designs select is \`FTHR_R
 - Console on UART0 at 115200 baud.
 - An RGB LED made of three LEDs on P2.0 (red), P2.1 (green) and P2.2 (blue), **active low**.
 - Two push-buttons, on P0.2 and P1.7.
-- Power-control functions for a microphone, a camera and an SD card.
+- Drivers built by the BSP: an **OV7692** camera, a **MAX20303** power-management IC (it switches camera, microphone and SD-card power), a **MAX9867** audio codec and a serial SRAM${src('board.mk', S.maxBoardMk, 'board.c', S.maxBoardC)}.
+
+MITRE's 2025 board page lists the same headline features: Cortex-M4 core, RISC-V core, 512 KB flash, 128 KB SRAM, 16 KB cache, neural-network accelerator, camera, audio interface and a DAPLink debugger${src('2025 board page', S.r25board)}. In 2024 each team had **three** of these boards — one Application Processor and two Components — plugged into MITRE's eCTF breakout board, which joins them on a shared I2C bus and adds a Bootloader Button${src('2024 architecture', S.r24arch, 'breakout board', S.r24breakout)}.
 
 The board carries its own debug adapter: "an integrated MAX32625PICO ('PICO') debug adapter", which appears to the host as a **DAPLINK** mass-storage drive. Holding SW5 while plugging in puts the adapter into MAINTENANCE mode for updating the adapter's own firmware. Dropping a file named \`erase.act\` on the DAPLINK drive mass-erases the target${src('MAX78000 Feather README', S.maxFthr)}.`,
 
@@ -507,23 +508,29 @@ If they had *disagreed*, that would be a finding: either the tool can write beyo
 
     `## Boot process, as far as the sources go
 
-1. Reset. The chip has ROM at \`0x00000000\`${src('max78000.h', S.maxHdr)}. What that ROM does before handing control to flash — and whether a given part variant's ROM includes a bootloader or a secure-boot check — is **not verified here**; confirm in the MAX78000 user guide's bootloader chapter and the datasheet's ordering information. The reference linker script reserves a \`ROM_BL_PAGE\` at the top of flash, which tells you the ROM cares about that page, not what it does with it.
-2. In the 2024 and 2025 systems, the **MITRE eCTF bootloader** sits at the start of flash (\`0x10000000\`, \`0xE000\` bytes = 7 pages) and starts the team image at \`0x1000E000\`. Its internals — how it validates or protects images, how the design-phase and attack-phase variants differ — are **not verified here**. The READMEs point at documentation pages that were not load-tested: ${N.docs2024boot} (2024) and ${S.r25bootref} (2025).
-3. Your image's startup code runs, then \`main\`.`,
+1. Reset. The chip has ROM at \`0x00000000\`${src('max78000.h', S.maxHdr)}. One thing about it is verified: a **serial boot ROM interface** exists. MITRE's procedure for unlocking attack boards enters it by holding the UART0 RX and SWDCLK pads low at power-up and then talks to it at 115200 baud${src('2025 secure-bootloader removal', S.r25sbl)}. What else the ROM does, and whether a part variant's ROM performs a secure-boot check, is **not verified here** (datasheet ordering information; user guide, bootloader chapter). The reference linker script reserves a \`ROM_BL_PAGE\` at the top of flash, which tells you the ROM cares about that page, not what it does with it.
+2. In the 2024 and 2025 systems, the **MITRE eCTF bootloader** sits at the start of flash (\`0x10000000\`, \`0xE000\` bytes = 7 pages) and starts the team image at \`0x1000E000\`. It has two modes. **Update mode** is entered by resetting the board while holding **SW1** (in 2024 also the breakout board's Bootloader Button); the LED blinks blue and the bootloader accepts a new image over serial. Otherwise it starts the installed image${src('2025 bootloader', S.r25boot, '2024 bootloader', S.r24boot)}.
+3. Your image's startup code runs, then \`main\`.
+
+There are two builds of that bootloader. Design-phase boards ship **without** any bootloader; you install the unprotected \`insecure.bin\`. Attack-phase boards arrive with a keyed **secure bootloader** preinstalled, "which disables debug functionality". What the secure build checks, and how images for it are protected, is not published — only its externally visible behaviour is verified.`,
 
     { t: 'widget', name: 'boot-sequence', props: { platform: 'max78000' }, caption: 'Step the boot sequence. Mark each stage as "verified from a source" or "check the user guide" — the widget shows which is which.' },
 
     `## The 2024 system and its tooling
 
-**System.** One **Application Processor** (AP) and several **Components**. The AP is the I2C controller (\`MXC_I2C1\`, 100 kHz, messages up to 256 bytes); Components are I2C peripherals. The example AP is provisioned for two components with IDs \`0x11111124\` and \`0x11111125\`. Host tools expose four functions: **list** components, **boot**, **replace** a component using a token, and read **attestation** data using a PIN. In the insecure example the PIN is \`123456\` and the token is \`0123456789abcdef\`${src('2024 README', S.y2024readme, 'simple_i2c_controller.h', S.y2024i2c, 'application_processor.c', S.y2024ap)}. What the named security requirements were is not in the repository and was not obtained — read the 2024 rules.
+**System.** One **Application Processor** (AP) and several **Components**. The AP is the I2C controller (\`MXC_I2C1\`, 100 kHz, messages up to 256 bytes); Components are I2C peripherals. The example AP is provisioned for two components with IDs \`0x11111124\` and \`0x11111125\`. Host tools expose four functions: **list** components, **boot**, **replace** a component using a token, and read **attestation** data using a PIN. In the insecure example the PIN is \`123456\` and the token is \`0123456789abcdef\`${src('2024 README', S.y2024readme, 'simple_i2c_controller.h', S.y2024i2c, 'application_processor.c', S.y2024ap)}.
+
+**Security requirements (five, summarised).** SR1: the AP boots only if all expected Components are present and valid. SR2: Components boot only when commanded by a valid AP that has confirmed integrity. SR3: the Attestation PIN and Replacement Token stay confidential. SR4: Component Attestation Data stays confidential. SR5: integrity and authenticity of post-boot messages${src('2024 security requirements', S.r24sec)}. Limits from the detailed specification: wake within 1 s, attest/list/boot within 3 s, replace within 5 s${src('2024 detailed specifications', S.r24detail)}.
 
 **Tooling.** A **Nix** shell (\`shell.nix\` provides gnumake, Python 3.9, \`gcc-arm-embedded\`, Poetry, minicom and a packaged Analog Devices fork of OpenOCD) plus **Poetry** for the \`ectf_tools\` Python package. The MSDK is pinned to tag \`v2023_06\`. Build entry points are \`ectf_build_depl\`, \`ectf_build_ap\` and \`ectf_build_comp\`; build parameters are injected into a generated header, \`ectf_params.h\`${src('shell.nix', S.y2024nix, 'pyproject.toml', S.y2024py)}.
 
-**Flashing.** First install the provided bootloader by dragging it onto the DAPLINK drive (\`insecure.bin\` for the design phase); a flashing blue LED indicates success. After that, images go through the bootloader: \`ectf_update --infile <img> --port <serial>\`${src('2024 README', S.y2024readme)}.`,
+**Flashing.** First install the provided bootloader by dragging it onto the DAPLINK drive (\`insecure.bin\` for the design phase); a flashing blue LED indicates success. After that, put the board in update mode (hold SW1 or the Bootloader Button during reset) and send images through the bootloader: \`ectf_update --infile <img> --port <serial>\`${src('2024 README', S.y2024readme, '2024 bootloader', S.r24boot)}.`,
 
     `## The 2025 system and its tooling
 
-**System.** A **Satellite TV System**. The team's encoder (host Python) encodes frames; the satellite broadcasts them; a TV on the host forwards encoded frames over serial to a **Decoder** — the firmware on the MAX78000 — and gets back decoded frames. Constants in the reference decoder: up to 8 channels, channel 0 is an emergency channel that the reference design always decodes and refuses subscriptions for, frames are 64 bytes, timestamps are 64-bit. Subscriptions carry a device ID, start and end timestamps and a channel. The decoder's commands are: list channels, update subscription, decode frame${src('2025 README', S.y2025readme, 'decoder.c', S.y2025dec)}. The named security requirements are on the 2025 rules site, which was not opened; do not rely on paraphrases of them.
+**System.** A **Satellite TV System**. The team's encoder (host Python) encodes frames; the satellite broadcasts them; a TV on the host forwards encoded frames over serial to a **Decoder** — the firmware on the MAX78000 — and gets back decoded frames. Constants in the reference decoder: up to 8 channels, channel 0 is an emergency channel that the reference design always decodes and refuses subscriptions for, frames are 64 bytes, timestamps are 64-bit. Subscriptions carry a device ID, start and end timestamps and a channel. The decoder's commands are: list channels, update subscription, decode frame${src('2025 README', S.y2025readme, 'decoder.c', S.y2025dec)}. The functional requirements add that subscriptions must persist across power loss and that the decoder must keep up with 1,000 64-byte frames per second${src('2025 functional requirements', S.r25func, '2025 detailed specifications', S.r25detail)}.
+
+**Security requirements (three, summarised).** SR1: a frame must not be decodable without a Decoder holding a valid, currently active subscription for its channel. SR2: a Decoder decodes only genuine frames from the Satellite System it was provisioned for. SR3: a Decoder decodes only frames with strictly increasing timestamps${src('2025 security requirements', S.r25sec)}. Notice that SR3 is *freshness*, a different property from SR2's authenticity: a recorded genuine frame passes SR2 and must still be refused.
 
 **Tooling.** **Docker**. The decoder's Dockerfile starts from \`ubuntu:24.04\`, installs \`gcc-arm-none-eabi\`, \`gdb-multiarch\` and make, and downloads MSDK tag \`v2024_02\`. Host Python is a plain \`venv\` with \`pip install\`, Python 3.11 or later${src('Dockerfile', S.y2025docker, 'tools pyproject', S.y2025py)}.`,
 
@@ -541,15 +548,15 @@ docker build -t decoder .
 docker run --rm -v ./build_out:/out -v ./:/decoder \\
     -v ./../secrets:/secrets -e DECODER_ID=0xdeadbeef decoder
 
-# 3. flash through the eCTF bootloader (board in update mode: flashing blue LED)
+# 3. flash through the eCTF bootloader (update mode: hold SW1 during reset; LED blinks blue)
 python -m ectf25.utils.flash ./build_out/max78000.bin /dev/ttyACM0`,
       explain: [
         { lines: '7', md: 'Secrets are generated by the *team’s* Python code and written to a JSON file. Whatever that file contains is what the firmware build and the encoder share, so its design is a security decision.' },
         { lines: '11-13', md: 'The container gets three mounts: the source, the secrets, and an output directory. `DECODER_ID` is the per-device identity injected at build time. The build emits `max78000.elf` and `max78000.bin`.' },
-        { lines: '16', md: 'The flasher talks to the MITRE bootloader over the serial port at 115200 baud and writes the team region page by page. The port name is an example; yours will differ.' },
+        { lines: '15-16', md: 'The flasher talks to the MITRE bootloader over the serial port at 115200 baud and writes the team region page by page. It only gets an answer if the board is in update mode. The port name is an example; yours will differ.' },
       ] },
 
-    `Source for the commands${src('2025 README', S.y2025readme, 'flash.py', S.y2025flash)}.
+    `Source for the commands${src('2025 README', S.y2025readme, 'flash.py', S.y2025flash, '2025 bootloader', S.r25boot)}.
 
 **What changed from 2024 to 2025**, all from the two repositories: Nix + Poetry became Docker + pip/venv; MSDK \`v2023_06\` became \`v2024_02\`; \`ectf_*\` console scripts became \`python -m ectf25.*\` modules; a multi-board I2C system became a single board on UART; and a secrets JSON generated by team Python replaced the \`deployment/\` Makefile. The linker layout did not change.`,
 
@@ -560,15 +567,16 @@ python -m ectf25.utils.flash ./build_out/max78000.bin /dev/ttyACM0`,
     `## Debugging workflow
 
 1. Build inside the pinned environment so the ELF matches what you flash.
-2. Start the OpenOCD that ships with the MSDK (2024: the fork packaged by \`shell.nix\`) against the board's CMSIS-DAP adapter. The interface and target configuration file names are in the MSDK user guide's debugging section; they are not reproduced here because they were not verified.
-3. Connect GDB (\`arm-none-eabi-gdb\`, or \`gdb-multiarch\` as installed by the 2025 Dockerfile) with the ELF for symbols.
+2. Start Analog Devices' fork of OpenOCD (installed with the MSDK; in 2024 packaged by \`shell.nix\`) against the board's DAPLink adapter. The 2025 rules give the command: \`openocd -s scripts/ -f interface/cmsis-dap.cfg -f target/max78000.cfg -c "bindto 0.0.0.0; init"\`, which opens a GDB server on port 3333${src('2025 OpenOCD page', S.r25openocd)}. Upstream OpenOCD is not the documented tool for this part.
+3. Connect GDB (\`arm-none-eabi-gdb\`, or \`gdb-multiarch\` as installed by the 2025 Dockerfile) with the ELF for symbols: \`target remote :3333\`.
 4. Keep a serial terminal on the console UART (115200) open alongside.
+5. Know when this stops working: attack-phase boards carry the secure bootloader, which disables debug. Everything you learn with a debugger, you learn on design-phase boards.
 
 The RISC-V core is a separate debug target on a separate JTAG port${src('MSDK user guide', S.msdkGuide)}; if your design never starts it, it is not part of your debug session, but it *is* part of your attack-surface inventory.`,
 
     `## Security capabilities and hardware limits
 
-What the sources establish: the chip has an MPU on the Cortex-M4, an AES engine with dedicated key registers, a TRNG and a CRC unit${src('max78000.h', S.maxHdr)}. What they do not establish, and you must read before designing around: the AES key sizes; whether keys in the AES key registers survive reset or can be read back; the TRNG's health tests and throughput; whether flash has read or write protection and how it interacts with the debug port; and whether the debug port can be locked. For each, go to the MAX78000 user guide chapter for that peripheral.
+What the sources establish: the chip has an MPU on the Cortex-M4, an AES engine with dedicated key registers, a TRNG and a CRC unit${src('max78000.h', S.maxHdr)}; the AES driver accepts 128-, 192- and 256-bit keys${src('aes.h', S.maxAes)}; and debug access *can* be disabled, because MITRE's secure bootloader does it on attack boards${src('2025 secure-bootloader removal', S.r25sbl)}. What they do not establish, and you must read before designing around: whether keys in the AES key registers survive reset or can be read back; the TRNG's health tests and throughput; whether flash has read or write protection; and by what mechanism debug is locked. For each, go to the MAX78000 user guide chapter for that peripheral — and remember that a hardware AES engine says nothing about side-channel resistance.
 
 Limits you can already reason about from verified facts:
 
@@ -576,6 +584,45 @@ Limits you can already reason about from verified facts:
 - **8 KB flash pages.** Erase granularity is a page, so a single updatable secret costs a whole 8 KB page, and with 28 pages in the team region you cannot scatter many of them.
 - **Two cores, eight shared semaphores.** A second processor that can be started by the first is extra capability and extra attack surface.
 - **A debug adapter on the board.** Physical possession of the board includes a ready-made debug connection unless something disables it.`,
+
+    `## GPIO and peripheral configuration
+
+On the MAX78000 a pin is described by one structure and configured by one call. The LED and button tables below are the ones in the \`FTHR_RevA\` board support package${src('board.c', S.maxBoardC, 'gpio.h', S.maxGpio)}.`,
+
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'MAX78000FTHR: red LED and button SW1 with the MSDK GPIO driver. Names and fields were checked against gpio.h, uart.h and board.c on the MSDK main branch; the eCTF years pin older tags (v2023_06, v2024_02), so check the same headers at your tag. Not compiled or run here.', code: String.raw`#include "mxc_device.h"
+#include "gpio.h"
+#include "uart.h"
+
+static const mxc_gpio_cfg_t led_red = {
+    MXC_GPIO2, MXC_GPIO_PIN_0, MXC_GPIO_FUNC_OUT,
+    MXC_GPIO_PAD_NONE, MXC_GPIO_VSSEL_VDDIOH, MXC_GPIO_DRVSTR_0 };
+
+static const mxc_gpio_cfg_t button = {
+    MXC_GPIO0, MXC_GPIO_PIN_2, MXC_GPIO_FUNC_IN,
+    MXC_GPIO_PAD_PULL_UP, MXC_GPIO_VSSEL_VDDIOH, MXC_GPIO_DRVSTR_0 };
+
+void board_pins_init(void)
+{
+    MXC_GPIO_Config(&led_red);
+    MXC_GPIO_Config(&button);
+
+    MXC_GPIO_OutClr(led_red.port, led_red.mask);          /* LED on  */
+    if (MXC_GPIO_InGet(button.port, button.mask) == 0) {  /* pressed */
+        MXC_GPIO_OutSet(led_red.port, led_red.mask);      /* LED off */
+    }
+
+    MXC_UART_Init(MXC_UART0, 115200, MXC_UART_IBRO_CLK);  /* console */
+}`,
+      explain: [
+        { lines: '5-7', md: 'Port, pin mask, function, pad (pull) setting, I/O supply selection and drive strength — the six fields of `mxc_gpio_cfg_t`. `MXC_GPIO_FUNC_OUT` makes P2.0 a plain output; the `ALT1`–`ALT4` values of the same field hand the pad to a peripheral instead. That one field is this chip’s pin multiplexer.' },
+        { lines: '9-11', md: 'The button input uses the pad’s pull-up, so an open button reads 1 and a pressed one reads 0. `VSSEL` chooses which of the chip’s two I/O supply rails the pad uses: a per-pin electrical decision that has no equivalent on the ESP32 or the MSPM0.' },
+        { lines: '18-20', md: 'The board’s LEDs are **active low**: clearing the output bit drives the pin low and lights the LED. `OutSet` turns it off. Getting this backwards is the commonest first-hour confusion on this board.' },
+        { lines: '23', md: 'The console is UART0 at 115200 baud, clocked here from the 7.3728 MHz IBRO as the BSP does. It reaches your PC through the DAPLink adapter’s serial bridge, not through a USB port on the MAX78000 itself.' },
+      ] },
+
+    `**Communication interfaces as the eCTF designs used them.** 2024: \`MXC_I2C1\` at 100 kHz between the Application Processor (controller) and the Components (peripherals), messages up to 256 bytes — a shared bus that anyone holding the hardware can watch and drive. 2025: UART0 at 115200 baud to the host. The chip also has two more UARTs, a low-power UART, two SPI ports, I2S and a 1-Wire master that neither design uses; unused peripherals still belong on your attack-surface list if their pins are reachable.
+
+**Interrupt priorities.** The device header sets \`__NVIC_PRIO_BITS\` to 3, so the Cortex-M4 here has 8 priority levels${src('max78000.h', S.maxHdr)}. Keep the number in mind for lesson 5.`,
 
     { t: 'exercise', prompt: `Your 2025 decoder firmware has grown. The linker reports the image's flash usage as 232 000 bytes. Using only the layout in this lesson: (a) does it fit in the team FLASH region, and by how many bytes does it fit or overflow? (b) How many whole 8 KB pages does the team region contain? Enter the answer to (b).`,
       hints: [
@@ -601,6 +648,11 @@ In 2024, an Application Processor and two Components were three separate MAX7800
       { title: 'MITRE eCTF 2024 insecure example', url: S.y2024 },
       { title: 'MITRE eCTF 2025 insecure example', url: S.y2025 },
       { title: 'MITRE eCTF 2024 breakout board design files', url: S.y2024breakout },
+      { title: 'eCTF 2025 rules: MAX78000FTHR board', url: S.r25board },
+      { title: 'eCTF 2025 rules: eCTF bootloader (update mode, insecure and secure builds)', url: S.r25boot },
+      { title: 'eCTF 2025 rules: OpenOCD', url: S.r25openocd },
+      { title: 'eCTF 2025 rules: security requirements', url: S.r25sec },
+      { title: 'eCTF 2024 rules: security requirements', url: S.r24sec },
       { title: 'MSDK User Guide (rendered)', url: N.msdkGuideSite, note: 'URL taken from the MSDK README; not load-tested.' },
     ] },
   ],

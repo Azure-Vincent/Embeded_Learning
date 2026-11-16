@@ -288,7 +288,8 @@ idf_component_register(SRCS "hello_world_main.c"
 
 ESP-IDF is Espressif's SDK: the cross-compilers, the build scripts, FreeRTOS, the drivers and the flashing tools.
 The steps below are taken from the ESP-IDF v6.1 documentation sources. v6.1 was the release GitHub marked as latest
-when this lesson was written; if a newer stable release exists when you read this, follow its get-started guide and
+when this lesson was written (Espressif's rendered "stable" documentation has since moved to v6.1.1, a bug-fix
+release of the same series); if a newer stable release exists when you read this, follow its get-started guide and
 treat the commands here as the pattern. ESP-IDF requires Python 3.10 or newer.
 
 There are two supported routes. Use one, not both.
@@ -710,7 +711,9 @@ build it will say so.
 the probe's USB protocol and the target's debug port, and offers a network port that GDB connects to. It can also
 program flash. Chip vendors often maintain their own builds: Espressif ships one with ESP-IDF, and Analog Devices
 ships one with the MSDK for the MAX78000. Upstream OpenOCD includes a flash driver and board configuration for TI
-MSPM0 parts. Verify: \`openocd --version\`.
+MSPM0 parts. For the 2026 eCTF board the rules document OpenOCD for *debugging* only (with an external XDS110
+probe); the bootloader is flashed with TI's UniFlash and firmware is then loaded with the eCTF tools. Verify:
+\`openocd --version\`.
 
 **GDB** is the debugger: it stops the program, single-steps, shows registers, variables and memory, and maps
 addresses back to source lines using the ELF file. For embedded targets it connects to OpenOCD instead of running

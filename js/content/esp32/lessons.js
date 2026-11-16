@@ -1,6 +1,7 @@
 // ESP32 section, part 1: lessons, shared skills, glossary, troubleshooting, references.
-// All ESP-IDF code here is status `reviewed`: written against the ESP-IDF v6.1 documentation,
-// not compiled or run on a board in this repository.
+// ESP-IDF listings: every complete program (a listing with app_main) is `idf-built`: compiled and linked for
+// the esp32 target with ESP-IDF v6.1 by tools/idf-check. Fragments are `idf-checked`: compiled inside a scratch
+// component against the v6.1 headers. Nothing here was run on a board.
 const R = String.raw;
 
 const skills = [
@@ -66,8 +67,8 @@ Espressif reuses the name ESP32 for chips with different CPUs. The differences t
 
 | Chip | CPU | Cores | Max CPU clock | Radio | USB |
 |---|---|---|---|---|---|
-| ESP32 | Xtensa | 2 | 240 MHz | Wi-Fi + Bluetooth | none (external USB-UART chip) |
-| ESP32-S3 | Xtensa | 2 | 240 MHz | Wi-Fi + Bluetooth LE | USB OTG and USB Serial/JTAG |
+| ESP32 | Xtensa LX6 | 2 | 240 MHz | Wi-Fi + Bluetooth | none (external USB-UART chip) |
+| ESP32-S3 | Xtensa LX7 | 2 | 240 MHz | Wi-Fi + Bluetooth LE | USB OTG and USB Serial/JTAG |
 | ESP32-C3 | RISC-V | 1 | 160 MHz | Wi-Fi + Bluetooth LE | USB Serial/JTAG |
 | ESP32-C6 | RISC-V | 1 | 160 MHz | Wi-Fi + Bluetooth LE + IEEE 802.15.4 | USB Serial/JTAG |
 
@@ -75,7 +76,7 @@ Two more you will meet: the ESP32-S2 (single-core Xtensa, Wi-Fi only, USB OTG) a
 
 What this means in practice:
 
-- **Xtensa vs RISC-V** changes the toolchain, the register names in a crash dump and the interrupt architecture. Your C source for the ESP-IDF drivers is the same.
+- **Xtensa vs RISC-V** changes the toolchain (LX6 and LX7 are two generations of the Xtensa core and share one), the register names in a crash dump and the interrupt architecture. Your C source for the ESP-IDF drivers is the same.
 - **Two cores** means two tasks really do run at the same instant. Bugs that hide on a single core appear.
 - **USB Serial/JTAG** is a fixed-function block that gives you a serial console, flashing and JTAG debugging over one USB cable with no extra chip. Its D+/D- pins are fixed: GPIO19/18 on the C3, GPIO20/19 on the S3, GPIO13/12 on the C6. Using those pins as GPIO disconnects it.
 - Only the original ESP32 has Bluetooth Classic as well as LE.`,
@@ -144,6 +145,27 @@ Code in IROM is not in RAM. The CPU fetches it from the external flash chip thro
 - **Console:** leave GPIO1 and GPIO3 unconnected.
 
 The method matters more than the particular numbers: place the constrained signals first, then spend unrestricted pins on what is left.` },
+
+    { t: 'exercise', prompt: `**Find the faults.** A colleague's pin plan for a classic ESP32-WROOM-32E board with Wi-Fi running is below. Three of the five lines break a rule from the restriction table. Which GPIO numbers are the faulty choices? Answer with the three numbers.`,
+      code: R`signal                     pin      configuration
+relay driver (output)      GPIO35   push-pull output
+pot wiper (analog in)      GPIO33   ADC1 channel 5, 12 dB
+mode switch to 3.3 V       GPIO12   input, switch closed at power-up in "service" mode
+status LED                 GPIO16   push-pull output
+SD card detect             GPIO8    input, internal pull-up`,
+      hints: [
+        `Take the lines one at a time and ask of each pin: can it do what the configuration column asks, and what does the circuit do to it while the chip is in reset?`,
+        `One pin has no output driver. One is wired to something inside the module. One is sampled at reset and the circuit can hold it high there.`,
+        `Check 35 against the input-only group, 8 against the flash group, and 12 against the strapping list. Then check that 33 and 16 really are free on this module (it has no PSRAM).`,
+      ],
+      solution: `**35, 12 and 8.**
+
+- **GPIO35** is input-only: it has no output driver, so it cannot drive a relay. \`gpio_config\` rejects output mode on it with an error.
+- **GPIO12** is the MTDI strapping pin. With the switch closed at power-up it is high at reset, the chip selects 1.8 V for the flash supply, and a module with 3.3 V flash does not boot. The fault appears only in "service" mode, which is what makes it nasty.
+- **GPIO8** is one of GPIO6–11, wired to the SPI flash inside the module.
+
+GPIO33 is fine: it is an ADC1 pin, so Wi-Fi does not block it. GPIO16 is fine on a module without PSRAM. A corrected plan moves the relay to GPIO25, the switch to GPIO27 and card detect to GPIO26.`,
+      answer: { type: 'text', accept: ['^(?=.*\\b35\\b)(?=.*\\b12\\b)(?=.*\\b8\\b)(?!.*\\b33\\b)(?!.*\\b16\\b).*$'], nudge: 'Three pins: one cannot drive, one is sampled at reset, one belongs to the flash.' } },
 
     `## Harder: choosing a chip
 
@@ -228,7 +250,7 @@ A project is a directory of **components**. A component is a folder with a \`CMa
 ├── components/             optional: your own reusable components
 └── build/                  generated: everything the build produces`, caption: 'A minimal ESP-IDF project. Commit sdkconfig.defaults; decide deliberately whether to commit sdkconfig.' },
 
-    { t: 'code', lang: 'cmake', status: 'reviewed', caption: 'CMakeLists.txt (project root)', code: R`cmake_minimum_required(VERSION 3.22)
+    { t: 'code', lang: 'cmake', status: 'idf-checked', caption: 'CMakeLists.txt (project root)', code: R`cmake_minimum_required(VERSION 3.22)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(blink)`, explain: [
       { lines: '1', md: 'Minimum CMake version. The number has risen across IDF releases; copy this line from an example shipped with the IDF version you installed.' },
@@ -236,9 +258,9 @@ project(blink)`, explain: [
       { lines: '3', md: 'Names the project. The application image will be `build/blink.bin` and the debug file `build/blink.elf`.' },
     ] },
 
-    { t: 'code', lang: 'cmake', status: 'reviewed', caption: 'main/CMakeLists.txt', code: R`idf_component_register(SRCS "main.c"
+    { t: 'code', lang: 'cmake', status: 'idf-checked', caption: 'main/CMakeLists.txt', code: R`idf_component_register(SRCS "main.c"
                        INCLUDE_DIRS ".")`, explain: [
-      { lines: '1-2', md: 'Registers the component. `main` is special: it is allowed to use every other component without listing them. Any other component must name what it uses with `REQUIRES` or `PRIV_REQUIRES` (for example `esp_driver_gpio`). A "header not found" build error in your own component almost always means a missing entry there.' },
+      { lines: '1-2', md: 'Registers the component. `main` is special: it is allowed to use every other component without listing them. Any other component must name what it uses with `REQUIRES` or `PRIV_REQUIRES` (for example `esp_driver_gpio`). A "header not found" build error in your own component almost always means a missing entry there. The v6.1 `hello_world` template also sets `idf_build_set_property(MINIMAL_BUILD ON)` in the project file; with that line even `main` sees only the components it names, so a `main` that includes `driver/gpio.h` needs `PRIV_REQUIRES esp_driver_gpio`.' },
     ] },
 
     `## The idf.py workflow
@@ -273,7 +295,7 @@ The bootloader offset is fixed in each chip's mask ROM, which is why it differs 
 
 The default table ("Single factory app, no OTA") looks like this:`,
 
-    { t: 'code', lang: 'csv', status: 'reviewed', caption: 'Default partition table', code: R`# Name,   Type, SubType, Offset,  Size
+    { t: 'code', lang: 'csv', status: 'idf-checked', caption: 'Default partition table (offsets as the build resolves them)', code: R`# Name,   Type, SubType, Offset,  Size
 nvs,      data, nvs,     0x9000,  0x6000
 phy_init, data, phy,     0xf000,  0x1000
 factory,  app,  factory, 0x10000, 1M`, explain: [
@@ -311,7 +333,7 @@ esptool can only talk to the ROM's serial bootloader, so the chip must be in **d
         { t: 'The build succeeds and the app overflows into whatever follows in flash', why: 'The tools check the binary against the partition size precisely to prevent a silent overflow. The bootloader also only maps what the partition table describes.' },
         { t: 'The build succeeds because the flash chip is larger than 1 MB', why: 'The size of the flash chip is not the limit. The partition table entry is, and the default factory partition is 1 MB.' },
       ],
-      reveal: `The partition, not the chip, is the limit. Your options are to shrink the image (\`idf.py size\` and \`idf.py size-components\` show where the bytes are; lowering the log level and compiling for size are the usual first steps) or to give the app more room with a larger partition, via menuconfig's partition table options or a custom \`partitions.csv\`, provided the flash chip is big enough.` },
+      reveal: `The partition, not the chip, is the limit. Your options are to shrink the image (\`idf.py size\` and \`idf.py size-components\` show where the bytes are; the failing step prints the overflow in bytes; lowering the log level and compiling for size are the usual first steps) or to give the app more room with a larger partition, via menuconfig's partition table options or a custom \`partitions.csv\`, provided the flash chip is big enough.` },
 
     { t: 'exercise', prompt: `With the default partition table, at which flash offset does the \`factory\` partition end (the first byte after it)? Give a hexadecimal address.`,
       hints: [
@@ -320,6 +342,22 @@ esptool can only talk to the ROM's serial bootloader, so the chip must be in **d
       ],
       solution: `\`0x10000 + 0x100000 = 0x110000\`. On a 4 MB (\`0x400000\`) flash chip, everything from \`0x110000\` upwards is unused by the default table, which is why a larger app partition or an extra data partition is usually possible.`,
       answer: { type: 'text', accept: ['^\\s*(0x)?0*110000h?\\s*$'], nudge: 'Add the size (1M = 0x100000) to the start offset 0x10000.' } },
+
+    { t: 'exercise', prompt: `**Find the bug.** To make room for a larger application and a data partition, someone wrote this custom \`partitions.csv\` for a 4 MB flash chip. The build stops with a partition table error. Find the faulty line, then give the lowest offset at which \`storage\` may start (hexadecimal).`,
+      code: R`# Name,   Type, SubType, Offset,   Size
+nvs,      data, nvs,     0x9000,   0x6000
+phy_init, data, phy,     0xf000,   0x1000
+factory,  app,  factory, 0x10000,  0x180000
+storage,  data, spiffs,  0x110000, 0x100000`,
+      hints: [
+        `For each line work out where the partition ends: offset plus size. What must be true of the next line's offset?`,
+        `\`factory\` now ends at \`0x10000 + 0x180000\`. Compare that with where \`storage\` starts.`,
+        `The author enlarged \`factory\` from 1 MB to 1.5 MB but left \`storage\` at the offset that followed the old 1 MB partition.`,
+      ],
+      solution: `\`factory\` occupies \`0x10000\` up to but not including \`0x190000\`. \`storage\` starts at \`0x110000\`, inside it. The partition tool refuses the table ("Partitions overlap"), which is far better than the alternative: writing a file system over the second half of the application. \`storage\` may start at **\`0x190000\`**, and then ends at \`0x290000\`, inside a 4 MB (\`0x400000\`) chip.
+
+A simpler habit removes this class of bug: leave the Offset column **empty**. The tool then places each partition directly after the previous one (aligning app partitions to \`0x10000\`), which is how the default table shipped with ESP-IDF is written.`,
+      answer: { type: 'text', accept: ['^\\s*(0x)?0*190000h?\\s*$'], nudge: 'Where does factory end? 0x10000 + 0x180000.' } },
 
     `## Harder: reading a boot log
 
@@ -353,8 +391,8 @@ For one boot of your own board, identify: which line is the last one printed by 
     ] },
     { q: 'A component you wrote in `components/sensor/` includes `driver/gpio.h` and the build says the header cannot be found, though `main` includes it without trouble. Why?', kind: 'code', choices: [
       { t: 'The component must list the GPIO driver in `REQUIRES` or `PRIV_REQUIRES`', ok: true, why: 'Only `main` gets every component implicitly. Other components see only the include paths of components they declare.' },
-      { t: 'Driver headers can only be included from `main`; other components must call through it', why: 'Any component can use any driver. What is missing is the declared dependency that puts the driver\'s include directory on this component\'s path.' },
-      { t: 'The GPIO driver must first be enabled in menuconfig for components other than `main`', why: 'The driver exists and `main` is using it in the same build. The difference between the two components is their declared dependencies.' },
+      { t: 'Driver headers can only be included from `main`; other components must call through it', why: 'Any component may include driver headers directly. Ask what differs between how `main` and an ordinary component obtain their include paths.' },
+      { t: 'The GPIO driver must first be enabled in menuconfig for components other than `main`', why: 'There is no such per-component switch, and `main` is using the driver in the same build without one.' },
     ] },
     { q: '`idf.py size` shows the app is 40 kB over its partition. Which action attacks the cause rather than moving the limit?', kind: 'concept', choices: [
       { t: 'Run `idf.py size-components` and shrink the largest contributors', ok: true, why: 'Per-component size shows where the bytes are (often logging strings, unused protocol stacks or tables), which is where reductions come from.' },
@@ -387,7 +425,7 @@ void loop() {
   delay(500);
 }` },
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'ESP-IDF', code: R`#include "freertos/FreeRTOS.h"
+    { t: 'code', lang: 'c', status: 'idf-built', caption: 'ESP-IDF', code: R`#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
 
@@ -406,9 +444,9 @@ void app_main(void)
     }
 }`, explain: [
       { lines: '1-2', md: 'FreeRTOS headers. `FreeRTOS.h` must come before any other FreeRTOS header.' },
-      { lines: '9', md: '`gpio_reset_pin` returns the pad to plain GPIO function. Some pads power up routed to another peripheral (JTAG, for instance), and this undoes that.' },
-      { lines: '10', md: 'Enables the output driver for this pad. Underneath, one bit is set in the GPIO output-enable register.' },
-      { lines: '13,15', md: 'Writes one bit to the "set" or "clear" output register. The pin changes within a few CPU cycles.' },
+      { lines: '9', md: '`gpio_reset_pin` puts the pad in a known state: its IO MUX function is set to plain GPIO, input and output are disabled and the pull-up is enabled. Some pads power up routed to another peripheral (GPIO12–15 to JTAG, for instance), and this undoes that.' },
+      { lines: '10', md: 'Enables the output driver for this pad: one bit is written to `GPIO_ENABLE_W1TS`, and the GPIO matrix is told to drive the pad from the `GPIO_OUT` register.' },
+      { lines: '13,15', md: 'Writes one bit to `GPIO_OUT_W1TS` (set) or `GPIO_OUT_W1TC` (clear). The pin changes within a few CPU cycles; no driver task or interrupt is involved.' },
       { lines: '14,16', md: '`vTaskDelay` puts this task to sleep for a number of scheduler ticks. The CPU runs other tasks, or idles, until it wakes.' },
     ] },
 

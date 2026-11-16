@@ -512,7 +512,7 @@ If they had *disagreed*, that would be a finding: either the tool can write beyo
 2. In the 2024 and 2025 systems, the **MITRE eCTF bootloader** sits at the start of flash (\`0x10000000\`, \`0xE000\` bytes = 7 pages) and starts the team image at \`0x1000E000\`. It has two modes. **Update mode** is entered by resetting the board while holding **SW1** (in 2024 also the breakout board's Bootloader Button); the LED blinks blue and the bootloader accepts a new image over serial. Otherwise it starts the installed image${src('2025 bootloader', S.r25boot, '2024 bootloader', S.r24boot)}.
 3. Your image's startup code runs, then \`main\`.
 
-There are two builds of that bootloader. Design-phase boards ship **without** any bootloader; you install the unprotected \`insecure.bin\`. Attack-phase boards arrive with a keyed **secure bootloader** preinstalled, "which disables debug functionality". What the secure build checks, and how images for it are protected, is not published — only its externally visible behaviour is verified.`,
+There are two builds of that bootloader. Design-phase boards ship **without** any bootloader; you install the unprotected \`insecure.bin\`. Attack-phase boards arrive with a keyed **secure bootloader** preinstalled, "which disables debug functionality"${src('2025 secure-bootloader removal', S.r25sbl)}. What the secure build checks, and how images for it are protected, is not published — only its externally visible behaviour is verified.`,
 
     { t: 'widget', name: 'boot-sequence', props: { platform: 'max78000' }, caption: 'Step the boot sequence. Mark each stage as "verified from a source" or "check the user guide" — the widget shows which is which.' },
 
@@ -589,7 +589,7 @@ Limits you can already reason about from verified facts:
 
 On the MAX78000 a pin is described by one structure and configured by one call. The LED and button tables below are the ones in the \`FTHR_RevA\` board support package${src('board.c', S.maxBoardC, 'gpio.h', S.maxGpio)}.`,
 
-    { t: 'code', lang: 'c', status: 'reviewed', caption: 'MAX78000FTHR: red LED and button SW1 with the MSDK GPIO driver. Names and fields were checked against gpio.h, uart.h and board.c on the MSDK main branch; the eCTF years pin older tags (v2023_06, v2024_02), so check the same headers at your tag. Not compiled or run here.', code: String.raw`#include "mxc_device.h"
+    { t: 'code', lang: 'c', status: 'reviewed', caption: 'MAX78000FTHR: the red LED (P2.0) and the push-button on P0.2 with the MSDK GPIO driver. Names and fields were checked against gpio.h, uart.h and board.c on the MSDK main branch; the eCTF years pin older tags (v2023_06, v2024_02), so check the same headers at your tag. Not compiled or run here.', code: String.raw`#include "mxc_device.h"
 #include "gpio.h"
 #include "uart.h"
 

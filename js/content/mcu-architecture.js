@@ -18,8 +18,10 @@ architectures used by this course's hardware: Arm Cortex-M and RISC-V.
 Each lesson begins with something that goes wrong in practice and ends with a problem that needs the idea in a new
 setting. The interactive tools are models: they simplify, and each says how. The C exercises run on **Bench-MCU**, a
 fictional teaching target whose registers match no real chip; the habits transfer, the addresses do not. Facts about
-the ESP32, MAX78000 and MSPM0L2228 come from vendor SDK sources; where a number lives only in a datasheet, the text
-says so and tells you where to look. Nothing here was measured on physical hardware.`,
+the ESP32 and MSPM0L2228 come from vendor SDK sources, the TI datasheet (SLASF94A) and technical reference manual
+(SLAU847), and Espressif's datasheets. Facts about the MAX78000 come from Analog Devices' SDK sources only: its
+datasheet could not be read when this course's facts were checked, so where a MAX78000 number lives only in the
+datasheet, the text says so and tells you where to look. Nothing here was measured on physical hardware.`,
 
   skills: [
     { id: 'mcu-sk-classify', name: 'Classify a part as MCU, MPU, SoC or module and say what the board must add', track: 'hardware' },
@@ -165,8 +167,8 @@ says so and tells you where to look. Nothing here was measured on physical hardw
       causes: 'Startup code is not copying `.data` from flash to RAM: symbol names do not match the linker script, a custom reset handler skips it, or the image was linked with the wrong RAM base.',
       fix: 'Compare the startup file\'s symbols with the linker script. In the map file, check that `.data` has a RAM address and a flash load address.' },
     { symptom: 'Firmware faults immediately after reset, before main', area: 'Linker',
-      causes: 'The image was linked for different flash or RAM addresses than the chip or bootloader uses (for example another chip\'s RAM base and size reused on an MSPM0L2228, whose linker file puts SRAM at `0x2020_0000`, or an application linked at the start of flash but loaded after a bootloader).',
-      fix: 'Decode the first two words of the image: the stack pointer must lie in real RAM and the reset vector inside the region the image is loaded to.' },
+      causes: 'The image was linked for different flash or RAM addresses than the chip or bootloader uses (for example a 128 KB RAM region from another chip reused on an MSPM0L2228, which has 32 KB, so the initial stack pointer lands outside RAM; the base `0x2000_0000` is not the problem there, because that chip maps the same 32 KB at `0x2000_0000`, `0x2010_0000` and `0x2020_0000` with different error checking. Or an application linked at the start of flash but loaded after a bootloader).',
+      fix: 'Decode the first two words of the image: the stack pointer must lie in real RAM (check base and length against the datasheet memory map) and the reset vector inside the region the image is loaded to.' },
     { symptom: 'Application works after a bootloader jump until its first interrupt', area: 'Boot',
       causes: 'The vector table base still points at the bootloader\'s table, or the bootloader left its own interrupts enabled.',
       fix: 'Before jumping: disable and clear interrupts, set VTOR to the application\'s table, load its initial stack pointer, then branch to its reset handler.' },
@@ -198,8 +200,9 @@ says so and tells you where to look. Nothing here was measured on physical hardw
     { org: 'Arm', title: 'CMSIS 6 (Cortex-M core headers)', url: 'https://github.com/ARM-software/CMSIS_6', note: 'Definitions of NVIC, SCB, SysTick and MPU registers.' },
     { org: 'RISC-V International', title: 'RISC-V ISA manual sources (unprivileged and privileged)', url: 'https://github.com/riscv/riscv-isa-manual' },
     { org: 'RISC-V International', title: 'RISC-V specifications', url: 'https://riscv.org/specifications/', note: 'Not load-tested when this course was written.' },
-    { org: 'Espressif', title: 'ESP32 Technical Reference Manual', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf', note: 'Register tables, clock tree, eFuse, IO MUX. URL not load-tested; if it has moved, search Espressif\'s documentation site.' },
-    { org: 'Espressif', title: 'ESP32 datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'Pin list, strapping pins, electrical characteristics. URL not load-tested.' },
+    { org: 'Espressif', title: 'ESP32 Technical Reference Manual', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_technical_reference_manual_en.pdf', note: 'Register tables, clock tree, eFuse, IO MUX. URL loads (redirects to documentation.espressif.com); v5.9 was read.' },
+    { org: 'Espressif', title: 'ESP32 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32_datasheet_en.pdf', note: 'Pin list, strapping pins, electrical characteristics (v5.3: section 5, Tables 5-1 and 5-3), ADC (section 4.9.1, Table 4-4). URL loads.' },
+    { org: 'Espressif', title: 'ESP32-S3 Series Datasheet', url: 'https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf', note: 'Names the core: Xtensa LX7 dual-core (v2.2).' },
     { org: 'Espressif', title: 'ESP-IDF v6.1 sources: ESP32 address map (soc.h)', url: 'https://github.com/espressif/esp-idf/blob/v6.1/components/soc/esp32/include/soc/soc.h' },
     { org: 'Espressif', title: 'ESP-IDF v6.1: GPIO restrictions on the original ESP32', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/api-reference/peripherals/gpio/esp32.inc' },
     { org: 'Espressif', title: 'ESP-IDF v6.1: partition tables', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/api-guides/partition-tables.rst' },
@@ -211,7 +214,12 @@ says so and tells you where to look. Nothing here was measured on physical hardw
     { org: 'Texas Instruments', title: 'MSPM0 SDK', url: 'https://github.com/TexasInstruments/mspm0-sdk' },
     { org: 'Texas Instruments', title: 'MSPM0L222x device header', url: 'https://github.com/TexasInstruments/mspm0-sdk/blob/main/source/ti/devices/msp/m0p/mspm0l222x.h' },
     { org: 'Texas Instruments', title: 'MSPM0L2228 linker command file', url: 'https://github.com/TexasInstruments/mspm0-sdk/blob/main/source/ti/devices/msp/m0p/linker_files/ticlang/mspm0l2228.cmd' },
-    { org: 'Texas Instruments', title: 'MSPM0L2228 product page (datasheet and technical reference manual)', url: 'https://www.ti.com/product/MSPM0L2228', note: 'Not load-tested when this course was written.' },
+    { org: 'Texas Instruments', title: 'MSPM0L2228 product page', url: 'https://www.ti.com/product/MSPM0L2228' },
+    { org: 'Texas Instruments', title: 'MSPM0L222x, MSPM0L122x Mixed-Signal Microcontrollers datasheet (SLASF94A)', url: 'https://www.ti.com/lit/ds/symlink/mspm0l2228.pdf', note: 'Features (p.1): 32 MHz, 1.62 V to 3.6 V. Table 8-4: memory map, including the three SRAM views and two flash banks. Sections 8.19 to 8.21: TRNG, AES, keystore.' },
+    { org: 'Texas Instruments', title: 'MSPM0 L-Series 32MHz Microcontrollers Technical Reference Manual (SLAU847)', url: 'https://www.ti.com/lit/pdf/slau847', note: 'Sections 1.4.2 and 1.4.3: boot configuration, SWD security levels, static write protection, bootstrap loader.' },
+    { org: 'Texas Instruments', title: 'LP-MSPM0L2228 LaunchPad', url: 'https://www.ti.com/tool/LP-MSPM0L2228', note: 'The purchasable board with an on-board XDS110.' },
+    { org: 'MITRE', title: 'eCTF 2026 rules: the MSP-LITO-L2228 board', url: 'https://rules.ectf.mitre.org/2026/getting_started/mspm0l2228.html', note: 'The 2026 competition board; custom, not sold.' },
+    { org: 'MITRE', title: 'eCTF 2026 rules: detailed specifications (flash layout)', url: 'https://rules.ectf.mitre.org/2026/specs/detailed_specs.html' },
     { org: 'MITRE', title: '2025 eCTF insecure example: decoder linker script (MAX78000)', url: 'https://github.com/mitre-cyber-academy/2025-ectf-insecure-example/blob/master/decoder/firmware.ld' },
     { org: 'MITRE', title: '2026 eCTF insecure example: firmware linker script (MSPM0L2228)', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example/blob/release/firmware/firmware.ld' },
   ],

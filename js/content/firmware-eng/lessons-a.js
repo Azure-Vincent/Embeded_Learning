@@ -213,10 +213,10 @@ One sound design: an RX interrupt feeding a ring buffer sized for the erase time
   ],
   quiz: [
     { q: 'Why does the keep-one-slot-empty ring buffer need no interrupt disabling when an ISR produces and the main loop consumes, on a single-core 32-bit MCU?', kind: 'concept', choices: [
-      { t: 'Each index is written by exactly one side, and a 16- or 32-bit index is read or written in one instruction', ok: true, why: 'With one writer per variable there is no read-modify-write sequence that the other side can corrupt, and single-instruction access means no half-updated value is ever visible.' },
-      { t: 'Because `volatile` makes accesses atomic', why: '`volatile` only forces the compiler to perform each access; it does nothing to stop an interrupt arriving between a read and the following write.' },
-      { t: 'Because interrupts are automatically disabled while the main loop runs', why: 'They are not: an enabled interrupt can pre-empt the main loop between any two instructions, which is the whole reason the question arises.' },
-      { t: 'Because the array itself is `static`', why: 'Storage class decides where the array lives and who can name it, not whether two contexts can safely update shared indices.' },
+      { t: 'Each index has exactly one writer, and reading or writing it is a single instruction', ok: true, why: 'With one writer per variable there is no read-modify-write sequence that the other side can corrupt, and single-instruction access means no half-updated value is ever visible.' },
+      { t: 'Because the indices are declared `volatile`, which makes each read-modify-write of them atomic', why: '`volatile` only forces the compiler to perform each access; it does nothing to stop an interrupt arriving between a read and the following write.' },
+      { t: 'Because the CPU automatically holds interrupts off while main-loop code is touching the buffer', why: 'They are not: an enabled interrupt can pre-empt the main loop between any two instructions, which is the whole reason the question arises.' },
+      { t: 'Because the array is `static`, so only one context can reach it at a time', why: 'Storage class decides where the array lives and who can name it, not whether two contexts can safely update shared indices.' },
     ] },
     { q: 'A 32-slot keep-one-empty buffer has `head = 2`, `tail = 30`. How many bytes are waiting?', kind: 'code', choices: [
       { t: '4', ok: true, why: '(2 − 30) & 31 = (−28) & 31 = 4: indices 30, 31, 0 and 1 are occupied.' },
@@ -225,10 +225,10 @@ One sound design: an RX interrupt feeding a ring buffer sized for the erase time
       { t: '32', why: 'A keep-one-empty buffer can never report more than size − 1, and here the indices are only four apart.' },
     ] },
     { q: 'Your command parser uses drop-newest overflow. A burst overflows the buffer in the middle of a line. What must the *line parser* do to stay correct?', kind: 'arch', choices: [
-      { t: 'Nothing special: the truncated line fails its own validation or is rejected as over-long, and parsing resynchronises at the next newline', ok: true, why: 'A gap inside a delimiter-framed stream damages at most the lines it touches; the next delimiter restores alignment, provided damaged lines are rejected rather than executed.' },
-      { t: 'Reset the microcontroller, since the stream is now corrupt', why: 'A reset loses all state for a recoverable condition. Delimiter framing exists so that one damaged message does not poison the following ones.' },
-      { t: 'Execute the partial line, because some of a command is better than none', why: 'A truncated command is a different command. `PIN 49` is not a weaker form of `PIN 4921`, and `ERASE 1` is not a safe fraction of `ERASE 10`.' },
-      { t: 'Switch to overwrite-oldest so that nothing is lost', why: 'Overwrite-oldest still loses bytes, just older ones, and it destroys the start of the line that was being assembled.' },
+      { t: 'Reject the damaged line like any malformed one and carry on from the next newline', ok: true, why: 'A gap inside a delimiter-framed stream damages at most the lines it touches; the next delimiter restores alignment, provided damaged lines are rejected rather than executed.' },
+      { t: 'Reset the microcontroller, since every byte after the gap is now out of step', why: 'A reset loses all state for a recoverable condition. Delimiter framing exists so that one damaged message does not poison the following ones.' },
+      { t: 'Execute what arrived of the line, because part of a command is better than losing it entirely', why: 'A truncated command is a different command. `PIN 49` is not a weaker form of `PIN 4921`, and `ERASE 1` is not a safe fraction of `ERASE 10`.' },
+      { t: 'Switch the buffer to overwrite-oldest for the rest of the burst so that nothing is lost', why: 'Overwrite-oldest still loses bytes, just older ones, and it destroys the start of the line that was being assembled.' },
     ] },
     { q: 'What is wrong with this receive handler?', kind: 'security', code: C`#define BUF 32
 static uint8_t payload[BUF];
@@ -238,21 +238,21 @@ void on_frame(const uint8_t *in, uint8_t n)   /* n bytes received */
     uint8_t len = in[0];
     if (len <= n) memcpy(payload, &in[1], len);
 }`, choices: [
-      { t: '`len` is checked against the received count but not against `BUF`, so a 200-byte frame overflows `payload`', ok: true, why: 'Two bounds apply to every copy: the source size and the destination size. Only the source was checked (and loosely: the length byte itself should not count).' },
-      { t: '`memcpy` cannot be used in firmware', why: '`memcpy` is fine and usually optimal; the issue is the size it is given, not the function.' },
-      { t: '`len` should be `int` so that negative lengths can be rejected', why: 'A byte from the wire is 0–255; widening the type adds no check. The missing comparison is against the capacity of the destination.' },
-      { t: 'Nothing: comparing with `n` guarantees the copy is safe', why: 'It guarantees the copy does not read past what was received. It says nothing about where the bytes are written to.' },
+      { t: '`len` is never compared with `BUF`, so a long frame overflows `payload`', ok: true, why: 'Two bounds apply to every copy: the source size and the destination size. Only the source was checked (and loosely: the length byte itself should not count).' },
+      { t: '`memcpy` must not be used on received data; a byte-by-byte loop is required', why: '`memcpy` is fine and usually optimal; the issue is the size it is given, not the function.' },
+      { t: '`len` should be an `int`, so that a negative length from the wire can be detected and rejected', why: 'A byte from the wire is 0–255; widening the type adds no check. The missing comparison is against the capacity of the destination.' },
+      { t: 'Nothing: comparing `len` with `n` already guarantees the copy stays in bounds', why: 'It guarantees the copy does not read past what was received. It says nothing about where the bytes are written to.' },
     ] },
     { q: 'When is zero-copy reception worth its complexity?', kind: 'arch', choices: [
-      { t: 'For bulk data such as images or audio, where copying each byte several times costs real CPU time and RAM', ok: true, why: 'The cost of copying scales with data volume; ownership bugs scale with design complexity. For large, fast streams the first dominates.' },
-      { t: 'Always: copying data is a sign of poor design', why: 'For low-rate command traffic a copy costs microseconds and buys simple ownership. Removing it adds lifetime rules that can go wrong for no measurable gain.' },
-      { t: 'Never on a microcontroller, because pointers are unsafe', why: 'DMA into a frame buffer handed on by pointer is a standard MCU technique; it needs clear ownership rules, not avoidance.' },
-      { t: 'Only when the data is text', why: 'The data\'s meaning is irrelevant to the trade-off; its volume and rate are what matter.' },
+      { t: 'For bulk data such as images or audio, where the copies dominate CPU time and RAM', ok: true, why: 'The cost of copying scales with data volume; ownership bugs scale with design complexity. For large, fast streams the first dominates.' },
+      { t: 'Always: every copy between buffers is wasted work, so a good design has none', why: 'For low-rate command traffic a copy costs microseconds and buys simple ownership. Removing it adds lifetime rules that can go wrong for no measurable gain.' },
+      { t: 'Never on a microcontroller, because handing out pointers into driver buffers cannot be made safe', why: 'DMA into a frame buffer handed on by pointer is a standard MCU technique; it needs clear ownership rules, not avoidance.' },
+      { t: 'Only for text protocols, because binary data has to be copied to be parsed', why: 'The data\'s meaning is irrelevant to the trade-off; its volume and rate are what matter.' },
     ] },
     { q: 'A ring buffer index is declared `uint16_t` on an **8-bit** AVR. Why is the lock-free SPSC argument no longer valid?', kind: 'concept', choices: [
-      { t: 'A 16-bit read takes two instructions there, so the main loop can read one half, be interrupted, and combine it with the other half of a different value', ok: true, why: 'Atomic single-instruction access to each index is a precondition of the scheme. A torn read of 0x00FF→0x0100 can yield 0x0000 or 0x01FF.' },
-      { t: 'AVR has no interrupts', why: 'It has them; the problem is precisely that an interrupt can land between the two byte reads.' },
-      { t: '`uint16_t` does not exist on 8-bit CPUs', why: 'The type exists; the compiler implements it with multi-instruction sequences, which is the hazard.' },
+      { t: 'A 16-bit read takes two instructions there, so an interrupt between them yields a torn, half-updated value', ok: true, why: 'Atomic single-instruction access to each index is a precondition of the scheme. A torn read of 0x00FF→0x0100 can yield 0x0000 or 0x01FF.' },
+      { t: 'An AVR has no way to mask interrupts, so the producer can never be held off', why: 'It can mask them; and the scheme was supposed to work *without* masking. The problem is what an interrupt can do between the two byte reads of one index.' },
+      { t: '`uint16_t` does not exist on 8-bit CPUs, so the index silently becomes 8 bits wide and wraps at 256', why: 'The type exists; the compiler implements it with multi-instruction sequences, which is the hazard.' },
     ] },
   ],
 };
@@ -396,10 +396,10 @@ FreeRTOS can also check for overflow at each context switch (\`configCHECK_FOR_S
 
     { t: 'predict', q: 'A bare-metal Cortex-M0+ program has its stack at the top of RAM, growing down towards `.bss`. A deep call chain pushes the stack pointer 40 bytes into `.bss`. No MPU, no stack limit register. What happens at that moment?',
       choices: [
-        { t: 'Nothing visible. The pushes overwrite whichever variables live there; the symptom appears later, somewhere else', ok: true, why: 'RAM is RAM: a store below the intended stack limit is an ordinary, legal write. The variables it lands on now hold return addresses and saved registers, and the functions that own them misbehave later.' },
-        { t: 'A HardFault, because the CPU detects the stack overflow', why: 'A plain Cortex-M0+ has no stack-limit check. A fault only occurs if the stack pointer leaves RAM altogether, or later when corrupted data is used as an address.' },
-        { t: 'The compiler prevents this at build time', why: 'The compiler reserves frames per function but does not know the run-time call depth, the interrupt nesting or how much RAM the linker script granted the stack.' },
-        { t: 'The stack wraps to the top of RAM', why: 'The stack pointer is an ordinary register being decremented; it does not wrap at a region boundary it has never been told about.' },
+        { t: 'Nothing visible: the pushes overwrite whatever variables live there', ok: true, why: 'RAM is RAM: a store below the intended stack limit is an ordinary, legal write. The variables it lands on now hold return addresses and saved registers, and the functions that own them misbehave later.' },
+        { t: 'A HardFault, because the CPU detects that the stack pointer has left the stack region', why: 'A plain Cortex-M0+ has no stack-limit check. A fault only occurs if the stack pointer leaves RAM altogether, or later when corrupted data is used as an address.' },
+        { t: 'It cannot happen: the compiler checks total stack depth against the linker script at build time', why: 'The compiler reserves frames per function but does not know the run-time call depth, the interrupt nesting or how much RAM the linker script granted the stack.' },
+        { t: 'The stack pointer wraps round to the top of RAM and overwrites the oldest frames', why: 'The stack pointer is an ordinary register being decremented; it does not wrap at a region boundary it has never been told about.' },
       ],
       reveal: 'This is why stack overflows are so hard to diagnose: the fault is silent and the damage appears in an unrelated module. Typical symptoms: a global that changes "by itself", a crash on *return* from a function (its saved return address was overwritten by someone else\'s data, or the other way round), behaviour that changes when you add an unrelated variable (the layout of `.bss` moved), and failures that only occur when an interrupt arrives at the deepest point of the main code.' },
 
@@ -442,37 +442,37 @@ A bare-metal firmware has a main loop whose deepest path is 380 bytes (from \`.s
   ],
   quiz: [
     { q: 'A `.su` line reads `parser.c:40:6:handle_packet  72  dynamic`. What does it tell you?', kind: 'code', choices: [
-      { t: 'The fixed part of the frame is 72 bytes, and the function also adjusts the stack by an amount decided at run time', ok: true, why: '"dynamic" means a VLA or `alloca`: 72 is a floor, and the real usage depends on a run-time value you must bound yourself.' },
-      { t: 'The function uses at most 72 bytes', why: 'That would be the meaning of `static` (or `dynamic,bounded`). Plain `dynamic` gives no upper limit.' },
-      { t: 'The function uses 72 bytes of heap', why: '`-fstack-usage` reports stack frames only; heap allocations do not appear in it.' },
-      { t: 'The function is called 72 times', why: 'The number is a size in bytes; the file contains no call counts.' },
+      { t: 'The fixed part of the frame is 72 bytes; a run-time amount is added on top', ok: true, why: '"dynamic" means a VLA or `alloca`: 72 is a floor, and the real usage depends on a run-time value you must bound yourself.' },
+      { t: 'The function never uses more than 72 bytes of stack, whatever its arguments are', why: 'That would be the meaning of `static` (or `dynamic,bounded`). Plain `dynamic` gives no upper limit.' },
+      { t: 'The function allocates 72 bytes dynamically, that is, from the heap', why: '`-fstack-usage` reports stack frames only; heap allocations do not appear in it.' },
+      { t: 'The function is reached from 72 call sites, found by dynamic analysis', why: 'The number is a size in bytes; the file contains no call counts.' },
     ] },
     { q: 'Why does a stack high-water mark from testing not *prove* the stack is large enough?', kind: 'concept', choices: [
-      { t: 'It records only the paths and interrupt timings that occurred during the test, not the worst that can occur', ok: true, why: 'The deepest case needs the deepest call chain and the worst interrupt nesting to coincide; a test may never produce that coincidence.' },
-      { t: 'Painting patterns are unreliable because RAM forgets them', why: 'SRAM holds its contents as long as it is powered. The limitation is coverage, not retention.' },
-      { t: 'High-water marks only work under an RTOS', why: 'Painting works on any stack region, including the single bare-metal stack; the RTOS merely automates it.' },
+      { t: 'It records only the call paths and interrupt timings that happened to occur during the test', ok: true, why: 'The deepest case needs the deepest call chain and the worst interrupt nesting to coincide; a test may never produce that coincidence.' },
+      { t: 'The painted pattern is unreliable, because SRAM cells drift back to zero during a long run', why: 'SRAM holds its contents as long as it is powered. The limitation is coverage, not retention.' },
+      { t: 'A high-water mark is only meaningful under an RTOS, which is what does the painting', why: 'Painting works on any stack region, including the single bare-metal stack; the RTOS merely automates it.' },
     ] },
     { q: 'A global `config.baud` changes from 115200 to a value that looks like a code address (`0x00002A41`). Nothing writes it. Most likely cause?', kind: 'concept', choices: [
-      { t: 'The stack grew into `.data`/`.bss` and a pushed return address landed on the variable', ok: true, why: 'A value that looks like a flash address with the Thumb bit set, in a variable nobody assigns, is the fingerprint of a saved LR written by a function call far below the intended stack limit.' },
-      { t: 'Cosmic rays', why: 'Possible in principle, but a random bit flip does not produce a well-formed code address. Start with the explanation that predicts the exact value seen.' },
-      { t: 'The baud rate register overflowed', why: 'The variable is in RAM and holds what was last stored there; a peripheral register cannot overflow into it.' },
-      { t: 'The compiler optimised the variable away', why: 'An optimised-away variable has no storage to corrupt and would not show a changing value.' },
+      { t: 'The stack grew down into `.data`/`.bss` and a pushed return address landed on the variable', ok: true, why: 'A value that looks like a flash address with the Thumb bit set, in a variable nobody assigns, is the fingerprint of a saved LR written by a function call far below the intended stack limit.' },
+      { t: 'A radiation-induced bit flip in the RAM cell that holds the variable', why: 'Possible in principle, but a random bit flip does not produce a well-formed code address. Start with the explanation that predicts the exact value seen.' },
+      { t: 'The UART baud-rate register overflowed and the excess was written back to the variable', why: 'The variable is in RAM and holds what was last stored there; a peripheral register cannot overflow into it.' },
+      { t: 'The compiler optimised the variable away, so the debugger shows a neighbouring value', why: 'An optimised-away variable has no storage to corrupt and would not show a changing value.' },
     ] },
     { q: 'Which change reduces worst-case stack use *without* making a function non-reentrant?', kind: 'code', choices: [
-      { t: 'Have the caller pass in a buffer it owns, instead of declaring a large local array', ok: true, why: 'The memory then lives wherever the caller decides (static, or its own context struct) and each caller can supply a different one, so concurrent use stays safe.' },
-      { t: 'Declare the large local array `static`', why: 'That removes it from the stack but makes every call share one buffer: two callers (main loop and an ISR, or two tasks) would overwrite each other.' },
-      { t: 'Compile with `-O0`', why: 'Unoptimised code usually uses more stack, since every temporary gets a slot and nothing is kept in registers.' },
-      { t: 'Mark the function `inline`', why: 'Inlining merges the frame into the caller\'s; the bytes are still needed, now in a larger caller frame.' },
+      { t: 'Have the caller pass in a buffer it owns', ok: true, why: 'The memory then lives wherever the caller decides (static, or its own context struct) and each caller can supply a different one, so concurrent use stays safe.' },
+      { t: 'Declare the large local array `static` inside the function', why: 'That removes it from the stack but makes every call share one buffer: two callers (main loop and an ISR, or two tasks) would overwrite each other.' },
+      { t: 'Compile that file with `-O0` so that nothing is inlined', why: 'Unoptimised code usually uses more stack, since every temporary gets a slot and nothing is kept in registers.' },
+      { t: 'Mark the function `inline` so that it has no frame of its own', why: 'Inlining merges the frame into the caller\'s; the bytes are still needed, now in a larger caller frame.' },
     ] },
     { q: 'Under FreeRTOS, where do interrupt handlers get their stack on a Cortex-M port?', kind: 'arch', choices: [
       { t: 'From the main stack (MSP), separate from every task stack', ok: true, why: 'Cortex-M switches to the main stack pointer for handler mode, so each task stack only needs room for the automatically pushed exception frame, not for the handlers\' own frames.' },
-      { t: 'From the heap, allocated on each interrupt', why: 'Allocating memory on interrupt entry would be slow and could fail; no port does that.' },
-      { t: 'Interrupt handlers do not use a stack', why: 'They are functions: they save registers and have locals like any other.' },
+      { t: 'From a block allocated on the heap each time an interrupt is taken', why: 'Allocating memory on interrupt entry would be slow and could fail; no port does that.' },
+      { t: 'From no stack at all: handlers work with registers only', why: 'They are functions: they save registers and have locals like any other, and those need memory.' },
     ] },
     { q: 'Why do many embedded coding standards prohibit recursion?', kind: 'concept', choices: [
-      { t: 'With recursion the maximum stack depth depends on run-time data, so it cannot be bounded from the call graph', ok: true, why: 'A finite, acyclic call graph with static frames yields a computable worst case. A cycle in the graph makes the depth a property of the input.' },
-      { t: 'Recursive functions are slower than loops on ARM', why: 'Speed is not the concern and is often comparable; predictability of memory use is.' },
-      { t: 'C compilers for microcontrollers do not support recursion', why: 'They support it fully, which is exactly why a rule is needed to keep it out.' },
+      { t: 'The maximum depth then depends on run-time data and cannot be bounded from the call graph', ok: true, why: 'A finite, acyclic call graph with static frames yields a computable worst case. A cycle in the graph makes the depth a property of the input.' },
+      { t: 'Recursive calls are far slower than loop iterations on Cortex-M, which is tuned for loops', why: 'Speed is not the concern and is often comparable; predictability of memory use is.' },
+      { t: 'C compilers for microcontrollers do not support recursion reliably, so the rule only documents that fact', why: 'They support it fully, which is exactly why a rule is needed to keep it out.' },
     ] },
   ],
 };
@@ -615,9 +615,9 @@ Deriving outputs from the state in one place, every loop pass, is more robust th
 
     { t: 'predict', q: 'The lock is in `LOCKOUT` with 20 seconds remaining. An attacker who has guessed the correct PIN sends it. Using the code above, what happens?',
       choices: [
-        { t: 'Nothing: the event is ignored and the lockout continues for its full duration', ok: true, why: 'The `LOCK_LOCKOUT` case reacts only to TICK. A PIN event falls through to `break` with no change of state.' },
-        { t: 'The lock opens, because a correct PIN always wins', why: 'Then lockout would cost an attacker nothing: they could keep guessing at full speed and be let in the moment they hit the right value.' },
-        { t: 'The lockout timer restarts at 30 seconds', why: 'There is no code in that case that writes `deadline_ms` on a PIN event. (Restarting on every attempt is a legitimate design, but it is not this one, and it lets an attacker keep the legitimate user out indefinitely.)' },
+        { t: 'Nothing: the event is ignored and the lockout runs on', ok: true, why: 'The `LOCK_LOCKOUT` case reacts only to TICK. A PIN event falls through to `break` with no change of state.' },
+        { t: 'The lock opens, because a correct PIN is accepted in every state', why: 'Then lockout would cost an attacker nothing: they could keep guessing at full speed and be let in the moment they hit the right value.' },
+        { t: 'The PIN is refused and the lockout timer restarts at 30 seconds', why: 'There is no code in that case that writes `deadline_ms` on a PIN event. (Restarting on every attempt is a legitimate design, but it is not this one, and it lets an attacker keep the legitimate user out indefinitely.)' },
       ],
       reveal: 'The lockout only limits the guess rate if it also rejects *correct* guesses. The test `test_correct_pin_is_refused_during_lockout` in `tests/test_lock.c` pins that behaviour down so that nobody "fixes" it later.' },
 
@@ -709,20 +709,20 @@ Before writing any code: list the new events and states, draw the diagram, and f
   ],
   quiz: [
     { q: 'What is the fundamental problem with `delay_ms(5000)` in a main loop?', kind: 'concept', choices: [
-      { t: 'For five seconds the loop cannot react to any other event: input is missed, other timeouts are late, the watchdog is not fed', ok: true, why: 'A delay is the CPU deliberately refusing to do anything else. Every other responsibility of the loop is suspended for its duration.' },
-      { t: 'It wastes power', why: 'It may, but a busy-wait and a sleep-based delay differ in power while sharing the real defect: unresponsiveness.' },
-      { t: 'Delays are inaccurate', why: 'Accuracy can be made as good as the clock. The defect remains even with a perfect delay.' },
-      { t: 'It uses too much stack', why: 'A delay loop needs almost no stack; its cost is time during which nothing else runs.' },
+      { t: 'For five seconds the loop cannot react to anything else', ok: true, why: 'A delay is the CPU deliberately refusing to do anything else. Every other responsibility of the loop is suspended for its duration.' },
+      { t: 'It keeps the CPU out of sleep and so wastes five seconds of battery power', why: 'It may, but a busy-wait and a sleep-based delay differ in power while sharing the real defect: unresponsiveness.' },
+      { t: 'Software delays drift, so the five seconds are not accurate', why: 'Accuracy can be made as good as the clock. The defect remains even with a perfect delay.' },
+      { t: 'A delay loop that long uses too much stack', why: 'A delay loop needs almost no stack; its cost is time during which nothing else runs.' },
     ] },
     { q: 'A machine stores `deadline = now + 5000` and later tests `if (now >= deadline)`. `now` is a `uint32_t` millisecond counter. When does this fail?', kind: 'code', choices: [
-      { t: 'When `now + 5000` wraps past 2³²: the deadline becomes a small number and the test is true immediately', ok: true, why: 'Near the wrap the sum overflows to a small value, so the very next comparison sees `now >= deadline` and the timeout fires at once, after about 49.7 days of uptime.' },
-      { t: 'Never: unsigned arithmetic cannot overflow', why: 'Unsigned arithmetic is well defined on overflow, but "well defined" means it wraps modulo 2³², which is exactly what breaks the comparison.' },
-      { t: 'Whenever the timeout is longer than 255 ms', why: 'A 32-bit counter has no 8-bit limit; the comparison is fine until the counter itself approaches its maximum.' },
+      { t: 'When `now + 5000` wraps past 2³², so the deadline is a small number', ok: true, why: 'Near the wrap the sum overflows to a small value, so the very next comparison sees `now >= deadline` and the timeout fires at once, after about 49.7 days of uptime.' },
+      { t: 'Never: unsigned arithmetic cannot overflow, so the comparison is always valid', why: 'Unsigned arithmetic is well defined on overflow, but "well defined" means it wraps modulo 2³², which is exactly what breaks the comparison.' },
+      { t: 'Whenever the timeout is longer than 255 ms, the largest value a tick byte can hold', why: 'A 32-bit counter has no 8-bit limit; the comparison is fine until the counter itself approaches its maximum.' },
     ] },
     { q: 'In a table-driven machine, what should the lookup do if the state variable holds a value outside the table?', kind: 'security', choices: [
-      { t: 'Detect it with a bounds check before indexing and force a defined safe state', ok: true, why: 'An out-of-range index reads whatever follows the table in flash and uses it as a state. Checking first turns memory corruption or a glitch into a controlled recovery.' },
-      { t: 'Nothing: an enum variable can only hold its enumerators', why: 'In C an enum is an integer and can hold any value its underlying type can, for example after corruption or a bad cast.' },
-      { t: 'Index the table anyway; the table is `const` so it is safe', why: '`const` protects the table from writes. It does not stop a read beyond its end from returning unrelated bytes.' },
+      { t: 'Bounds-check before indexing, and force a defined safe state', ok: true, why: 'An out-of-range index reads whatever follows the table in flash and uses it as a state. Checking first turns memory corruption or a glitch into a controlled recovery.' },
+      { t: 'Nothing: a variable of enum type can only ever hold one of its enumerators', why: 'In C an enum is an integer and can hold any value its underlying type can, for example after corruption or a bad cast.' },
+      { t: 'Index the table anyway: it is `const`, so an out-of-range read cannot do harm', why: '`const` protects the table from writes. It does not stop a read beyond its end from returning unrelated bytes.' },
     ] },
     { q: 'Which design keeps a state machine testable on a PC?', kind: 'arch', choices: [
       { t: 'The step function receives events and the current time as parameters and touches no hardware', ok: true, why: 'With all inputs passed in and outputs readable from the state, a test can drive any sequence, including time jumps, with no peripherals.' },
@@ -736,9 +736,9 @@ Before writing any code: list the new events and states, draw the diagram, and f
       { t: 'No delay: debouncing is instantaneous', why: 'Requiring stability over time necessarily costs that time. Latency is the price of rejecting bounce.' },
     ] },
     { q: 'You find firmware with flags `is_open`, `in_lockout`, `timer_running` and `alarm_on` instead of a state variable. What is the main risk?', kind: 'concept', choices: [
-      { t: 'Sixteen flag combinations exist but only a few are meaningful, and nothing prevents the code entering the others', ok: true, why: 'A single enum makes illegal states unrepresentable; independent booleans allow `is_open && in_lockout`, and behaviour in such combinations is whatever the if-chains happen to do.' },
-      { t: 'Booleans use more RAM than an enum', why: 'The difference is a few bytes and irrelevant next to the correctness problem.' },
-      { t: 'Flags are slower to test than a switch', why: 'Performance is comparable. The problem is the unreviewable set of reachable combinations.' },
+      { t: 'Sixteen flag combinations exist, only a few are meaningful, and nothing rules out the rest', ok: true, why: 'A single enum makes illegal states unrepresentable; independent booleans allow `is_open && in_lockout`, and behaviour in such combinations is whatever the if-chains happen to do.' },
+      { t: 'Four booleans use more RAM than one enum, which matters on a small MCU', why: 'The difference is a few bytes and irrelevant next to the correctness problem.' },
+      { t: 'Testing four separate flags in if-chains is much slower than one `switch`, so event deadlines get missed', why: 'Performance is comparable. The problem is the unreviewable set of reachable combinations.' },
     ] },
   ],
 };

@@ -255,30 +255,30 @@ void hal_gpio_write(hal_pin_t pin, bool level)
   ],
   quiz: [
     { q: 'In this lab, which file had to be written to move the application from the PC to Bench-MCU?', kind: 'arch', choices: [
-      { t: 'Only the HAL implementation; every file under `src/` was reused unchanged', ok: true, why: 'The application calls five functions declared in `hal.h`. A new target supplies those five and nothing else changes, which is why the host tests still describe the ported behaviour.' },
+      { t: 'Only the HAL implementation; `src/` was reused unchanged', ok: true, why: 'The application calls five functions declared in `hal.h`. A new target supplies those five and nothing else changes, which is why the host tests still describe the ported behaviour.' },
       { t: 'The state machine, because timers differ between targets', why: 'The state machine receives the time as a parameter and never touches a timer. Only the HAL knows how time is obtained.' },
       { t: 'The ring buffer, because Bench-MCU is 32-bit and the PC is 64-bit', why: 'The buffer uses fixed-width types (`uint8_t`, `uint16_t`) and behaves identically on both.' },
       { t: 'All of them: firmware must be rewritten for each MCU', why: 'That is what happens when logic and register access are mixed. Separating them is the purpose of the HAL.' },
     ] },
     { q: 'You change `>=` to `>` in the line receiver and run `make test`. The sanitizer aborts before the test\'s own `CHECK` reports anything. Why is that the better outcome?', kind: 'concept', choices: [
-      { t: 'It reports the exact faulting store, whereas the test would at best notice a wrong result later and might notice nothing', ok: true, why: 'An overflow by one byte often leaves results intact. The sanitizer checks the access itself, so detection does not depend on the damage being visible.' },
-      { t: 'Because sanitizer output is shorter', why: 'It is usually longer. Its value is precision: file, line and the object that was overrun.' },
-      { t: 'It is not better: tests should always finish', why: 'Continuing after memory corruption produces results that cannot be trusted; stopping at the first invalid access is the safer behaviour.' },
+      { t: 'It reports the faulting store itself; the test might notice a wrong result later, or nothing', ok: true, why: 'An overflow by one byte often leaves results intact. The sanitizer checks the access itself, so detection does not depend on the damage being visible.' },
+      { t: 'Because a sanitizer report is shorter and easier to read than a list of failed checks', why: 'It is usually longer. Its value is precision: file, line and the object that was overrun.' },
+      { t: 'It is not better: a test run should always finish so that every failing check gets reported', why: 'Continuing after memory corruption produces results that cannot be trusted; stopping at the first invalid access is the safer behaviour.' },
     ] },
     { q: 'In part 3b the instructions insist that the new test must fail before you implement `COUNT`. What would a pass at that point most likely mean?', kind: 'concept', choices: [
-      { t: 'The test is not being run or does not check what you think, so it would also "pass" with a broken implementation', ok: true, why: 'A test that cannot fail gives no evidence. Seeing it red first proves it is wired in and sensitive to the missing behaviour.' },
-      { t: 'The feature already exists', why: 'The command handler replies `ERR` to unknown commands; a correct test expecting a number cannot pass against that.' },
-      { t: 'The compiler optimised the test away', why: 'Tests with observable output and side effects are not removed by the optimiser.' },
+      { t: 'The test is not being run at all, or it does not check what you think it checks', ok: true, why: 'A test that cannot fail gives no evidence. Seeing it red first proves it is wired in and sensitive to the missing behaviour.' },
+      { t: 'The feature already exists somewhere in the command handler', why: 'The command handler replies `ERR` to unknown commands; a correct test expecting a number cannot pass against that.' },
+      { t: 'The compiler optimised the new test away because nothing uses its result', why: 'Tests with observable output and side effects are not removed by the optimiser.' },
     ] },
     { q: 'The Bench-MCU `hal_millis` counts one millisecond each time it is called and finds the timer\'s EXPIRED flag set. Under what condition does time run slow?', kind: 'code', choices: [
-      { t: 'When more than one timer period elapses between two calls: several expiries are counted as one', ok: true, why: 'A single flag cannot say how many times the timer expired. If the main loop stalls for 3 ms, only one millisecond is added.' },
-      { t: 'When the UART is transmitting', why: 'Transmission itself does not affect the timer; only the time the main loop spends away from `hal_millis` matters.' },
-      { t: 'Never: the timer hardware keeps exact time', why: 'The timer does, but the software count derived from polling its flag can miss expiries.' },
+      { t: 'When more than one timer period elapses between two calls', ok: true, why: 'A single flag cannot say how many times the timer expired. If the main loop stalls for 3 ms, only one millisecond is added.' },
+      { t: 'Whenever the UART is transmitting, because the transmitter shares the timer clock', why: 'Transmission itself does not affect the timer; only the time the main loop spends away from `hal_millis` matters.' },
+      { t: 'Never: the timer hardware keeps exact time, whatever the software does', why: 'The timer does, but the software count derived from polling its flag can miss expiries.' },
     ] },
     { q: 'Why does `test_app.c` link `port/hal_fake.c` while `test_lock.c` links no HAL at all?', kind: 'arch', choices: [
-      { t: '`lock.c` has no hardware dependency: events and time are parameters. `app.c` calls the HAL, so some implementation must be linked', ok: true, why: 'The dependency lists (`nm` `U` symbols) differ: `lock.o` needs nothing external; `app.o` needs the five `hal_` functions.' },
-      { t: 'The lock test is less important', why: 'Linking is determined by what a module references, not by the importance of its tests.' },
-      { t: 'A HAL can only be linked once per project', why: 'Each test is a separate program with its own link; any of them could link a HAL if its code needed one.' },
+      { t: '`lock.c` takes events and time as parameters; `app.c` calls the HAL, so one must be linked', ok: true, why: 'The dependency lists (`nm` `U` symbols) differ: `lock.o` needs nothing external; `app.o` needs the five `hal_` functions.' },
+      { t: 'The lock test is a quick smoke test, so the Makefile leaves the HAL out to save build time on every run', why: 'Linking is determined by what a module references, not by the importance of its tests.' },
+      { t: 'A HAL can be linked into only one program per project, and `test_app` already uses it', why: 'Each test is a separate program with its own link; any of them could link a HAL if its code needed one.' },
     ] },
   ],
   requirements: {

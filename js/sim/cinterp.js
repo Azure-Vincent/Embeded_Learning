@@ -641,6 +641,8 @@ function compile(source, opts = {}) {
     }
   }
   function regWrite(a, v, orig, n) {
+    if (a < 0x40000020 && a !== 0x40000010 && a !== 0x40000008 && v > 0xFFFF && REG_NAME.has(a))
+      warn(curLine, `${REG_NAME.get(a)} was written with bits 16-31 set (${hex8(v)}), but Bench-MCU has only pins 0-15: there is no such pin and those bits are ignored. Is a pin number out of range?`, 'gpio-hi');
     switch (a) {
       case 0x40000000: P.dir = v & 0xFFFF; return;
       case 0x40000004: setOut(v); return;
@@ -1274,7 +1276,7 @@ function compile(source, opts = {}) {
     const st = storer(lhs.ty, line), la = lhs.addr;
     if (op === '=') {
       const e = coerce(rv(rhs), lhs.ty, 'assignment', line);
-      if (rmw && !lhs.localRoot) return { ty: lhs.ty, ev: () => { const v = e(); tick(line); st(la(), v); return v; }, line, assign: true };
+      if (rmw && !lhs.localRoot) return { ty: lhs.ty, ev: () => { const v = e(); tick(line); const a = la(); if (a === W1C_REG) w1c(line); st(a, v); return v; }, line, assign: true };
       return { ty: lhs.ty, ev: () => { const v = e(); st(la(), v); return v; }, line, assign: true };
     }
     if (!isScalar(lhs.ty)) err(`'${op}' cannot be applied to '${typeStr(lhs.ty)}'`, line);
@@ -1283,11 +1285,13 @@ function compile(source, opts = {}) {
     const back = conv({ ty: r.ty, ev: r.ev }, lhs.ty).ev;
     if (!lhs.localRoot) { // interruptible between the load and the store
       if (post) return { ty: lhs.ty, ev: () => { const a = la(), old = L(a); tick(line); cur = old; st(a, back()); return old; }, line };
-      return { ty: lhs.ty, ev: () => { const a = la(), old = L(a); tick(line); cur = old; const v = back(); st(a, v); return v; }, line };
+      return { ty: lhs.ty, ev: () => { const a = la(), old = L(a); if (a === W1C_REG) w1c(line); tick(line); cur = old; const v = back(); st(a, v); return v; }, line };
     }
     if (post) return { ty: lhs.ty, ev: () => { const a = la(); const old = cur = L(a); st(a, back()); return old; }, line };
     return { ty: lhs.ty, ev: () => { const a = la(); cur = L(a); const v = back(); st(a, v); return v; }, line };
   }
+  const W1C_REG = REGISTERS.TIM_STATUS;
+  function w1c(line) { warn(line, 'TIM_STATUS is write-1-to-clear, and this statement reads it and writes the value back (a read-modify-write). That clears every flag that happened to be set, not only the one you meant. Write just the bit: TIM_STATUS = TIM_EXPIRED;', 'w1c'); }
   function findField(def, name) {
     for (const f of def.fields) {
       if (f.name === name) return { ty: f.ty, off: f.off };
@@ -2080,7 +2084,8 @@ function firstDiff(exp, got) {
 }
 /**
  * Run one c-lab test. test: inputs { stdin, gpioIn, uartRx, adc, ticks, maxSteps } and expectations
- * { stdout, stdoutIncludes, exit, regs, uartTx, uartTxIncludes, mem, gpioTrace, fault }.
+ * { stdout, stdoutIncludes, exit, regs, uartTx, uartTxIncludes, mem, gpioTrace, fault, noWarning }.
+ * noWarning: string or list; the test fails if any simulator warning contains one of them (e.g. 'write-only').
  * Returns { pass, message, result }.
  */
 export function runTest(source, test = {}) {
@@ -2106,6 +2111,10 @@ export function runTest(source, test = {}) {
   }
   if (test.uartTx != null && r.uartTx !== test.uartTx) fails.push(`expected UART transmit ${show(test.uartTx)}, got ${show(r.uartTx)}`);
   if (test.uartTxIncludes != null) for (const s of [].concat(test.uartTxIncludes)) if (!r.uartTx.includes(s)) fails.push(`expected the UART output to contain ${show(s)}, got ${show(r.uartTx)}`);
+  if (test.noWarning != null) for (const s of [].concat(test.noWarning)) {
+    const w = r.warnings.find((x) => x.msg.includes(s));
+    if (w) fails.push(`the simulator flagged a problem${w.line ? ` on line ${w.line}` : ''}: ${w.msg}`);
+  }
   if (test.gpioTrace) {
     const mask = Array.isArray(test.gpioTrace) ? 0xFFFF : test.gpioTrace.mask, want = Array.isArray(test.gpioTrace) ? test.gpioTrace : test.gpioTrace.values;
     const got = []; for (const g of r.gpioTrace) { const v = g.value & mask; if (!got.length ? true : got[got.length - 1] !== v) got.push(v); }

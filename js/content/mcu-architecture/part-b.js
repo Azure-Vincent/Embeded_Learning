@@ -197,7 +197,7 @@ int main(void)
 }
 `,
           tests: [
-            { name: 'pin 5 set, pin 0 cleared, pin 9 toggled, others unchanged', regs: { GPIO_OUT: 0x0332, GPIO_DIR: 0x0333 }, stdoutIncludes: 'OUT=332' },
+            { name: 'pin 5 set, pin 0 cleared, pin 9 toggled, others unchanged', regs: { GPIO_OUT: 0x0332, GPIO_DIR: 0x0333 }, stdoutIncludes: 'OUT=332', noWarning: 'write-only' },
             { name: 'the latch changes in three single-pin steps: set 5, clear 0, toggle 9', gpioTrace: [0x0113, 0x0133, 0x0132, 0x0332] },
           ],
           hints: [
@@ -223,12 +223,12 @@ int main(void)
           title: 'A read-modify-write that loses step edges',
           prompt: `Now make the bug from the opening problem happen. A timer interrupt produces one edge on the stepper STEP pin (pin 7) per period and checks, each time it runs, that the pin is still in the state it left it in. Main code blinks the status LED on pin 3 two hundred times.
 
-\`led_toggle()\` is written as the three steps the compiler really emits: load, modify, store. Bench-MCU only takes interrupts *between statements*, so writing the steps out is what lets the interrupt land in the gap, as it can on real hardware between any two instructions.
+\`led_toggle()\` is written as the three steps the compiler really emits: load, modify, store. Writing them out makes the gap visible; the interrupt can land in it, as it can on real hardware between any two instructions.
 
 1. Run the starter and read the \`lost=\` figure.
 2. Change \`led_toggle()\` so that no step edge can be lost. Do not change the handler, and do not disable interrupts.
 
-A one-line \`GPIO_OUT ^= (1u << 3);\` would also pass here, because the simulator never splits a statement. It is the same three instructions on a real CPU and is not a fix.`,
+A one-line \`GPIO_OUT ^= (1u << 3);\` is the same three instructions and is not a fix: Bench-MCU, like a real CPU, can take the interrupt between its load and its store, and the test still reports lost edges. \`GPIO_TOGGLE\` is write-only, so \`GPIO_TOGGLE |= ...\` (which reads it first) is rejected too.`,
           starter: R`#include <stdint.h>
 #include <stdio.h>
 
@@ -334,7 +334,7 @@ int main(void)
 }
 `,
           tests: [
-            { name: 'the LED still toggles 200 times, the stepper keeps stepping, and no edge is lost', stdoutIncludes: 'led_ok=1 stepping=1 lost=0' },
+            { name: 'the LED still toggles 200 times, the stepper keeps stepping, and no edge is lost', stdoutIncludes: 'led_ok=1 stepping=1 lost=0', noWarning: 'write-only' },
           ],
           hints: [
             'Run the starter first. \`lost\` is not zero. Between which two of the three statements in \`led_toggle()\` must the handler run for an edge to be undone?',
@@ -958,7 +958,7 @@ int main(void)
 }
 `,
           tests: [
-            { name: 'waits for three real expiries and leaves pin 0 high', regs: { GPIO_OUT: 0x0001 }, stdoutIncludes: 'toggles=3 waited=1' },
+            { name: 'waits for three real expiries and leaves pin 0 high', regs: { GPIO_OUT: 0x0001 }, stdoutIncludes: 'toggles=3 waited=1', noWarning: 'write-1-to-clear' },
             { name: 'stopped after 105 ticks: only two 40-tick periods have passed, so pin 0 has toggled twice and is low', ticks: 105, regs: { GPIO_OUT: 0x0000 } },
           ],
           hints: [
@@ -967,7 +967,7 @@ int main(void)
             'Put \`polls++\` in the loop body. The final \`waited=1\` is only printed if the three waits together polled at least 30 times, which they cannot do unless each wait really spans a timer period.',
             'To clear a write-1-to-clear bit, assign the mask: \`TIM_STATUS = TIM_EXPIRED;\`. Writing 0 does nothing.',
           ],
-          explain: 'With a 40-tick period and three waits, a correct program polls far more than 30 times, and the second test stops the simulation part-way to check that the toggles really are a period apart. If the flag is never cleared, only the first wait blocks. On real hardware the same bug shows as a "delay" that works once and then returns instantly. Note that \`TIM_STATUS |= TIM_EXPIRED;\` also passes here, but only because this register has a single flag; with two W1C flags it would clear both.',
+          explain: 'With a 40-tick period and three waits, a correct program polls far more than 30 times, and the second test stops the simulation part-way to check that the toggles really are a period apart. If the flag is never cleared, only the first wait blocks. On real hardware the same bug shows as a "delay" that works once and then returns instantly. \`TIM_STATUS |= TIM_EXPIRED;\` is rejected by the first test: it happens to work on this register, which has a single flag, but a read-modify-write of a W1C register writes back every flag that was set and clears them all.',
         } },
 
       `## The watchdog

@@ -110,7 +110,10 @@ the pin much larger than the sampling capacitor.
 
 ### Platform notes
 
-- Resolution and channel counts for the MAX78000 and MSPM0L2228 ADCs are datasheet items; look them up.
+- The MSPM0L2228 ADC is 12-bit, 1.68 Msps, with up to 26 external channels (TI datasheet SLASF94A, Features, p.1).
+  The original ESP32 has two 12-bit SAR ADCs with 18 channels in total (ESP32 Series Datasheet v5.3, section 4.9.1).
+- The MAX78000 ADC resolution is a datasheet item this course has not verified (Analog Devices' site could not be
+  read when the facts were checked); look it up. The MSDK driver shows external inputs AIN0–AIN3.
 - On the original ESP32, the pins of ADC2 cannot be used for conversions while Wi-Fi is in use, because the radio
   uses that converter. Plan analogue inputs on ADC1.
 - A **DAC** is the reverse: a register value sets an output voltage, code / 2^N × V_ref. It is updated by
@@ -284,9 +287,15 @@ rather than assuming.
 
 **MSPM0L2228.** Boot behaviour is governed by the **NONMAIN** configuration memory (\`BCR_CONFIG\` at \`0x41C0_0000\`,
 \`BSL_CONFIG\` at \`0x41C0_0100\`): debug access policy, whether the ROM bootstrap loader may be invoked, mass-erase
-policy, and an optional application integrity check. TI also supplies an optional MCUboot-based secure-boot stage
-(Customer Secure Code). In the 2026 eCTF layout a bootloader occupies \`0x0000_0000\`–\`0x0000_5FFF\` and team firmware
-is linked at \`0x0000_6000\`.`,
+policy, and an optional application integrity check. The boot configuration routine (BCR) is the first code after
+reset; it applies the debug policy and static write protection, can check application flash with a 32-bit CRC,
+and can start the ROM bootstrap loader (BSL), which talks over UART or I2C and always requires a 256-bit password
+(TRM SLAU847F, sections 1.4.2 and 1.4.3). A CRC detects corruption; it is not an authenticity check. TI also
+supplies an optional MCUboot-based secure-boot stage (Customer Secure Code). In the 2026 eCTF layout a bootloader
+occupies \`0x0000_0000\`–\`0x0000_5FFF\` and team firmware is linked at \`0x0000_6000\`. Development boards arrive
+without that bootloader: you flash MITRE's insecure bootloader with TI UniFlash through an XDS110 probe, put the
+board in update mode by holding S2 (PB21) during reset (LED D1 on PB14 flashes red), and load firmware with the eCTF
+tools (\`uvx ectf hw <port> flash ...\`), per the 2026 rules.`,
 
       { t: 'widget', name: 'boot-sequence', props: { platform: 'generic' }, title: 'A generic boot chain',
         caption: 'At each stage ask: what does this stage trust, and who could have changed it?' },
@@ -362,6 +371,8 @@ partitions, (c). If it lists partitions and then rejects the image, (d).)`,
         { title: 'ESP-IDF: Secure Boot V2', url: 'https://github.com/espressif/esp-idf/blob/v6.1/docs/en/security/secure-boot-v2.rst' },
         { title: 'TI MSPM0 SDK: boot configuration options for the L2228', url: 'https://github.com/TexasInstruments/mspm0-sdk/blob/main/examples/nortos/LP_MSPM0L2228/boot_manager/customer_secure_image_with_bootloader/boot_config.h' },
         { title: '2026 eCTF reference design linker script', url: 'https://github.com/ectfmitre/2026-ectf-insecure-example/blob/release/firmware/firmware.ld' },
+        { title: 'MITRE eCTF 2026 rules: bootloader (UniFlash, update mode, eCTF tools)', url: 'https://rules.ectf.mitre.org/2026/system/bootloader.html' },
+        { title: 'TI: MSPM0 L-Series Technical Reference Manual (SLAU847)', url: 'https://www.ti.com/lit/pdf/slau847', note: 'Sections 1.4.2 (BCR, NONMAIN security settings) and 1.4.3 (BSL).' },
       ] },
     ],
     quiz: [
@@ -429,15 +440,19 @@ designer. The **memory map** is the table of what lives where.`,
   Program flash      0x1000_0000  512 KB     0x0000_0000  256 KB     external SPI flash, cache-mapped:
                      (8 KB pages)                                      0x3F40_0000 read-only data (DROM)
                                                                        0x400D_0000 code (IROM)
-  SRAM               0x2000_0000  128 KB     0x2020_0000  32 KB      0x3FFA_E000 data RAM (DRAM)
+  SRAM               0x2000_0000  128 KB     0x2020_0000  32 KB (*)  0x3FFA_E000 data RAM (DRAM)
                                                                      0x4008_0000 instruction RAM (IRAM)
   Peripherals        0x4000_0000 ...         0x4000_0000 ...         0x3FF0_0000 ...
-  Config memory      -                       0x41C0_0000 NONMAIN     eFuse block (via registers)` },
+  Config memory      -                       0x41C0_0000 NONMAIN     eFuse block (via registers)
+
+  (*) One 32 KB memory seen at three addresses (TI datasheet SLASF94A, Table 8-4):
+      0x2000_0000 ECC-checked, 0x2010_0000 parity-checked, 0x2020_0000 unchecked.
+      TI's linker file and the 2026 eCTF reference design use 0x2020_0000.` },
 
       { t: 'widget', name: 'memory-map', props: { platform: 'max78000' }, title: 'MAX78000 address space',
         caption: 'Take the "where does this address live?" quiz until you can place an address by its top hex digits alone.' },
       { t: 'widget', name: 'memory-map', props: { platform: 'mspm0l2228' }, title: 'MSPM0L2228 address space',
-        caption: 'Note where SRAM starts: TI\'s linker file puts it at 0x2020_0000, not the 0x2000_0000 that many Cortex-M parts use. Do not carry a RAM address over from another chip.' },
+        caption: 'Note the SRAM row. The datasheet memory map (SLASF94A, Table 8-4) shows the same 32 KB at three addresses: 0x2000_0000 (ECC-checked), 0x2010_0000 (parity-checked) and 0x2020_0000 (unchecked). TI\'s linker file and the 2026 eCTF reference design choose 0x2020_0000. The explorer may draw only that view. Do not carry a RAM address or length over from another chip: read the map, then see which view the linker script uses.' },
 
       `### Sections
 
@@ -477,13 +492,13 @@ script**, which has two parts:
         ] },
 
       { t: 'code', lang: 'ld', status: 'reviewed',
-        caption: 'The same idea on the MSPM0L2228 in the 2026 eCTF layout (values from the reference design\'s firmware.ld; written here in GNU ld form for comparison; open the real file for its exact syntax)',
+        caption: 'The same idea on the MSPM0L2228 in the 2026 eCTF layout (values from the reference design\'s firmware.ld; written here in GNU ld form for comparison; open the real file for its exact syntax). One difference from the rules: firmware.ld gives APP2 a length of 0x5C00, but the 2026 detailed specifications give APP2 0x5800 and reserve the last page (0x3FC00, length 0x400) for the bootloader. The rules are the specification. SRAM here is the unchecked view of the chip\'s one 32 KB memory, which the datasheet also maps at 0x20000000 (ECC-checked) and 0x20100000 (parity-checked).',
         code: R`MEMORY {
     BOOTLOADER (rx) : ORIGIN = 0x00000000, LENGTH = 0x00006000  /* unusable by teams  */
     FLASH      (rx) : ORIGIN = 0x00006000, LENGTH = 0x00034000  /* team firmware      */
     FAT        (rw) : ORIGIN = 0x0003A000, LENGTH = 0x00000400  /* file allocation table, fixed by the spec */
-    APP2       (rw) : ORIGIN = 0x0003A400, LENGTH = 0x00005C00
-    SRAM      (rwx) : ORIGIN = 0x20200000, LENGTH = 0x00008000  /* 32 KB              */
+    APP2       (rw) : ORIGIN = 0x0003A400, LENGTH = 0x00005C00  /* rules: 0x5800, then 0x3FC00 reserved */
+    SRAM      (rwx) : ORIGIN = 0x20200000, LENGTH = 0x00008000  /* 32 KB, unchecked view */
     /* BCR_CONFIG at 0x41C00000 and BSL_CONFIG at 0x41C00100: NONMAIN boot configuration */
 }` },
 
@@ -593,10 +608,14 @@ Now the three bug reports:
    \`.data\` load region). \`.bss\` variables look fine because the zeroing loop still runs, or because that RAM
    happened to hold zeros anyway.
 3. The image was linked with the MAX78000's RAM region: \`0x2000_0000\`, 128 KB, so the initial stack pointer is
-   \`0x2002_0000\`. TI's linker file for the MSPM0L2228 gives 32 KB of SRAM at \`0x2020_0000\`. A stack pointer
-   128 KB above any RAM base is outside a 32 KB memory wherever it is mapped, so the first push faults. (Whether
-   \`0x2000_0000\` itself decodes to anything on this chip is a question for its reference manual's memory map; the
-   address the vendor's linker file uses is the one to build for.)
+   \`0x2002_0000\`. The MSPM0L2228 has 32 KB of SRAM. A stack pointer 128 KB above the RAM base is outside a 32 KB
+   memory wherever it is mapped, so the first push faults. Note what did *not* cause the fault: the base address.
+   The MSPM0L2228 datasheet's memory map (SLASF94A, Table 8-4) shows the same 32 KB at three addresses with
+   different error checking: \`0x2000_0000\` (ECC-checked), \`0x2010_0000\` (parity-checked) and \`0x2020_0000\`
+   (unchecked). TI's linker file and the 2026 eCTF reference design use the \`0x2020_0000\` view, but
+   \`0x2000_0000\`–\`0x2000_7FFF\` is valid RAM on this chip too. The borrowed script was wrong in its *length* (and in
+   its flash origin, \`0x1000_0000\`, where this chip has no flash). Read the memory map before you decide which
+   line of a borrowed script is the bug.
 
 ### Reading a map file
 
@@ -660,7 +679,7 @@ size, and every input object's contribution.`,
       `## Harder application
 
 You are porting firmware from the 2025 eCTF layout (MAX78000, application at \`0x1000_E000\`, SRAM \`0x2000_0000\`,
-128 KB) to the 2026 layout (MSPM0L2228, application at \`0x0000_6000\`, SRAM \`0x2020_0000\`, 32 KB). List every place
+128 KB) to the 2026 layout (MSPM0L2228, application at \`0x0000_6000\`, SRAM linked at \`0x2020_0000\`, 32 KB). List every place
 an address or size assumption could be hiding: the linker script, hard-coded flash addresses for stored data, the flash
 page size used by the storage code (8 KB versus 1 KB), stack size, any buffer sized for 128 KB of RAM, and
 alignment or instruction-set assumptions from moving from a Cortex-M4F to a Cortex-M0+. Which of these does the
@@ -670,6 +689,8 @@ compiler or linker catch for you, and which fail silently at run time?`,
         { title: 'MSDK linker script for the MAX78000', url: 'https://github.com/analogdevicesinc/msdk/blob/main/Libraries/CMSIS/Device/Maxim/MAX78000/Source/GCC/max78000.ld' },
         { title: 'TI linker command file for the MSPM0L2228', url: 'https://github.com/TexasInstruments/mspm0-sdk/blob/main/source/ti/devices/msp/m0p/linker_files/ticlang/mspm0l2228.cmd' },
         { title: '2025 eCTF reference design linker script (MAX78000)', url: 'https://github.com/mitre-cyber-academy/2025-ectf-insecure-example/blob/master/decoder/firmware.ld' },
+        { title: 'TI: MSPM0L222x, MSPM0L122x datasheet (SLASF94A)', url: 'https://www.ti.com/lit/ds/symlink/mspm0l2228.pdf', note: 'Table 8-4 is the memory map: the three SRAM views and the two flash banks.' },
+        { title: 'MITRE eCTF 2026 rules: detailed specifications (flash layout)', url: 'https://rules.ectf.mitre.org/2026/specs/detailed_specs.html' },
         { title: 'ESP32 address ranges (soc.h)', url: 'https://github.com/espressif/esp-idf/blob/v6.1/components/soc/esp32/include/soc/soc.h' },
       ] },
     ],
@@ -689,8 +710,8 @@ compiler or linker catch for you, and which fail silently at run time?`,
         { t: 'The stack pointer is not initialised, so globals are read from the wrong place', why: 'A missing stack pointer would crash at the first function call rather than selectively affect initialised variables.' },
         { t: 'The variables are declared volatile', why: 'That qualifier affects how the compiler accesses them, not whether their initial values are loaded.' },
       ] },
-      { q: 'Firmware is linked with the MAX78000\'s RAM region (`0x2000_0000`, 128 KB) and flashed onto an MSPM0L2228, whose linker file gives 32 KB of SRAM at `0x2020_0000`. What happens at reset?', kind: 'arch', choices: [
-        { t: 'The initial SP is not inside the chip\'s RAM, so the first push faults', ok: true, why: 'The stack starts at the top of the linked RAM region, 0x2002_0000, which is far outside a 32 KB memory wherever that memory is mapped.' },
+      { q: 'Firmware is linked with the MAX78000\'s RAM region (`0x2000_0000`, 128 KB) and flashed onto an MSPM0L2228. That chip has 32 KB of SRAM, which its datasheet maps at `0x2000_0000` (ECC-checked), `0x2010_0000` (parity-checked) and `0x2020_0000` (unchecked; the view TI\'s linker file uses). Consider only the RAM side of the mistake. What happens at reset?', kind: 'arch', choices: [
+        { t: 'The initial SP is not inside the chip\'s RAM, so the first push faults', ok: true, why: 'The stack starts at the top of the linked RAM region, 0x2002_0000. The base 0x2000_0000 is valid RAM on this chip, but only 0x8000 bytes of it exist, so an address 128 KB above the base is outside the memory.' },
         { t: 'It runs normally, because the chip relocates RAM references to its own base at load time', why: 'There is no automatic remapping; addresses in the image are used exactly as linked.' },
         { t: 'It runs until the program has used the first 32 KB of its RAM', why: 'The very first thing the core uses is the stack pointer, and that already points beyond 32 KB of RAM.' },
       ] },

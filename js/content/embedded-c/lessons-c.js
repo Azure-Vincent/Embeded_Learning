@@ -174,7 +174,7 @@ handler. The opposite mistake, clearing *all* flags with \`|=\`, discards events
 
 The decrement is written as three statements to match the load, modify and store instructions a compiler emits for \`pending--\`. Run it and look at \`lost\`: the pulses arrive while main is in the middle of a decrement. Then make the decrement safe with a critical section (\`irq_disable()\` / \`irq_enable()\`). Keep the critical section as short as you can.
 
-Keep the three statements. Folding them back into \`pending--\` makes the loss disappear **only in this simulator**, which delivers interrupts between statements; a real CPU can take the interrupt between the load and the store inside that one statement.`,
+Folding the three statements back into \`pending--\` fixes nothing: the simulator, like a real CPU, can take the interrupt between the load and the store inside that one statement. Try it and watch \`lost\` stay above 0.`,
       starter: C`
 #include <stdint.h>
 #include <stdio.h>
@@ -265,7 +265,7 @@ int main(void)
         'A pulse is lost when the ISR runs after `tmp = pending` and before `pending = tmp`: the store puts back a value that does not include the ISR\'s increment.',
         'Those three statements must not be separated by the interrupt. Mask interrupts just before the load and unmask just after the store. `handled++` is a local of `main` that the ISR never touches, so it stays outside.',
       ],
-      explain: `With interrupts masked for three statements, the timer's request simply waits and is served right after \`irq_enable()\`, so nothing is lost and the delay is tiny. \`volatile\` was present all along and did not help: it guarantees the accesses happen, not that they stay together. Bench-MCU delivers interrupts between statements, which is why the decrement was spelled out; on real hardware the single statement \`pending--\` has the same three-step window.`,
+      explain: `With interrupts masked for three statements, the timer's request simply waits and is served right after \`irq_enable()\`, so nothing is lost and the delay is tiny. \`volatile\` was present all along and did not help: it guarantees the accesses happen, not that they stay together. The decrement was spelled out only to make the window visible: the single statement \`pending--\` has the same three steps, on Bench-MCU and on real hardware, and needs the same critical section.`,
     }),
     clab({
       title: 'Write: a single-producer, single-consumer ring buffer',

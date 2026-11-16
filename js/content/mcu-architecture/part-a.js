@@ -47,7 +47,7 @@ The practical differences that follow from integration:
 
       `## On real hardware: the three course platforms
 
-**ESP32-WROOM module.** The ESP32 *chip* contains two Xtensa CPU cores, RAM, a mask ROM, radio, and peripherals, but
+**ESP32-WROOM module.** The ESP32 *chip* contains two Xtensa LX6 CPU cores (the ESP32-S3 uses the newer LX7), RAM, a mask ROM, radio, and peripherals, but
 **no program flash**. The WROOM *module* is a small PCB that adds an SPI flash chip, a crystal (typically 40 MHz), the RF matching
 network and a PCB antenna under a shield can. On the original ESP32, GPIO6–11 are normally wired to that flash inside
 the module, which is why you must not use them. So an ESP32-WROOM is: a module, containing an SoC, which behaves like
@@ -58,8 +58,14 @@ bridge, regulator and buttons.
 \`0x2000_0000\`, plus a second, RISC-V core and a convolutional neural-network accelerator. The MAX78000FTHR board
 adds a debug adapter (a MAX32625PICO presenting as a DAPLink drive), LEDs and buttons.
 
-**MSPM0L2228.** A single-die MCU: Arm Cortex-M0+, 256 KB flash at \`0x0000_0000\`, 32 KB SRAM at \`0x2020_0000\`,
-with an LCD controller and security peripherals (AES, TRNG, key store). The evaluation board is the LP-MSPM0L2228.`,
+**MSPM0L2228.** A single-die MCU: Arm Cortex-M0+ running at up to 32 MHz from a 1.62 V to 3.6 V supply, 256 KB flash
+at \`0x0000_0000\` (two 128 KB banks, 1 KB sectors), 32 KB SRAM, with an LCD controller and security peripherals (AES,
+TRNG, key store). The SRAM is one memory that the datasheet maps at three addresses with different error checking:
+\`0x2000_0000\` (ECC-checked), \`0x2010_0000\` (parity-checked) and \`0x2020_0000\` (unchecked). TI's linker file and the
+2026 eCTF reference design use \`0x2020_0000\`, so that is the address you will see in this course's examples
+(datasheet SLASF94A, Features and Table 8-4). TI's evaluation board is the LP-MSPM0L2228 LaunchPad, with an XDS110
+debug probe on board. The 2026 eCTF board is a different, custom board, the MSP-LITO-L2228: it is not sold, it
+needs an external XDS110, and the 2026 rules describe the LaunchPad as "largely interchangeable" with it.`,
 
       { t: 'widget', name: 'mcu-block-diagram', props: { platform: 'esp32' }, title: 'ESP32',
         caption: 'Find the flash. Is it inside the chip boundary or outside it?' },
@@ -79,7 +85,9 @@ A datasheet's first page lists features. Train yourself to sort every line into 
 
 For the MSPM0L2228, the device header in TI's SDK already tells you most of it: Cortex-M0+, MPU present, 2 interrupt
 priority bits, five UARTs, three I2C, two SPI, one ADC, an LCD controller, AES, TRNG and a key store. The maximum CPU
-frequency and ADC resolution are datasheet items: look them up, do not guess.`,
+frequency and ADC resolution are not in the header. They are on the datasheet's first page (SLASF94A, Features):
+"frequency up to 32MHz" and a 12-bit, 1.68 Msps ADC. Open the page and find both lines yourself; a header tells you
+what exists, the datasheet tells you its limits.`,
 
       { t: 'predict',
         q: 'A design uses the bare ESP32 chip (not a module) and the designer forgets to fit the external SPI flash. Power is applied. What does the chip do?',
